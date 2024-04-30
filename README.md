@@ -1,15 +1,19 @@
 # iMShare
 
-iMShare adds Download / Upload options to the Context Menu for easy file transfer between devices with just 1 click. It comes pre-configured with Nilesoft Shell's "personal theme" to customize the context menu, add or remove any shortcut, function, or command. Additionally, it includes Schollz Croc for fast and convenient file transfers.
+iMShare adds Download / Upload options to the Context Menu for easy file transfer between devices with just 1 click.
+Click a file to upload and give the downloader your password, or click anywhere to download in the same path you're in and type the password. 
 
-![context](https://github.com/iMAboud/iMShare/assets/80198949/3c6c70d6-f609-4516-9388-ca627dd5bba2)
+<p align="center">
+  <img src="https://github.com/iMAboud/iMShare/assets/80198949/3c6c70d6-f609-4516-9388-ca627dd5bba2">
+</p>
+
 
 ## Features
 
-- Lightweight, fast, easy, and portable.
+- Lightweight, fast, easy, portable and no server hosts, you're your own server.
 - Fully automated, with commands recognizing where you click for download and upload.
 - Installs both Nilesoft Shell and Schollz Croc.
-- Additional features from [Nilesoft](https://github.com/moudey/Shell) and [Croc](https://github.com/schollz/croc) repositories.
+- Additional features and config details from [Nilesoft](https://github.com/moudey/Shell) and [Croc](https://github.com/schollz/croc) repositories.
 
 ## Download & Installation
 
@@ -51,16 +55,13 @@ iMShare adds Download / Upload options to the Context Menu for easy file transfe
 
  **Configure Croc:**
    - Edit `Croc.bat` in `C:\Program Files\Nilesoft\script` to set your own password with "--code" followed by your password (minimum 6 digits).
-This will be used by the Downloader to type and download without having to copy your randome generated password. 
-Pros: Easy to memories, same password every time the downloader inserts. 
-Cons: Obviously security, I suggest to avoide setting the password 123456. 
+This will be used by the Downloader to type and download without having to copy your randome generated password.
+
++ Pros: Easy to memories, same password every time the downloader inserts. 
+- Cons: Obviously security, I suggest to avoide setting the password easy to guess. 
 
 ## Important Note
 The Download script will only accept 6+ digits. 
-This is for security reasons, however, if you insert less than 6 digits it will make it up to 6 digits by repeating the last digit until the total is 6. 
-This is made so you could create a password with less than 6 digits 
-
-e.g: if your name is John which is less than 6 digits you can set the password to "JOHNNN" , but the downloader will only need to type "JOHN" and the script will repeat the "N" exactly 2 times to be JOHNNN for you. 
 
 ## Screenshots
 
