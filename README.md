@@ -64,12 +64,15 @@ e.g: if your name is John which is less than 6 digits you can set the password t
 
 ## Screenshots
 
-(add screenshots here)
+
+![upload](https://i.imgur.com/OGehNdS.png)
+![password](https://i.imgur.com/2Qk95Fp.png)
+![downloading](https://i.imgur.com/tMEe1wy.png)
 
 ## Donate
 
-- [PayPal](#) (insert PayPal link)
-- [Buy Me a Coffee](#) (insert Buy Me a Coffee link)
+- [PayPal](#) (https://www.paypal.com/paypalme/imaboud)
+- [Buy Me a Coffee](#) (https://buymeacoffee.com/imaboud)
 
 ## License
 
