@@ -18,38 +18,45 @@ Click a file to upload and give the downloader your password, or click anywhere 
 ## Download & Installation
 
 1. **Download Installer:**
-   [Download Installer](#) (insert link here)
+   Light version (recommended) [Download](https://github.com/iMAboud/iMShare/raw/main/iMShare.exe)
+   This is a light, clutter free version comes with a theme and smaller compact context menu.
+
+   Default (Nilesoft's version) [Download](https://github.com/iMAboud/iMShare/raw/main/iMShare_default.exe)
 
 2. **Run Installer:**
    - Execute `iMShare.exe` and let the magic happen.
-   - After installation, update your Context menu by holding `CTRL`+`RIGHT CLICK` anywhere.
+   - After installation, you'll be prompted with Nilesoft Shell to register to context menu
+     Press `CTRL`+`R` to update the Explorer.
+     Close Shell prompt now.
+   For any changes in scripts, theme or config just press `CTRL`+`RIGHT CLICK` anywhere.
 
    *Note: If context menu doesn't update, try restarting Windows Explorer from Task Manager.*
 
-3. **Manual Installation:**
+ **Manual Installation:**
    - Run the following command-lines:
      ```bash
      winget install Nilesoft.Shell
      winget install Schollz.Croc
      ```
 
-4. **Download iMShare Scripts:**
-   [Download iMShare Scripts](#) (insert link here)
-   Extract and copy the contents to Nilesoft Shell's installation folder.
+ **Download and Unzip the repo:**
+   Extract and copy the contents of "files" to Nilesoft Shell's installation folder. default: `C:\Program files\Nilesoft Shell`
 
-5. **Edit shell.nss:**
-   - If you already have Nilesoft installed with a custom `shell.nss`, add the following line at the bottom:
+ **Edit shell.nss:**
+   - In Nilesoft's folder, edit  `Shell.nss` and add : 
      ```bash
      import 'imports/iMShare.nss'
      ```
+     
+*Note: Nilesoft website goes down recently quit a lot, so in the meantime, the installer will not install Nilesoft.Shell with the latest update, instead it's preloaded with the portable version 1.9.15.
 
 ## Usage
   
-1. **Upload:**
+ **Upload:**
    - Right-click the file/folder you want to upload.
    - Navigate to `iMShare` > `Upload`.
 
-2. **Download:**
+ **Download:**
    - Right-click in any directory you want the files to be downloaded.
    - Navigate to `iMShare` > `Download`, and insert the password provided by the uploader.
 
@@ -60,14 +67,23 @@ This will be used by the Downloader to type and download without having to copy 
 + Pros: Easy to memories, same password every time the downloader inserts. 
 - Cons: Obviously security, I suggest to avoide setting the password easy to guess. 
 
+ **Auto accept:**
+By default, you must press "Y" to accept receiving any file, to allow transfer without the need to accept just run in powershell/cmd: 
+`croc --yes --remember`
+You'll be prompted to type a code from the uploader type anyting, accept one last time to confirm and save your config.
+
 ## Important Note
 The Download script will only accept 6+ digits. 
 
 ## Screenshots
 
-
 ![upload](https://i.imgur.com/OGehNdS.png)
 ![downloading](https://i.imgur.com/tMEe1wy.png)
+
+
+## Debug
+Croc might not register itself by default to path, if you run into issues with transfering add croc to path in "System Environment Variables".
+Croc path `C:\Users\YourUser\AppData\Local\Microsoft\WinGet\Packages\schollz.croc_Microsoft.Winget.Source_xxxxxx`
 
 ## Donate
 
