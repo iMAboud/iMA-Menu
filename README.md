@@ -60,20 +60,22 @@ Click a file to upload and give the downloader your password, or click anywhere 
    - Right-click in any directory you want the files to be downloaded.
    - Navigate to `iMShare` > `Download`, and insert the password provided by the uploader.
 
- **Configure Croc:**
+ **Configure Croc and add your own password:**
    - Edit `Croc.bat` in `C:\Program Files\Nilesoft\script` to set your own password with "--code" followed by your password (minimum 6 digits).
+
+   e.g: `powershell -NoExit -Command "Croc send --code 123456 \"$(Get-Clipboard)\"" `
+
+   *Change `123456` to your password*
 This will be used by the Downloader to type and download without having to copy your randome generated password.
 
-+ Pros: Easy to memories, same password every time the downloader inserts. 
-- Cons: Obviously security, I suggest to avoide setting the password easy to guess. 
 
- **Auto accept:**
+ ## Auto accept:
 By default, you must press "Y" to accept receiving any file, to allow transfer without the need to accept just run in powershell/cmd: 
+
 `croc --yes --remember`
+
 You'll be prompted to type a code from the uploader type anyting, accept one last time to confirm and save your config.
 
-## Important Note
-The Download script will only accept 6+ digits. 
 
 ## Screenshots
 
