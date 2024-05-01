@@ -1,7 +1,8 @@
 # iMShare
 
-iMShare adds Download / Upload options to the Context Menu for easy file transfer between devices with just 1 click.
-Click a file to upload and give the downloader your password, or click anywhere to download in the same path you're in and type the password. 
+- iMShare makes file-sharing as easy as it can get, by integrating Download and Upload options into your Context Menu. With just a single click, effortlessly transfer files between devices with no size or speed limit.
+- To upload: Click > Upload. To Download: click  > type code > Download.
+- iMShare is made by the laziest person, to those who're like me because why should I open links and do 10 clicks instead of just 1..?
 
 <p align="center">
   <img src="https://github.com/iMAboud/iMShare/assets/80198949/3c6c70d6-f609-4516-9388-ca627dd5bba2">
@@ -12,6 +13,7 @@ Click a file to upload and give the downloader your password, or click anywhere 
 
 - Lightweight, fast, easy, portable and no server hosts, you're your own server.
 - Fully automated, with commands recognizing where you click for download and upload.
+- No file size limit, no cloud storage, no upload waiting time, no accounts, no background programs, no speed limit.
 - Installs both Nilesoft Shell and Schollz Croc.
 - Additional features and config details from [Nilesoft](https://github.com/moudey/Shell) and [Croc](https://github.com/schollz/croc) repositories.
 
