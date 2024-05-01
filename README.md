@@ -80,7 +80,7 @@ croc --yes --remember
 ```
 
 
-You'll be prompted to type a code from the uploader type anyting, accept one last time to confirm and save your config.
+You'll be prompted to type a code from the uploader type anything, accept one last time to confirm and save your config.
 
 
 ## Screenshots
