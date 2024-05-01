@@ -63,7 +63,10 @@ Click a file to upload and give the downloader your password, or click anywhere 
  **Configure Croc and add your own password:**
    - Edit `Croc.bat` in `C:\Program Files\Nilesoft\script` to set your own password with "--code" followed by your password (minimum 6 digits).
 
-   e.g: `powershell -NoExit -Command "Croc send --code 123456 \"$(Get-Clipboard)\"" `
+Example:
+```bash
+powershell -NoExit -Command "Croc send --code 123456 \"$(Get-Clipboard)\""
+```
 
    *Change `123456` to your password*
 This will be used by the Downloader to type and download without having to copy your randome generated password.
@@ -72,7 +75,10 @@ This will be used by the Downloader to type and download without having to copy 
  ## Auto accept:
 By default, you must press "Y" to accept receiving any file, to allow transfer without the need to accept just run in powershell/cmd: 
 
-`croc --yes --remember`
+```bash
+croc --yes --remember
+```
+
 
 You'll be prompted to type a code from the uploader type anyting, accept one last time to confirm and save your config.
 
