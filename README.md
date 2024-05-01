@@ -82,6 +82,9 @@ croc --yes --remember
 
 You'll be prompted to type a code from the uploader type anything, accept one last time to confirm and save your config.
 
+## Important Notes:
+Password must be 6 digits or more
+Do not type "croc" followed by the password, the script already types "croc" for you. 
 
 ## Screenshots
 
