@@ -38,10 +38,10 @@ Download|Manuall installation
 :---|:---
 [iMShare](https://github.com/iMAboud/iMShare/raw/main/iMShare.zip)| Or download zip from the repo.
 [Nilesoft Shell](https://nilesoft.org/download/shell/1.9.15/setup.exe)| Or run in powershell: `winget install nilesoft.shell`
-[Schollz Croc](https://github.com/schollz/croc/releases/download/v9.6.15/croc_v9.6.15_Windows-64bit.zip)|Or run in powershell: `winget install schollz.croc` (RECOMMENDED)
-[Python (RECOMMENDED)](https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe)|Or run in powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check add python to path.
-[yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]` (RECOMMENDED)
-[ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)` (RECOMMENDED)
+[Schollz Croc](https://github.com/schollz/croc/releases/download/v9.6.15/croc_v9.6.15_Windows-64bit.zip)|Or run in powershell: `winget install schollz.croc`
+[Python](https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe)|Or run in powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check add python to path.
+[yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]`
+[ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)`
 
 ## Installation
 
