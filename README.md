@@ -1,92 +1,134 @@
 # iMShare
 
-- iMShare makes file-sharing as easy as it can get, by integrating Download and Upload options into your Context Menu. With just a single click, effortlessly transfer files between devices with no size or speed limit.
-- To upload: Click > Upload. To Download: click  > type code > Download.
-- iMShare is made by the laziest person, to those who're like me because why should I open links and do 10 clicks instead of just 1..?
+<div align="center">
 
-<p align="center">
-  <img src="https://github.com/iMAboud/iMShare/assets/80198949/3c6c70d6-f609-4516-9388-ca627dd5bba2">
-</p>
+[![PayPal](https://img.shields.io/badge/-PyPi-blue.svg?logo=pypi&labelColor=555555&style=for-the-badge)](https://www.paypal.com/paypalme/imaboud)
+[![Donate](https://img.shields.io/badge/_-Donate-red.svg?logo=githubsponsors&labelColor=555555&style=for-the-badge)](https://buymeacoffee.com/imaboud "Donate")
 
+</div>
+
+- iMShare adds a lot of useful features right on your context menu.
+- Large file sharing between devices - Video/Image editing - Draw over apps - Search and set a wallpaper - Youtube and X downloader, and more.
+
+![Manage](https://i.imgur.com/n4fQIsC.png) ![tools](https://i.imgur.com/mHGLrTd.png) ![ytx](https://i.imgur.com/XptI08A.png)
 
 ## Features
 
-- Lightweight, fast, easy, portable and no server hosts, you're your own server.
-- Fully automated, with commands recognizing where you click for download and upload.
-- No file size limit, no cloud storage, no upload waiting time, no accounts, no background programs, no speed limit.
-- Installs both Nilesoft Shell and Schollz Croc.
-- Additional features and config details from [Nilesoft](https://github.com/moudey/Shell) and [Croc](https://github.com/schollz/croc) repositories.
+- Transfer files super fast with no size limit to any PC with just a pass code.
+- Download a video or directly conver it to audio from Youtube or X with a button.
+- Remove background of any image.
+- Resize dimensions of an image and aspect of a video.
+- MP4 to MP3
+- Video to GIF, no limit, gif can be up to 2 hours (it might go longer, I didn't test it).
+- Convert any video to any format.
+- Reduce file size of any image or video without losing too much quality. 
+- Draw over apps, scroll wheel to increase of decrease opacity of desktop.
+- Change a wallpaper with commands, search a wallpaper, select from options and it'll save and set as background instantly.
+- Clean temp/cookies/cache..etc.
+- Open multiple accounts e.g: Steam, Valorant.. with "TcNo Account Switcher" but from context menu. 
+- Custom theme and settings for Nilesoft for minimalism.
+- Fast search any file in all drives, copy the path, paste and you're redirected to that path. 
+- Lightweight, fast, easy, portable, no background apps, almost %100 pre-configured and ready to use.
+- Fully automated, with pre-configured scripts, automatically sets the location path where you click.
+- Additional features and config details from [Nilesoft](https://github.com/moudey/Shell) and [Croc](https://github.com/schollz/croc) [yt-dlp](https://github.com/yt-dlp/yt-dlp) repositories.
 
-## Download & Installation
+## Requierments
 
-1. **Download Installer:**
-   Light version (recommended) [Download](https://github.com/iMAboud/iMShare/raw/main/iMShare.exe)
-   This is a light, clutter free version comes with a theme and smaller compact context menu.
+Download|Manuall installation
+:---|:---
+[iMShare](https://github.com/iMAboud/iMShare/raw/main/iMShare.zip)| Or download zip from the repo.
+[Nilesoft Shell](https://nilesoft.org/download/shell/1.9.15/setup.exe)| Or run in powershell: `winget install nilesoft.shell`
+[Schollz Croc](https://github.com/schollz/croc/releases/download/v9.6.15/croc_v9.6.15_Windows-64bit.zip)|Or run in powershell: `winget install schollz.croc` (RECOMMENDED)
+[Python (RECOMMENDED)](https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe)|Or run in powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check add python to path.
+[yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]` (RECOMMENDED)
+[ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)` (RECOMMENDED)
 
-   Default (Nilesoft's version) [Download](https://github.com/iMAboud/iMShare/raw/main/iMShare_default.exe)
+## Installation
 
-2. **Run Installer:**
-   - Execute `iMShare.exe` and let the magic happen.
-   - After installation, you'll be prompted with Nilesoft Shell to register to context menu
-     Press `CTRL`+`R` to update the Explorer.
-     Close Shell prompt now.
-   For any changes in scripts, theme or config just press `CTRL`+`RIGHT CLICK` anywhere.
+- Unzip `iMShare` and set it aside for now
+- Install `Nilesoft Shell` & `Shollz Croc` & `Python` & `yt-dlp` & `ffmpeg` from the table above, or your desired method.
+- After `Nilesoft Shell` is installed and activated copy all contents of `files` into Nilesoft's installation folder `C:\Program Files\Nilesoft Shell` (Replace `imports`&`Shell.nss` and add `icons`&`script` folders.
+- Hold CTRL+Right-Click to update context menu.
 
-   *Note: If context menu doesn't update, try restarting Windows Explorer from Task Manager.*
+   *Note: If context menu didn't update, try restarting Windows Explorer from Task Manager.*
 
- **Manual Installation:**
-   - Run the following command-lines:
-     ```bash
-     winget install Nilesoft.Shell
-     winget install Schollz.Croc
-     ```
+## IMPORTANT STEP:
+- Navigate to `C:\Program Files\Nilesoft Shell\script` and right-click EDIT `croc.bat`
+- Change the line "SET_YOUR_CODE_HERE" to your password. **6+ character**
+e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboard)\""`
 
- **Download and Unzip the repo:**
-   Extract and copy the contents of "files" to Nilesoft Shell's installation folder. default: `C:\Program files\Nilesoft Shell`
 
- **Edit shell.nss:**
-   - In Nilesoft's folder, edit  `Shell.nss` and add : 
-     ```bash
-     import 'imports/iMShare.nss'
-     ```
-     
-*Note: Nilesoft website goes down recently quit a lot, so in the meantime, the installer will not install Nilesoft.Shell with the latest update, instead it's preloaded with the portable version 1.9.15.
-
-## Usage
+## Usage & Config
   
- **Upload:**
+ **File Transfer**
+
+
+**Upload** ![](https://i.imgur.com/suIyOoG.png)
    - Right-click the file/folder you want to upload.
-   - Navigate to `iMShare` > `Upload`.
+   - Select `Upload`, give the receiver your password.
 
- **Download:**
-   - Right-click in any directory you want the files to be downloaded.
-   - Navigate to `iMShare` > `Download`, and insert the password provided by the uploader.
+**Download** ![](https://i.imgur.com/qFyOpxi.png)
+   - Right-click in any directory you want the files to be downloaded in.
+   - Select `Download`, and insert the password provided by the uploader.
 
- **Configure Croc and add your own password:**
-   - Edit `Croc.bat` in `C:\Program Files\Nilesoft\script` to set your own password with "--code" followed by your password (minimum 6 digits).
-
-Example:
-```bash
-powershell -NoExit -Command "Croc send --code 123456 \"$(Get-Clipboard)\""
-```
-
-   *Change `123456` to your password*
-This will be used by the Downloader to type and download without having to copy your randome generated password.
+(Upload is active only when you select a file, and Download is active only when you right-click an empty space)
 
 
- ## Auto accept:
-By default, you must press "Y" to accept receiving any file, to allow transfer without the need to accept just run in powershell/cmd: 
+ **Configure Croc:**
+   Make Croc auto accepts once you insert a password without typing "Y" to confirm everytime.
+- From powershell run `Croc --yes --remember`
+- Insert a password "You can transfer a file to yourself to save the configuration".
 
-```bash
-croc --yes --remember
-```
+If you want to generate a unique code everytime you want to share a file simly remove the command `--code`& your code from `croc.bat`.
 
+**Most of the scripts below will be executed with a minimized window, DO NOT PANIC when you click and see nothing, it's minimized, just open the window to see the progress**
+## YouTube & X downloader 
+![](https://i.imgur.com/5slVepk.png)
+- Copy the video's link
+- Right-Click an empty space (This is where your video will be saved in)
+- Hover over Youtube, and select either `Video` or `Audio`.
+- It will start installing instantly if everything is configured correctly.
 
-You'll be prompted to type a code from the uploader type anything, accept one last time to confirm and save your config.
+## Video & Image editing
+Pretty much self explanatory, just Right-Click a video or an image, then > Tools > select your option
 
-## Important Notes:
-- Password must be 6 digits or more
-- Do not type "croc" followed by the password, the script already types "croc" for you. 
+![](https://i.imgur.com/eDjS8H1.png)
+
+**Pre-configuration commands, you don't need to do anything here unless you want to edit the output**
+- Background Remover runs the command `backgroundremover -i "file_path" -a -ae 15 -o "output_file"`
+- Resize image runs `ffmpeg -i "file_path" -s !dimensions! "output_image"`
+- Resize video runs `ffmpeg -i "file_path" -aspect !aspect! "output_video"`
+- MP4 to MP3 runs `ffmpeg -i "video_path" "output_audio"`
+- Video to Gif runs `ffmpeg -i "video_path" -vf "fps=15,scale=320:-1:flags=lanczos" -c:v gif -loop 0 "output_video"`
+- Convert runs `ffmpeg -i "video_path" -c:v copy -c:a copy "output_video"`
+- Reduce Size runs `ffmpeg -i "file_path" -vf scale=-1:720 -c:a copy "output_path"`
+
+## Search & Draw & Clean Temp & Wallpaper Changer (Found under "File Manage"
+
+![](https://i.imgur.com/JrNBaGz.png)
+
+**Search**
+- Type the name of the file, search in all directory
+- Copy the path you want to look for, and paste it in the same window to open the path and highlight the file.
+
+**Draw**
+- Right Click to Draw, Left Click to change color
+- Mousewheel to change opacity of canvas
+- ESC to stop and close
+
+**Clean Temp**
+- This will clean all of `temp`,`cache`,`recent`,`cookies`, and `prefetch`. 
+
+**Wallpaper Changer**
+You need to aquire the API from "https://api.unsplash.com" 
+It's free of charge and easy to sign-up. Once you create your Application page setup in `unsplash` you'll get your own free API.
+- Copy your `Access Key`
+- Open `wallpaper.py` located in Nilesoft's folder `script`
+- Replace the key with "YOUR_ACESS_KEY"
+- Save & Exit
+
+**Account Switching**
+I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
 
 ## Screenshots
 
@@ -94,15 +136,10 @@ You'll be prompted to type a code from the uploader type anything, accept one la
 ![downloading](https://i.imgur.com/tMEe1wy.png)
 
 
-## Debug
+## Potential issues & fixes
 Croc might not register itself by default to path, if you run into issues with transfering add croc to path in "System Environment Variables".
 Croc path `C:\Users\YourUser\AppData\Local\Microsoft\WinGet\Packages\schollz.croc_Microsoft.Winget.Source_xxxxxx`
-
-## Donate
-
-- [PayPal](https://www.paypal.com/paypalme/imaboud)
-- [Buy Me a Coffee](https://buymeacoffee.com/imaboud)
-
+yt-dlp needs both "Python `Set to path correctly` and ffmpeg `Set to path correctly`" to run. Make sure you have both set if you're having issues with it.
 
 ## License
 
