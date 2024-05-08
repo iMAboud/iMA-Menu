@@ -42,11 +42,12 @@ Download|Manuall installation
 [Python](https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe)|Or run in powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check add python to path.
 [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]`
 [ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)`
+[ImageMagick](https://imagemagick.org/archive/linux/CentOS/x86_64/ImageMagick-7.1.1-32.x86_64.rpm)|This is needed for Background Removing. Might integrate this feature with ffmpeg later.
 
 ## Installation
 
 - Unzip `iMShare` and set it aside for now
-- Install `Nilesoft Shell` & `Shollz Croc` & `Python` & `yt-dlp` & `ffmpeg` from the table above, or your desired method.
+- Install `Nilesoft Shell` & `Shollz Croc` & `Python` & `yt-dlp` & `ffmpeg` &`ImageMagick` from the table above, or your desired method.
 - After `Nilesoft Shell` is installed and activated copy all contents of `files` into Nilesoft's installation folder `C:\Program Files\Nilesoft Shell` (Replace `imports`&`Shell.nss` and add `icons`&`script` folders.
 - Hold CTRL+Right-Click to update context menu.
 
