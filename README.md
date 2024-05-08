@@ -47,7 +47,7 @@ Backgroundremover|In powershell run: `pip install backgroundremover`
 ## Installation
 
 - Unzip `iMShare` and set it aside for now
-- Install `Nilesoft Shell` & `Shollz Croc` & `Python` & `yt-dlp` & `ffmpeg` &`ImageMagick` from the table above, or your desired method.
+- Install `Nilesoft Shell` & `Shollz Croc` & `Python` & `yt-dlp` & `ffmpeg` &`backgroundremover` from the table above, or your desired method.
 - After `Nilesoft Shell` is installed and activated copy all contents of `files` into Nilesoft's installation folder `C:\Program Files\Nilesoft Shell` (Replace `imports`&`Shell.nss` and add `icons`&`script` folders.
 - Hold CTRL+Right-Click to update context menu.
 
