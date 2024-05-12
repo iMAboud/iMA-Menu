@@ -15,6 +15,7 @@ item(type='file' title='MP4>MP3' cmd='cmd.exe' args='/c echo @sel.path | clip & 
 item(type='file' title='Video>Gif' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\vid2gif.bat"' image='C:\Program Files\Nilesoft Shell\icons\gif.ico')
 item(type='file' title='Convert' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\convert.bat"' image='C:\Program Files\Nilesoft Shell\icons\convert.ico')
 item(type='file' title='Reduce' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\reduce.bat"' image='C:\Program Files\Nilesoft Shell\icons\reduce.ico')
+item(type='file' title='Merge' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\merge.bat"' image='C:\Program Files\Nilesoft Shell\icons\merge.ico')
 
 
 
