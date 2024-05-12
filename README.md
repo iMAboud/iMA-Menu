@@ -14,16 +14,15 @@
 
 ## Update
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
-
-**Upcoming** 
-- Merge 2 audio / video together
-- Trim any video / audio 
+- Added Merging 2 files (Video / Audio) to overlap. 
 
 ## Features
 
 - Transfer files super fast with no size limit to any PC with just a pass code.
 - Download a video or directly conver it to audio from Youtube or X with a button.
 - Remove background of any image.
+- Color picking to hex over desktop and programs. 
+- Merging 2 media files.
 - Resize dimensions of an image and aspect of a video.
 - MP4 to MP3
 - Video to GIF, no limit, gif can be up to 2 hours (it might go longer, I didn't test it).
@@ -140,6 +139,10 @@ It's free of charge and easy to sign-up. Once you create your Application page s
 **Color Picking**
 
 Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
+
+**Merge media**
+
+Merge 2 media files to overlap. 
 
 **Account Switching**
 
