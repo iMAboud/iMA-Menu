@@ -12,6 +12,13 @@
 
 ![Manage](https://i.imgur.com/n4fQIsC.png) ![tools](https://i.imgur.com/mHGLrTd.png) ![ytx](https://i.imgur.com/XptI08A.png)
 
+## Update
+- Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
+
+** Upcoming ** 
+Merge 2 audio / video together
+Trim any video / audio 
+
 ## Features
 
 - Transfer files super fast with no size limit to any PC with just a pass code.
@@ -43,6 +50,7 @@ Download|Manuall installation
 [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]`
 [ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)`
 Backgroundremover|In powershell run: `pip install backgroundremover`
+Hex Color Picking|In powershell run: `pip install pyautogui pyperclip pynput`
 
 ## Installation
 
@@ -121,6 +129,7 @@ Pretty much self explanatory, just Right-Click a video or an image, then > Tools
 - This will clean all of `temp`,`cache`,`recent`,`cookies`, and `prefetch`. 
 
 **Wallpaper Changer**
+
 You need to aquire the API from "https://api.unsplash.com" 
 It's free of charge and easy to sign-up. Once you create your Application page setup in `unsplash` you'll get your own free API.
 - Copy your `Access Key`
@@ -128,7 +137,12 @@ It's free of charge and easy to sign-up. Once you create your Application page s
 - Replace the key with "YOUR_ACESS_KEY"
 - Save & Exit
 
+**Color Picking**
+
+Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
+
 **Account Switching**
+
 I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
 
 ## Screenshots
