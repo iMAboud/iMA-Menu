@@ -15,9 +15,9 @@
 ## Update
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
 
-** Upcoming ** 
-Merge 2 audio / video together
-Trim any video / audio 
+**Upcoming** 
+- Merge 2 audio / video together
+- Trim any video / audio 
 
 ## Features
 
