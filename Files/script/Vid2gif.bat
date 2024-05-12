@@ -1,4 +1,19 @@
 @echo off
+chcp 65001 > nul
+
+
+
+echo                                   ▄█     ▄▄▄▄███▄▄▄▄      ▄████████ 
+echo                                  ███   ▄██▀▀▀███▀▀▀██▄   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███ ▀███████████ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  █▀     ▀█   ███   █▀    ███    █▀  
+echo.                                                 
+echo.
+
 for /f "delims=" %%I in ('powershell -command "Get-Clipboard"') do set "clipboard=%%I"
 for %%F in ("%clipboard%") do set "filename=%%~nF"
 set "outputname=%filename%"

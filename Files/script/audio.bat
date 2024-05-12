@@ -1,4 +1,19 @@
 @echo off
+chcp 65001 > nul
+
+
+
+echo                                   ▄█     ▄▄▄▄███▄▄▄▄      ▄████████ 
+echo                                  ███   ▄██▀▀▀███▀▀▀██▄   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███ ▀███████████ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  █▀     ▀█   ███   █▀    ███    █▀  
+echo.                                                 
+echo.
+
 setlocal EnableDelayedExpansion
 
 set "current_dir=%cd%"

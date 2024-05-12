@@ -1,4 +1,19 @@
 @echo off    
+chcp 65001 > nul
+
+
+
+echo                                   ▄█     ▄▄▄▄███▄▄▄▄      ▄████████ 
+echo                                  ███   ▄██▀▀▀███▀▀▀██▄   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███ ▀███████████ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  █▀     ▀█   ███   █▀    ███    █▀  
+echo.                                                 
+echo.
+
 del /s /f /q %windir%\temp\*.*    
 rd /s /q %windir%\temp    
 md %windir%\temp    

@@ -1,4 +1,19 @@
 @echo off
+chcp 65001 > nul
+
+
+
+echo                                   ▄█     ▄▄▄▄███▄▄▄▄      ▄████████ 
+echo                                  ███   ▄██▀▀▀███▀▀▀██▄   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███ ▀███████████ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  █▀     ▀█   ███   █▀    ███    █▀  
+echo.                                                 
+echo.
+
 setlocal enabledelayedexpansion
 
 for /f "tokens=*" %%a in ('powershell -command "Get-Clipboard"') do (

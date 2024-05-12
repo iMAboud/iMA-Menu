@@ -1,5 +1,18 @@
 @echo off
+chcp 65001 > nul
 
+
+
+echo                                   ▄█     ▄▄▄▄███▄▄▄▄      ▄████████ 
+echo                                  ███   ▄██▀▀▀███▀▀▀██▄   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███   ███    ███ 
+echo                                  ███▌  ███   ███   ███ ▀███████████ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  ███   ███   ███   ███   ███    ███ 
+echo                                  █▀     ▀█   ███   █▀    ███    █▀  
+echo.                                                 
+echo.
 set /p output_format=Please insert desired output format (e.g., mp4, avi, mkv): 
 
 for /f "delims=" %%a in ('powershell Get-Clipboard') do (

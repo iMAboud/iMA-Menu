@@ -7,9 +7,10 @@ class DrawingApp:
         self.master = master
         self.master.attributes('-fullscreen', True)
         self.master.attributes('-topmost', True)
-        self.master.attributes('-alpha', 0.7)
+        self.master.attributes('-alpha', 0.7)  # Set transparency for drawing window
         self.master.configure(bg='black')
 
+        # Hide the console window
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
         self.color = 'white'
@@ -21,14 +22,16 @@ class DrawingApp:
         self.color_history = []
         self.action_history = []
         self.redo_history = []
+        self.is_drawing = False  # Flag to indicate if drawing is in progress
 
         self.canvas = tk.Canvas(master, bg='black', highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self.init_widgets()
 
-        self.canvas.bind('<B1-Motion>', self.draw)
-        self.canvas.bind('<ButtonPress-1>', self.toggle_color_picker)
+        self.canvas.bind('<Button-1>', self.start_draw)
+        self.canvas.bind('<B1-Motion>', self.draw_smooth)
+        self.canvas.bind('<ButtonRelease-1>', self.stop_draw)
         self.canvas.bind('<ButtonPress-3>', self.open_color_picker)
         self.canvas.bind("<MouseWheel>", self.on_mousewheel)
         self.master.bind('<Control-z>', self.undo)
@@ -57,20 +60,48 @@ class DrawingApp:
         reset_button = tk.Button(controls_frame, text="Reset", command=self.reset_settings)
         reset_button.grid(row=0, column=4, padx=5, pady=5)
 
-    def draw(self, event):
-        x, y = event.x, event.y
-        if self.selected_brush.get() == 'Circle':
-            self.canvas.create_oval(x - self.size, y - self.size, x + self.size, y + self.size, fill=self.color, outline=self.color)
-            self.action_history.append((x, y, self.size, self.color))
-            self.curr_state = self.get_canvas_data()  
+    def start_draw(self, event):
+        self.is_drawing = True
 
-    def toggle_color_picker(self, event):
-        if self.pick_color_window:
-            self.pick_color_window.destroy()
-            self.pick_color_window = None
+    def stop_draw(self, event):
+        self.is_drawing = False
+        self.prev_coords = None  # Reset previous coordinates
+
+    def draw_smooth(self, event):
+        if self.is_drawing:
+            x, y = event.x, event.y
+            if self.prev_coords:
+                points = self.get_line(self.prev_coords[0], self.prev_coords[1], x, y)
+                for point in points[::2]:  # Sample every 2nd point
+                    self.canvas.create_oval(point[0], point[1], point[0], point[1], fill=self.color, outline=self.color, width=self.size)
+                    self.action_history.append((point[0], point[1], self.size, self.color))
+            self.prev_coords = (x, y)
+            self.curr_state = self.get_canvas_data()  # Capture state after drawing
+
+    def get_line(self, x0, y0, x1, y1):
+        """Bresenham's Line Algorithm"""
+        points = []
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+
+        while True:
+            points.append((x0, y0))
+            if x0 == x1 and y0 == y1:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x0 += sx
+            if e2 < dx:
+                err += dx
+                y0 += sy
+        return points
 
     def open_color_picker(self, event):
-        if event.num == 3:  
+        if event.num == 3:  # Right click
             self.pick_color()
 
     def pick_color(self):
@@ -107,8 +138,8 @@ class DrawingApp:
         self.size_scale.set(self.size)
         self.opacity = 0.7
         self.update_opacity()
-        self.prev_state = None  
-        self.curr_state = None  
+        self.prev_state = None  # Stores previous canvas data for undo
+        self.curr_state = None  # Stores current canvas data for redo
 
     def undo(self, event):
         if self.action_history:
