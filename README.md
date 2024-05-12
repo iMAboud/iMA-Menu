@@ -156,10 +156,11 @@ I might update this with my own Valorant account switching configuration, which 
 ![HEX](https://i.imgur.com/qQvxrdB.png)
 
 
-## Potential issues & fixes
-Croc might not register itself by default to path, if you run into issues with transfering add croc to path in "System Environment Variables".
-Croc path `C:\Users\YourUser\AppData\Local\Microsoft\WinGet\Packages\schollz.croc_Microsoft.Winget.Source_xxxxxx`
-yt-dlp needs both "Python `Set to path correctly` and ffmpeg `Set to path correctly`" to run. Make sure you have both set if you're having issues with it.
+## issues & fixes
+- yt-dlp needs both "Python `Set to path correctly` and ffmpeg `Set to path correctly`" to run. Make sure you have both set if you're having issues with it.
+- Draw does not undo entire action, only pixel by pixel. This still has no fix, you can contirbute if you know the fix. 
+- Color picking only works on 1 monitor, I'll try to fix this.
+- If you run Background remover the first time it might not work or takes too long to finish, a temporary fix is to close the script and run it again, this only occurs the first time you run it.
 
 ## License
 
