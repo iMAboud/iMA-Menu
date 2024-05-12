@@ -28,6 +28,7 @@ item(title='wallpaper' cmd='cmd.exe' args='/c start "" "C:\Program Files\Nilesof
 	}
 	
 	item(title='Clean Temp' cmd='C:\Program Files\Nilesoft Shell\script\cleantemp.bat' icon='C:\Program Files\Nilesoft Shell\icons\broom.ico')
+        item(title='Color' cmd='C:\Program Files\Nilesoft Shell\script\hex.py' icon='C:\Program Files\Nilesoft Shell\icons\color.ico')
 
 
         
