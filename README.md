@@ -152,6 +152,8 @@ I might update this with my own Valorant account switching configuration, which 
 
 ![upload](https://i.imgur.com/OGehNdS.png)
 ![downloading](https://i.imgur.com/tMEe1wy.png)
+![Draw](https://i.imgur.com/U6syLCl.png)
+![HEX](https://i.imgur.com/qQvxrdB.png)
 
 
 ## Potential issues & fixes
