@@ -161,6 +161,7 @@ I might update this with my own Valorant account switching configuration, which 
 - Draw does not undo entire action, only pixel by pixel. This still has no fix, you can contirbute if you know the fix. 
 - Color picking only works on 1 monitor, I'll try to fix this.
 - If you run Background remover the first time it might not work or takes too long to finish, a temporary fix is to close the script and run it again, this only occurs the first time you run it.
+- Sometimes "Reduce" makes files larger instead of making it smaller, this happens when file size is already small. 
 
 ## License
 
