@@ -49,7 +49,7 @@ Download|Manuall installation
 [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]`
 [ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)`
 Backgroundremover|In powershell run: `pip install backgroundremover`
-Hex Color Picking|In powershell run: `pip install pyautogui pyperclip pynput`
+Hex Color Picking|In powershell run: `pip install pyautogui pyperclip pynput colorama`
 
 ## Installation
 
