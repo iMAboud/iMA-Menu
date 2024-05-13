@@ -11,9 +11,9 @@
 	separator
 
 
-item(title='Search' cmd='C:\Program Files\Nilesoft Shell\script\search.bat"' image='C:\Program Files\Nilesoft Shell\icons\search.ico')
-item(title='Draw' cmd='C:\Program Files\Nilesoft Shell\script\draw.py"' image='C:\Program Files\Nilesoft Shell\icons\draw.ico')
-item(title='wallpaper' cmd='C:\Program Files\Nilesoft Shell\script\wallpaper.py"' image='C:\Program Files\Nilesoft Shell\icons\wallpaper.ico')
+item(title='Search' cmd='C:\Program Files\Nilesoft Shell\script\search.bat' image='C:\Program Files\Nilesoft Shell\icons\search.ico')
+item(title='Draw' cmd='C:\Program Files\Nilesoft Shell\script\draw.pyw' image='C:\Program Files\Nilesoft Shell\icons\draw.ico')
+item(title='wallpaper' cmd='C:\Program Files\Nilesoft Shell\script\wallpaper.py' image='C:\Program Files\Nilesoft Shell\icons\wallpaper.ico')
 
 
 	menu(mode="single" type='file' find='.dll|.ocx' separator="before" title='Register Server' image=\uea86)
