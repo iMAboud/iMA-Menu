@@ -259,6 +259,13 @@ id.new)
 To make an item appear all the time, just simply make sure it's deleted in all sections above. 
 If you have an item that isn't here, you can find all ids in the repo `id.text` just copy the id you want to hide or remove or add to `more options` and place them in modify. 
 
+**Undo/Redo** 
+It can only be hidden from shell.nss
+Add this command anywhere in shell.nss to remove it (at the very bottom will do). 
+
+```
+remove(find="undo|redo")
+```
 
 ## issues & fixes
 - yt-dlp needs both "Python `Set to path correctly` and ffmpeg `Set to path correctly`" to run. Make sure you have both set if you're having issues with it.
