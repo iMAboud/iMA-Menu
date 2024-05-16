@@ -262,8 +262,8 @@ If you have an item that isn't here, you can find all ids in the repo `id.text` 
 
 **Undo/Redo** 
 
-It can only be hidden from shell.nss
 Add this command anywhere in shell.nss to remove it (at the very bottom will do). 
+(Right-click taskbar > shell > config)
 
 ```
 remove(find="undo|redo")
