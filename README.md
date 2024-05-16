@@ -252,7 +252,7 @@ id.new)
 
 - Red section (top) is where id will be removed
 - Orange (middle) is where it will be placed inside the menu "More Options"
-- Yellow (bottom) is where it will only shown when pressing `shift+right-clcik`
+- Yellow (bottom) is where it will only be shown when pressing `shift+right-clcik`
 
 ![](https://i.imgur.com/KMosXcZ.png)
 
