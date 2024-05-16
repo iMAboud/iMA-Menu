@@ -155,6 +155,110 @@ I might update this with my own Valorant account switching configuration, which 
 ![Draw](https://i.imgur.com/U6syLCl.png)
 ![HEX](https://i.imgur.com/qQvxrdB.png)
 
+## Bonus
+
+Make context menu even more minimalist by removing some useless shortcuts. 
+I have made a few adjustments to the modify to remove unwanted things for me, and hidden some in context menu that appear with Shift+Right-click. 
+
+![](https://i.imgur.com/CoLChM1.png)
+
+Copy & and replace it with modify.nss in imports in nilesoft shell folder. 
+
+```
+modify(mode=mode.multiple
+	where=this.id(
+id.restore_previous_versions,
+id.add_a_network_location,
+id.cast_to_device,
+id.collapse,
+id.collapse_all_groups,
+id.collapse_group,
+id.copy_to_folder,
+id.group_by,
+id.give_access_to,
+id.include_in_library,
+id.map_as_drive,
+id.map_network_drive,
+id.merge,
+id.move_to_folder,
+id.new_item,
+id.open,
+id.open_in_new_process,
+id.open_in_new_tab,
+id.open_in_new_tab,
+id.open_in_new_window,
+id.open_new_window,
+id.paste_shortcut,
+id.print,
+id.rotate_left,
+id.rotate_right,
+id.run_as_another_user,
+id.undo,
+id.redo,
+id.share,
+id.share,
+id.share_with,
+id.show_network,
+id.sort_by,
+id.troubleshoot_compatibility,
+id.turn_off_bitlocker,
+id.turn_on_bitlocker,
+
+
+id.view)
+
+	vis=vis.remove)
+
+
+modify(type="recyclebin" where=window.is_desktop and this.id==id.empty_recycle_bin pos=1 sep)
+
+modify(find="unpin*" pos="bottom" menu="Pin/Unpin")
+modify(find="pin*" pos="top" menu="Pin/Unpin")
+
+modify(where=this.id==id.copy_as_path menu="file manage")
+modify(type="dir.back|drive.back" where=this.id==id.customize_this_folder pos=1 sep="top" menu="file manage")
+
+modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]) || this.id==id.open_powershell_window_here
+	pos="bottom" menu="Terminal")
+
+modify(mode=mode.multiple
+	where=this.id(
+		id.send_to,
+		id.create_shortcut,
+		id.set_as_desktop_background,
+		id.map_network_drive,
+		id.format,
+		id.eject
+	)
+	 menu=title.options)
+
+
+modify(mode=single
+	where=this.id(
+id.display_settings,
+id.personalize,
+id.run_as_administrator,
+id.rename,
+id.open_with,
+id.paste,
+id.cut,
+id.copy,
+
+id.run,
+id.new)
+
+        vis=key.shift())
+```
+
+- Red section (top) is where id will be removed
+- Orange (middle) is where it will be placed inside the menu "More Options"
+- Yellow (bottom) is where it will only shown when pressing `shift+right-clcik`
+
+![](https://i.imgur.com/KMosXcZ.png)
+
+To make an item appear all the time, just simply make sure it's deleted in all sections above. 
+If you have an item that isn't here, you can find all ids in the repo `id.text` just copy the id you want to hide or remove or add to `more options` and place them in modify. 
+
 
 ## issues & fixes
 - yt-dlp needs both "Python `Set to path correctly` and ffmpeg `Set to path correctly`" to run. Make sure you have both set if you're having issues with it.
