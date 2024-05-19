@@ -13,6 +13,10 @@
 ![Manage](https://i.imgur.com/n4fQIsC.png) ![tools](https://i.imgur.com/mHGLrTd.png) ![ytx](https://i.imgur.com/XptI08A.png)
 
 ## Update
+- Added GUI to edit the theme.nss
+
+![](https://i.imgur.com/kdpAAlv.png)
+
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
 - Added Merging 2 files (Video / Audio) to overlap. 
 
@@ -148,6 +152,7 @@ Merge 2 media files to overlap.
 
 I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
 
+
 ## Screenshots
 
 ![upload](https://i.imgur.com/OGehNdS.png)
@@ -267,6 +272,19 @@ Add this command anywhere in shell.nss to remove it (at the very bottom will do)
 
 ```
 remove(find="undo|redo")
+```
+
+**Add GUI to taskbar**
+
+![](https://i.imgur.com/lWG7w2c.png)
+
+- If you already have all the files in my repo updated you do not need to do the below.
+
+- Go to Nilesoft's installation folder > script > place the "theme.pyw" in script
+- Go to imports > taskbar > edit and place this script in a convenient place e.g: under `Config and Directory`
+
+```
+item(title='Theme' cmd='C:\Program Files\Nilesoft Shell\script\theme.pyw' image='C:\Program Files\Nilesoft Shell\icons\theme.ico')
 ```
 
 ## issues & fixes
