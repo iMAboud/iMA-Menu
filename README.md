@@ -77,11 +77,11 @@ e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboar
  **File Transfer**
 
 
-**Upload** ![](https://i.imgur.com/suIyOoG.png)
+**Upload** ![](https://i.imgur.com/81GPsUN.png)
    - Right-click the file/folder you want to upload.
    - Select `Upload`, give the receiver your password.
 
-**Download** ![](https://i.imgur.com/qFyOpxi.png)
+**Download** ![](https://i.imgur.com/SZCXfZf.png)
    - Right-click in any directory you want the files to be downloaded in.
    - Select `Download`, and insert the password provided by the uploader.
 
