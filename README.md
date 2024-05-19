@@ -10,7 +10,9 @@
 - iMShare adds a lot of useful features right on your context menu.
 - Large file sharing between devices - Video/Image editing - Draw over apps - Search and set a wallpaper - Youtube and X downloader, and more.
 
+![](https://i.imgur.com/NlXTZOy.png) ![](https://i.imgur.com/wIaeznc.png) ![](https://i.imgur.com/VWCJmhs.png) ![](https://i.imgur.com/bJqrU9K.png)
 ![Manage](https://i.imgur.com/n4fQIsC.png) ![tools](https://i.imgur.com/mHGLrTd.png) ![ytx](https://i.imgur.com/XptI08A.png)
+
 
 ## Update
 - Added GUI to edit the theme.nss
