@@ -1,7 +1,7 @@
 // hide
 modify(mode=mode.multiple
-where=this.id,
-id.turn_off_bitlocker(
+where=this.id(
+id.turn_off_bitlocker
 
 ) vis=vis.remove)
 
