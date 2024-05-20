@@ -1,8 +1,9 @@
     menu(type='file' mode="multiple" title='Tools' image ='C:\Program Files\Nilesoft Shell\icons\tools.ico')
 {
 
+item(type='file' title='Upload' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\imgur.bat"' image='C:\Program Files\Nilesoft Shell\icons\imgur.ico')
 
-item(type='file' title='Bg Remover' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\imageBR.bat"' image='C:\Program Files\Nilesoft Shell\icons\br.ico')
+item(type='file' title='BGR' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "C:\Program Files\Nilesoft Shell\script\imageBR.bat"' image='C:\Program Files\Nilesoft Shell\icons\br.ico')
 
     menu(type='file' mode="multiple" title='Resize' image ='C:\Program Files\Nilesoft Shell\icons\resize.ico')
 {
@@ -20,4 +21,5 @@ item(type='file' title='Merge' cmd='cmd.exe' args='/c echo @sel.path | clip & st
 
 
 }
+
 
