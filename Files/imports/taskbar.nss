@@ -3,6 +3,7 @@
 	item(title="config" image=\uE10A cmd='"@app.cfg"')
 	item(title="directory" image=\uE0E8 cmd='"@app.dir"')
         item(title='Theme' cmd='C:\Program Files\Nilesoft Shell\script\theme.pyw' image='C:\Program Files\Nilesoft Shell\icons\theme.ico')
+        item(title='Modify' cmd='C:\Program Files\Nilesoft Shell\script\modify.pyw' icon='C:\Program Files\Nilesoft Shell\icons\modify.ico')
 }
 menu(where=@(this.count == 0) type='taskbar' image=icon.settings expanded=true)
 {
