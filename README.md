@@ -19,6 +19,7 @@
 
 ![](https://i.imgur.com/kdpAAlv.png)
 
+- StremiM utilizes "Peario" and "Stremio" to stream a movie to a friend the easy way. 
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
 - Added Merging 2 files (Video / Audio) to overlap. 
 
@@ -104,7 +105,7 @@ If you want to generate a unique code everytime you want to share a file simly r
 - It will start installing instantly if everything is configured correctly.
 
 ## Video & Image editing
-Pretty much self explanatory, just Right-Click a video or an image, then > Tools > select your option
+- Pretty much self explanatory, just Right-Click a video or an image, then > Tools > select your option.
 
 ![](https://i.imgur.com/eDjS8H1.png)
 
@@ -125,17 +126,22 @@ Pretty much self explanatory, just Right-Click a video or an image, then > Tools
 - Type the name of the file, search in all directory
 - Copy the path you want to look for, and paste it in the same window to open the path and highlight the file.
 
+
+
 **Draw**
 - Right Click to Draw, Left Click to change color
 - Mousewheel to change opacity of canvas
 - ESC to stop and close
 
+
+
 **Clean Temp**
 - This will clean all of `temp`,`cache`,`recent`,`cookies`, and `prefetch`. 
 
+
 **Wallpaper Changer**
 
-You need to aquire the API from "https://api.unsplash.com" 
+You need to aquire the API from "https://api.unsplash.com".
 It's free of charge and easy to sign-up. Once you create your Application page setup in `unsplash` you'll get your own free API.
 - Copy your `Access Key`
 - Open `wallpaper.py` located in Nilesoft's folder `script`
@@ -143,16 +149,36 @@ It's free of charge and easy to sign-up. Once you create your Application page s
 - Save & Exit
 
 **Color Picking**
+- Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
 
-Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
 
 **Merge media**
+- Merge 2 media files to overlap. 
 
-Merge 2 media files to overlap. 
+
+
+**StremiM**
+
+![](https://i.imgur.com/wD3OsGX.png)
+
+Stream anything from Stremio using peario with an automation to open peario + stremio + copy share link + send it to a friend, friend can type your code and it will automatically retrieves that link + opens peario and stremio and starts watching. 
+
+You'll need Stremio properly installed for both devices and optionally configured with "Torrentio".
+
+You'll also need to edit the "Stream.bat" file and scroll down to find "YOUR_CODE_HERE", replace it with your code "minimum 6". 
+
+Then you just right-click "Stream" , search a movie / series and click "Copy link". 
+
+![](https://i.imgur.com/vor6wI7.png).
+
+The script will automatically detect that a link is copied and will send it using "Croc".
+
+To watch, click "Watch", type your friend's code, it will retreve the link, pastes it in chrome and opens it as an app. 
+
+The script will automatically resends the link multiple times if you have more than 1 friend you want to share the link to it will do it automatically after you copy the link just set and wait for all of them to connect, it will loop until you're done. 
 
 **Account Switching**
-
-I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
+- I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
 
 
 ## Screenshots
