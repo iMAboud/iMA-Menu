@@ -16,7 +16,7 @@ menu(mode="multiple" title="Pin/Unpin" image=icon.pin)
 {
 }
 
-menu(mode="multiple" title=title.more_options image=icon.more_options)
+menu(mode="multiple" title=title.options image=icon.more_options)
 {
 }
 
