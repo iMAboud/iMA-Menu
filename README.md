@@ -165,7 +165,7 @@ Stream anything from Stremio using peario with an automation to open peario + st
 
 You'll need Stremio properly installed for both devices and optionally configured with "Torrentio".
 
-You'll also need to edit the "Stream.bat" file and scroll down to find "YOUR_CODE_HERE", replace it with your code "minimum 6". 
+You'll also need to edit the "Stream.bat" file in `Script > stremiM folder, and scroll down to find "YOUR_CODE_HERE", replace it with your code "minimum 6". 
 
 Then you just right-click "Stream" , search a movie / series and click "Copy link". 
 
