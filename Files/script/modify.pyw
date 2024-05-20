@@ -29,7 +29,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
 
-        self.setWindowTitle("Nilesoft Shell Theme Editor")
+        self.setWindowTitle("iMAboud - Context Menu modifier")
         self.setGeometry(100, 100, 800, 600)
 
         global filepath, hide_list, more_list, shift_list, ids_list
@@ -48,24 +48,21 @@ class MainWindow(QWidget):
         left_layout = QVBoxLayout()
         layout.addLayout(left_layout)
 
-        # Hide Listbox
-        self.hide_label = QLabel("HIDE")
+        self.hide_label = QLabel("HIDE it from everywhere")
         left_layout.addWidget(self.hide_label)
         global hide_list
         hide_list = DragDropListWidget()
         hide_list.addItems(hide_lines)
         left_layout.addWidget(hide_list)
 
-        # More Listbox
-        self.more_label = QLabel("MORE")
+        self.more_label = QLabel("Add it to MORE OPTIONS")
         left_layout.addWidget(self.more_label)
         global more_list
         more_list = DragDropListWidget()
         more_list.addItems(more_lines)
         left_layout.addWidget(more_list)
 
-        # Shift Listbox
-        self.shift_label = QLabel("SHIFT")
+        self.shift_label = QLabel("Displayed with SHIFT+RC")
         left_layout.addWidget(self.shift_label)
         global shift_list
         shift_list = DragDropListWidget()
@@ -75,7 +72,6 @@ class MainWindow(QWidget):
         right_layout = QVBoxLayout()
         layout.addLayout(right_layout)
 
-        # IDS Listbox
         self.ids_label = QLabel("IDS")
         right_layout.addWidget(self.ids_label)
         global ids_list
@@ -124,7 +120,6 @@ class MainWindow(QWidget):
 
         button_layout = QHBoxLayout()
 
-        # Save and Cancel Buttons
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(save_changes)
         button_layout.addWidget(self.save_button)
@@ -135,7 +130,6 @@ class MainWindow(QWidget):
 
         right_layout.addLayout(button_layout)
 
-        # Set the layout for the main window
         self.setLayout(layout)
 
     def filter_ids(self, ids, *lists):
