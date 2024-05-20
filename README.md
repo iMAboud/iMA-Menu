@@ -16,13 +16,7 @@
 
 ## Update
 - Added GUI to edit the theme.nss
-
-![](https://i.imgur.com/kdpAAlv.png)
-
 - Added a GUI to the "modify" file to easily remove or add anything to the context menu. 
-
-![](https://i.imgur.com/oWGfsTc.png)
-
 - StremiM utilizes "Peario" and "Stremio" to stream a movie to a friend the easy way. 
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
 - Added Merging 2 files (Video / Audio) to overlap. 
@@ -195,10 +189,13 @@ The script will automatically resends the link multiple times if you have more t
 ![downloading](https://i.imgur.com/tMEe1wy.png)
 ![Draw](https://i.imgur.com/U6syLCl.png)
 ![HEX](https://i.imgur.com/qQvxrdB.png)
+![](https://i.imgur.com/oWGfsTc.png)
+![](https://i.imgur.com/kdpAAlv.png)
+
+
 
 ## Bonus
-
-Make context menu even more minimalist by removing some useless shortcuts. 
+- Make context menu even more minimalist by removing some useless shortcuts. 
 I have made a few adjustments to the modify to remove unwanted things for me, and hidden some in context menu that appear with Shift+Right-click. 
 
 ![](https://i.imgur.com/CoLChM1.png)
