@@ -1,4 +1,4 @@
-﻿menu(where=sel.count>0 type='file|dir|drive|namespace|back' mode="multiple" title='File Manage' image=\uE253)
+﻿menu(where=sel.count>0 type='file|dir|drive|namespace|back' mode="multiple" title='Manage' image=\uE253)
 {
 
 	item(mode="single" type="file" title="Change extension" pos="0" image=\uE0B5 cmd=if(input("Change extension", "Type extension"), 
