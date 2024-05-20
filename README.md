@@ -181,6 +181,10 @@ The script will automatically resends the link multiple times if you have more t
 - I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
 
 
+**Remove/Add features**
+- You can remove featurs you don't want from "shell.nss" in Nilesoft Shell's folder or from taskbar > shell > directory, and remove the line that imports the feature you don't want to see. 
+- To remove a feature inside a menu, go to imports, find the menu that contains the feature, edit and find the line of that feature and remove it. 
+
 ## Screenshots
 
 ![upload](https://i.imgur.com/OGehNdS.png)
