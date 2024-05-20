@@ -1,19 +1,19 @@
-﻿menu(where=sel.count>0 type='file|dir|drive|namespace|back' mode="multiple" title='Manage' image=\uE253)
+menu(where=sel.count>0 type='file|dir|drive|namespace|back' mode="multiple" title='Manage' image=\uE253)
 {
 
-	item(mode="single" type="file" title="Change extension" pos="0" image=\uE0B5 cmd=if(input("Change extension", "Type extension"), 
+	item(mode="single" type="file" title="Extension" pos="4" vis=key.shift() image=\uE0B5 cmd=if(input("Change extension", "To"), 
 		io.rename(sel.path, path.join(sel.dir, sel.file.title + "." + input.result))))
 	
 
 	
-	item(type='file|dir|back.dir|drive' title='Take Ownership' image=[\uE194,#f00] admin
+	item(type='file|dir|back.dir|drive' vis=key.shift() title='Take Ownership' image=[\uE194,#f00] admin
 		cmd args='/K takeown /f "@sel.path" @if(sel.type==1,null,"/r /d y") && icacls "@sel.path" /grant *S-1-5-32-544:F @if(sel.type==1,"/c /l","/t /c /l /q")')
-	separator
+	
 
 
 item(title='Search' cmd='C:\Program Files\Nilesoft Shell\script\search.bat' image='C:\Program Files\Nilesoft Shell\icons\search.ico')
 item(title='Draw' cmd='C:\Program Files\Nilesoft Shell\script\draw.pyw' image='C:\Program Files\Nilesoft Shell\icons\draw.ico')
-item(title='wallpaper' cmd='C:\Program Files\Nilesoft Shell\script\wallpaper.py' image='C:\Program Files\Nilesoft Shell\icons\wallpaper.ico')
+item(title='Wallpaper' cmd='C:\Program Files\Nilesoft Shell\script\wallpaper.py' image='C:\Program Files\Nilesoft Shell\icons\wallpaper.ico')
 
 
 	menu(mode="single" type='file' find='.dll|.ocx' separator="before" title='Register Server' image=\uea86)
@@ -27,9 +27,8 @@ item(title='wallpaper' cmd='C:\Program Files\Nilesoft Shell\script\wallpaper.py'
 
 	}
 	
-	item(title='Clean Temp' cmd='C:\Program Files\Nilesoft Shell\script\cleantemp.bat' icon='C:\Program Files\Nilesoft Shell\icons\broom.ico')
-        item(title='Color' cmd='C:\Program Files\Nilesoft Shell\script\hex.py' icon='C:\Program Files\Nilesoft Shell\icons\color.ico')
-
+item(title='Clean' cmd='C:\Program Files\Nilesoft Shell\script\cleantemp.bat' icon='C:\Program Files\Nilesoft Shell\icons\broom.ico')
+item(title='Color' cmd='C:\Program Files\Nilesoft Shell\script\hex.py' icon='C:\Program Files\Nilesoft Shell\icons\color.ico')
 
         
 }
