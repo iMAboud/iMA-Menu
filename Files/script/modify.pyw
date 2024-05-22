@@ -1,5 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QMessageBox
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                             QListWidget, QPushButton, QMessageBox, QLineEdit, QFileDialog, QListWidgetItem)
 
 class DragDropListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -29,20 +30,21 @@ class MainWindow(QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
 
-        self.setWindowTitle("iMAboud - Context Menu modifier")
+        self.setWindowTitle("iMAboud - Context Menu Modifier")
         self.setGeometry(100, 100, 800, 600)
 
-        global filepath, hide_list, more_list, shift_list, ids_list
+        global filepath, hide_list, more_list, shift_list, ids_list, modification_list
         filepath = r"C:\Program Files\Nilesoft Shell\imports\modify.nss"
         content = read_file(filepath)
 
         hide_lines = extract_lines(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)")
         more_lines = extract_lines(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)")
         shift_lines = extract_lines(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())")
+        modify_lines = extract_modify_lines(content)
 
-        self.init_ui(hide_lines, more_lines, shift_lines)
+        self.init_ui(hide_lines, more_lines, shift_lines, modify_lines)
 
-    def init_ui(self, hide_lines, more_lines, shift_lines):
+    def init_ui(self, hide_lines, more_lines, shift_lines, modify_lines):
         layout = QHBoxLayout()
 
         left_layout = QVBoxLayout()
@@ -77,66 +79,133 @@ class MainWindow(QWidget):
         global ids_list
         ids_list = DragDropListWidget()
         placeholder_ids = ["id.add_a_network_location", "id.adjust_date_time", "id.align_icons_to_grid", "id.arrange_by",
-    "id.auto_arrange_icons", "id.autoplay", "id.cancel", "id.cascade_windows", "id.cast_to_device",
-    "id.cleanup", "id.collapse", "id.collapse_all_groups", "id.collapse_group", "id.command_prompt",
-    "id.compressed", "id.configure", "id.content", "id.control_panel", "id.copy", "id.copy_as_path",
-    "id.copy_here", "id.copy_path", "id.copy_to", "id.copy_to_folder", "id.cortana", "id.create_shortcut",
-    "id.create_shortcuts_here", "id.customize_notification_icons", "id.customize_this_folder",
-    "id.cut", "id.delete", "id.desktop", "id.details", "id.device_manager", "id.disconnect",
-    "id.disconnect_network_drive", "id.display_settings", "id.edit", "id.eject", "id.empty_recycle_bin",
-    "id.erase_this_disc", "id.exit_explorer", "id.expand", "id.expand_all_groups", "id.expand_group",
-    "id.extra_large_icons", "id.extract_all", "id.extract_to",
-    "id.file_explorer", "id.folder_options", "id.format", "id.give_access_to", "id.group_by",
-    "id.include_in_library", "id.insert_unicode_control_character", "id.install", "id.large_icons",
-    "id.list", "id.lock_all_taskbars", "id.lock_the_taskbar", "id.make_available_offline",
-    "id.make_available_online", "id.manage", "id.map_as_drive", "id.map_network_drive", "id.medium_icons",
-    "id.merge", "id.more_options", "id.mount", "id.move_here", "id.move_to", "id.move_to_folder",
-    "id.new", "id.new_folder", "id.new_item", "id.news_and_interests", "id.next_desktop_background",
-    "id.open", "id.open_as_portable", "id.open_autoplay", "id.open_command_prompt",
-    "id.open_command_window_here", "id.open_file_location", "id.open_folder_location",
-    "id.open_in_new_process", "id.open_in_new_tab", "id.open_in_new_window", "id.open_new_tab",
-    "id.open_new_window", "id.open_powershell_window_here", "id.open_windows_powershell",
-    "id.open_with", "id.options", "id.paste", "id.paste_shortcut", "id.personalize",
-    "id.pin_current_folder_to_quick_access", "id.pin_to_quick_access", "id.pin_to_start",
-    "id.pin_to_taskbar", "id.play", "id.power_options",
-    "id.preview", "id.print", "id.properties", "id.reconversion", "id.redo", "id.refresh",
-    "id.remove_from_quick_access", "id.remove_properties", "id.rename", "id.restore",
-    "id.restore_default_libraries", "id.restore_previous_versions", "id.rotate_left", "id.rotate_right",
-    "id.run", "id.run_as_administrator", "id.run_as_another_user", "id.search", "id.select_all",
-    "id.send_to", "id.set_as_desktop_background", "id.set_as_desktop_wallpaper", "id.settings",
-    "id.share", "id.share_with", "id.shield", "id.show_cortana_button",
-    "id.show_desktop_icons", "id.show_file_extensions", "id.show_hidden_files", "id.show_libraries",
-    "id.show_network", "id.show_pen_button", "id.show_people_on_the_taskbar", "id.show_task_view_button",
-    "id.show_the_desktop", "id.show_this_pc", "id.show_touch_keyboard_button", "id.show_touchpad_button",
-    "id.show_windows_side_by_side", "id.show_windows_stacked", "id.small_icons", "id.sort_by", "id.store",
-    "id.task_manager", "id.taskbar_settings", "id.tiles", "id.troubleshoot_compatibility",
-    "id.turn_off_bitlocker", "id.turn_on_bitlocker", "id.undo", "id.unpin_from_quick_access",
-    "id.unpin_from_start", "id.unpin_from_taskbar", "id.view"]
+                           "id.auto_arrange_icons", "id.autoplay", "id.cancel", "id.cascade_windows", "id.cast_to_device",
+                           "id.cleanup", "id.collapse", "id.collapse_all_groups", "id.collapse_group", "id.command_prompt",
+                           "id.compressed", "id.configure", "id.content", "id.control_panel", "id.copy", "id.copy_as_path",
+                           "id.copy_here", "id.copy_path", "id.copy_to", "id.copy_to_folder", "id.cortana", "id.create_shortcut",
+                           "id.create_shortcuts_here", "id.customize_notification_icons", "id.customize_this_folder",
+                           "id.cut", "id.delete", "id.desktop", "id.details", "id.device_manager", "id.disconnect",
+                           "id.disconnect_network_drive", "id.display_settings", "id.edit", "id.eject", "id.empty_recycle_bin",
+                           "id.erase_this_disc", "id.exit_explorer", "id.expand", "id.expand_all_groups", "id.expand_group",
+                           "id.extra_large_icons", "id.extract_all", "id.extract_to",
+                           "id.file_explorer", "id.folder_options", "id.format", "id.give_access_to", "id.group_by",
+                           "id.include_in_library", "id.insert_unicode_control_character", "id.install", "id.large_icons",
+                           "id.list", "id.lock_all_taskbars", "id.lock_the_taskbar", "id.make_available_offline",
+                           "id.make_available_online", "id.manage", "id.map_as_drive", "id.map_network_drive", "id.medium_icons",
+                           "id.merge", "id.more_options", "id.mount", "id.move_here", "id.move_to", "id.move_to_folder",
+                           "id.new", "id.new_folder", "id.new_item", "id.news_and_interests", "id.next_desktop_background",
+                           "id.open", "id.open_as_portable", "id.open_autoplay", "id.open_command_prompt",
+                           "id.open_command_window_here", "id.open_file_location", "id.open_folder_location",
+                           "id.open_in_new_process", "id.open_in_new_tab", "id.open_in_new_window", "id.open_new_tab",
+                           "id.open_new_window", "id.open_powershell_window_here", "id.open_windows_powershell",
+                           "id.open_with", "id.options", "id.paste", "id.paste_shortcut", "id.personalize",
+                           "id.pin_current_folder_to_quick_access", "id.pin_to_quick_access", "id.pin_to_start",
+                           "id.pin_to_taskbar", "id.play", "id.power_options",
+                           "id.preview", "id.print", "id.properties", "id.reconversion", "id.redo", "id.refresh",
+                           "id.remove_from_quick_access", "id.remove_properties", "id.rename", "id.restore",
+                           "id.restore_default_libraries", "id.restore_previous_versions", "id.rotate_left", "id.rotate_right",
+                           "id.run", "id.run_as_administrator", "id.run_as_another_user", "id.search", "id.select_all",
+                           "id.send_to", "id.set_as_desktop_background", "id.set_as_desktop_wallpaper", "id.settings",
+                           "id.share", "id.share_with", "id.shield", "id.show_cortana_button",
+                           "id.show_desktop_icons", "id.show_file_extensions", "id.show_hidden_files", "id.show_libraries",
+                           "id.show_network", "id.show_pen_button", "id.show_people_on_the_taskbar", "id.show_task_view_button",
+                           "id.show_the_desktop", "id.show_this_pc", "id.show_touch_keyboard_button", "id.show_touchpad_button",
+                           "id.show_windows_stacked", "id.small_icons", "id.sort_by", "id.store",
+                           "id.task_manager", "id.taskbar_settings", "id.tiles", "id.troubleshoot_compatibility",
+                           "id.turn_off_bitlocker", "id.turn_on_bitlocker", "id.undo", "id.unpin_from_quick_access",
+                           "id.unpin_from_start", "id.unpin_from_taskbar", "id.view"]
         filtered_ids = self.filter_ids(placeholder_ids, hide_lines, more_lines, shift_lines)
         ids_list.addItems(filtered_ids)
         right_layout.addWidget(ids_list)
 
-        right_layout.addStretch()
+        # New Section for Old and New Name
+        self.old_name_label = QLabel("Old name:")
+        right_layout.addWidget(self.old_name_label)
+        self.old_name_input = QLineEdit()
+        right_layout.addWidget(self.old_name_input)
 
-        button_layout = QHBoxLayout()
+        self.new_name_label = QLabel("New name:")
+        right_layout.addWidget(self.new_name_label)
+        self.new_name_input = QLineEdit()
+        right_layout.addWidget(self.new_name_input)
 
-        self.save_button = QPushButton("Save")
+        self.icon_label = QLabel("Icon:")
+        right_layout.addWidget(self.icon_label)
+
+        self.icon_input = QLineEdit()
+        right_layout.addWidget(self.icon_input)
+
+        self.icon_button = QPushButton("Select Icon")
+        self.icon_button.clicked.connect(self.select_icon)
+        right_layout.addWidget(self.icon_button)
+
+        self.modify_button = QPushButton("Modify")
+        self.modify_button.clicked.connect(self.modify_name)
+        right_layout.addWidget(self.modify_button)
+
+        global modification_list
+        self.modification_list = QListWidget()
+        self.modification_list        .addItems(modify_lines)
+        right_layout.addWidget(self.modification_list)
+
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.setStyleSheet("background-color: #6d191e;")
+
+        self.delete_button.clicked.connect(self.delete_modification)
+        right_layout.addWidget(self.delete_button)
+
+        self.save_button = QPushButton("Save Changes")
+        self.save_button.setStyleSheet("background-color: #1b602e;")
+
         self.save_button.clicked.connect(save_changes)
-        button_layout.addWidget(self.save_button)
-
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.close)
-        button_layout.addWidget(self.cancel_button)
-
-        right_layout.addLayout(button_layout)
+        right_layout.addWidget(self.save_button)
 
         self.setLayout(layout)
 
-    def filter_ids(self, ids, *lists):
-        existing_ids = set()
-        for lst in lists:
-            existing_ids.update([id.strip().rstrip(',') for id in lst])
-        return [id for id in ids if id.strip().rstrip(',') not in existing_ids]
+    def filter_ids(self, ids, *lines_lists):
+        used_ids = set()
+        for lines in lines_lists:
+            for line in lines:
+                if line.startswith("id."):
+                    used_ids.add(line.strip().rstrip(','))
+
+        return [id_ for id_ in ids if id_ not in used_ids]
+
+    def select_icon(self):
+        icon_path, _ = QFileDialog.getOpenFileName(self, "Select Icon", "", "Images (*.png *.xpm *.jpg *.ico)")
+        if icon_path:
+            self.icon_input.setText(icon_path)
+
+    def modify_name(self):
+        old_name = self.old_name_input.text().strip()
+        new_name = self.new_name_input.text().strip()
+        icon = self.icon_input.text().strip()
+
+        if old_name and new_name:
+            modify_line = f"{old_name},{new_name}"
+            if icon:
+                modify_line += f",{icon}"
+
+            modify_command = f"modify(find='{old_name}' title='{new_name}'"
+            if icon:
+                modify_command += f" icon='{icon}'"
+            modify_command += ")"
+
+            append_to_file(filepath, modify_command)
+            self.modification_list.addItem(modify_line)
+            QMessageBox.information(self, "Modify Name", f"Modified '{old_name}' to '{new_name}' with icon '{icon}'")
+        else:
+            QMessageBox.warning(self, "Input Error", "Old name and new name must be provided")
+
+    def delete_modification(self):
+        selected_items = self.modification_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Delete Error", "No modification selected to delete")
+            return
+
+        for item in selected_items:
+            self.modification_list.takeItem(self.modification_list.row(item))
+            delete_from_file(filepath, item.text().split(','))
 
 def read_file(filepath):
     with open(filepath, 'r') as file:
@@ -145,6 +214,19 @@ def read_file(filepath):
 def write_file(filepath, content):
     with open(filepath, 'w') as file:
         file.write(content)
+
+def append_to_file(filepath, line):
+    with open(filepath, 'a') as file:
+        file.write("\n" + line)
+
+def delete_from_file(filepath, elements):
+    old_name, new_name, *icon = elements
+    with open(filepath, 'r') as file:
+        lines = file.readlines()
+    with open(filepath, 'w') as file:
+        for line in lines:
+            if old_name not in line or new_name not in line or (icon and icon[0] not in line):
+                file.write(line)
 
 def extract_lines(content, start_marker, end_marker):
     sections = []
@@ -157,6 +239,18 @@ def extract_lines(content, start_marker, end_marker):
         sections.extend([line.strip().rstrip(',') for line in section if line.strip().startswith("id")])
         start = content.find(start_marker, end)
     return sections
+
+def extract_modify_lines(content):
+    lines = []
+    for line in content.split('\n'):
+        if line.strip().startswith("modify(find="):
+            parts = line.strip().split("'")
+            if len(parts) > 3:
+                old_name = parts[1]
+                new_name = parts[3]
+                icon = parts[5] if len(parts) > 5 else ""
+                lines.append(f"{old_name} | {new_name}".strip(","))
+    return lines
 
 def save_changes():
     global filepath, hide_list, more_list, shift_list
@@ -205,12 +299,11 @@ def update_section(content, start_marker, end_marker, listbox):
     return content
 
 def main():
-    app = QApplication(sys.argv)  
-    window = MainWindow()         
-    window.show()                 
-    sys.exit(app.exec_())         
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()
-
 
