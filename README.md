@@ -16,7 +16,7 @@
 
 ## Update
 - Added GUI to edit the theme.nss
-- Added a GUI to the "modify" file to easily remove or add anything to the context menu. 
+- Added a GUI to the "modify" file to easily edit, remove or add anything in the context menu. 
 - StremiM utilizes "Peario" and "Stremio" to stream a movie to a friend the easy way. 
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
 - Added Merging 2 files (Video / Audio) to overlap. 
@@ -189,7 +189,7 @@ The script will automatically resends the link multiple times if you have more t
 ![downloading](https://i.imgur.com/tMEe1wy.png)
 ![Draw](https://i.imgur.com/U6syLCl.png)
 ![HEX](https://i.imgur.com/qQvxrdB.png)
-![](https://i.imgur.com/oWGfsTc.png)
+![](https://i.imgur.com/c6O9rAK.png)
 ![](https://i.imgur.com/kdpAAlv.png)
 
 
