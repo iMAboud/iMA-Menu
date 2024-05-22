@@ -179,9 +179,14 @@ The script will automatically resends the link multiple times if you have more t
 - I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
 
 
-**Remove/Add features**
-- You can remove featurs you don't want from "shell.nss" in Nilesoft Shell's folder or from taskbar > shell > directory, and remove the line that imports the feature you don't want to see. 
-- To remove a feature inside a menu, go to imports, find the menu that contains the feature, edit and find the line of that feature and remove it. 
+**Remove/Add/Edit**
+- In the GUI in taskbar > Shell > modify
+- You can add any item to Hide box to hide it everywhere, or in More options menu or active with Shift button, just drag an id from the ids list and drop it in any of the boxes. 
+- You can edit any option in context menu's name and icon, write the old name, and the new name you want and if you don't want to add a custom icon you can leave the icon option blank, it will use the default icon. 
+- You can see and delete any custom display name to set it as the default name and icon.
+
+**GUI Theme editor**
+- Taskbar > Shell > theme 
 
 ## Screenshots
 
