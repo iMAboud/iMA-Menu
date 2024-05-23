@@ -195,7 +195,7 @@ The script will automatically resends the link multiple times if you have more t
 ![Draw](https://i.imgur.com/U6syLCl.png)
 ![HEX](https://i.imgur.com/qQvxrdB.png)
 ![](https://i.imgur.com/c6O9rAK.png)
-![](https://i.imgur.com/kdpAAlv.png)
+![](https://i.imgur.com/5oJDvo4.png)
 
 
 **Undo/Redo** 
