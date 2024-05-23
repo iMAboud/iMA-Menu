@@ -142,7 +142,7 @@ If you want to generate a unique code everytime you want to share a file simly r
 You need to aquire the API from "https://api.unsplash.com".
 It's free of charge and easy to sign-up. Once you create your Application page setup in `unsplash` you'll get your own free API.
 - Copy your `Access Key`
-- Open `wallpaper.py` located in Nilesoft's folder `script`
+- Open **wallpaper.py** located in Nilesoft's folder **script**
 - Replace the key with "YOUR_ACESS_KEY"
 - Save & Exit
 
@@ -214,14 +214,14 @@ remove(find="undo|redo")
 - If you already have all the files in my repo updated you do not need to do the below.
 
 - Go to Nilesoft's installation folder > script > place the "theme.pyw" in script
-- Go to imports > taskbar > edit and place this script in a convenient place e.g: under `Config and Directory`
+- Go to imports > taskbar > edit and place this script in a convenient place e.g: under **Config and Directory**
 
 ```
 item(title='Theme' cmd='C:\Program Files\Nilesoft Shell\script\theme.pyw' image='C:\Program Files\Nilesoft Shell\icons\theme.ico')
 ```
 
 ## issues & fixes
-- yt-dlp needs both "Python `Set to path correctly` and ffmpeg `Set to path correctly`" to run. Make sure you have both set if you're having issues with it.
+- yt-dlp needs both "Python and ffmpeg **Set to path correctly**" to run. Make sure you have both set if you're having issues with it.
 - Draw does not undo entire action, only pixel by pixel. This still has no fix, you can contirbute if you know the fix. 
 - Color picking only works on 1 monitor, I'll try to fix this.
 - If you run Background remover the first time it might not work or takes too long to finish, a temporary fix is to close the script and run it again, this only occurs the first time you run it.
