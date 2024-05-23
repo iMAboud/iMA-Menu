@@ -59,14 +59,14 @@ Hex & Draw|In powershell run: `pip install pyautogui pyperclip pynput colorama p
 ## Installation
 
 - Unzip `iMShare` and set it aside for now
-- Install `Nilesoft Shell` & `Shollz Croc` & `Python` & `yt-dlp` & `ffmpeg` &`backgroundremover` from the table above, or your desired method.
-- After `Nilesoft Shell` is installed and activated copy all contents of `files` into Nilesoft's installation folder `C:\Program Files\Nilesoft Shell` (Replace `imports`&`Shell.nss` and add `icons`&`script` folders.
+- Install all required from the table above "running the commands is recommended and easier".
+- After Nilesoft Shell is installed and activated copy all contents of `files` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
 - Hold CTRL+Right-Click to update context menu.
 
    *Note: If context menu didn't update, try restarting Windows Explorer from Task Manager.*
 
 ## IMPORTANT STEP:
-- Navigate to `C:\Program Files\Nilesoft Shell\script` and right-click EDIT `croc.bat`
+- Navigate to C:\Program Files\Nilesoft Shell\script and right-click EDIT **croc.bat**
 - Change the line "SET_YOUR_CODE_HERE" to your password. **6+ character**
 e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboard)\""`
 
@@ -78,11 +78,11 @@ e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboar
 
 **Upload** ![](https://i.imgur.com/81GPsUN.png)
    - Right-click the file/folder you want to upload.
-   - Select `Upload`, give the receiver your password.
+   - Select **Upload**, give the receiver your password.
 
 **Download** ![](https://i.imgur.com/SZCXfZf.png)
    - Right-click in any directory you want the files to be downloaded in.
-   - Select `Download`, and insert the password provided by the uploader.
+   - Select **Download**, and insert the password provided by the uploader.
 
 (Upload is active only when you select a file, and Download is active only when you right-click an empty space)
 
@@ -92,14 +92,14 @@ e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboar
 - From powershell run `Croc --yes --remember`
 - Insert a password "You can transfer a file to yourself to save the configuration".
 
-If you want to generate a unique code everytime you want to share a file simly remove the command `--code`& your code from `croc.bat`.
+If you want to generate a unique code everytime you want to share a file simly remove the command `--code`& your code from **croc.bat**.
 
 **Most of the scripts below will be executed with a minimized window, DO NOT PANIC when you click and see nothing, it's minimized, just open the window to see the progress**
 ## YouTube & X downloader 
 ![](https://i.imgur.com/5slVepk.png)
 - Copy the video's link
 - Right-Click an empty space (This is where your video will be saved in)
-- Hover over Youtube, and select either `Video` or `Audio`.
+- Hover over Youtube, and select either **Video** or **Audio**.
 - It will start installing instantly if everything is configured correctly.
 
 ## Video & Image editing
@@ -134,7 +134,7 @@ If you want to generate a unique code everytime you want to share a file simly r
 
 
 **Clean Temp**
-- This will clean all of `temp`,`cache`,`recent`,`cookies`, and `prefetch`. 
+- This will clean all of temp, cache, recent, cookies, and prefetch. 
 
 
 **Wallpaper Changer**
