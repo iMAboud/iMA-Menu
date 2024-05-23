@@ -1,305 +1,329 @@
-import tkinter as tk
-from tkinter import ttk, colorchooser, filedialog, messagebox
-import shutil
+import sys
 import os
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QLabel, QLineEdit, QCheckBox, QSlider, QComboBox, QColorDialog, QFileDialog,
+    QTabWidget, QScrollArea, QFormLayout
+)
+from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
 
-class ThemeEditor:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("iMTheme")
-        self.theme_file = r"C:\Program Files\Nilesoft Shell\imports\theme.nss"
-        self.backup_file = self.theme_file + ".backup"
-        
-        self.backup_current_theme()
-        self.load_theme_file()
+ICON_PATH = r"C:\Program Files\Nilesoft Shell\icons\theme.ico"
+THEME_PATH = r"c:\program files\nilesoft shell\imports\theme.nss"
 
-        self.notebook = ttk.Notebook(root)
-        self.notebook.pack(fill='both', expand=True)
+class ThemeEditor(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.theme_data = {}
+        self.initUI()
+        self.load_theme()
+        self.setWindowIcon(QIcon(ICON_PATH))
 
-        self.create_tabs()
-        self.create_buttons()
+    def initUI(self):
+        self.setWindowTitle('iMAboud - Theme Editor')
+        self.setGeometry(100, 100, 900, 700)
 
-    def backup_current_theme(self):
-        if os.path.exists(self.theme_file):
-            shutil.copyfile(self.theme_file, self.backup_file)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
 
-    def load_theme_file(self):
-        with open(self.theme_file, 'r') as file:
-            self.theme_content = file.readlines()
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("font-size: 14px;")
+        main_layout.addWidget(self.tabs)
 
-    def save_theme_file(self):
-        with open(self.theme_file, 'w') as file:
-            file.writelines(self.theme_content)
+        button_layout = QHBoxLayout()
+        self.save_button = QPushButton('Save Theme')
+        self.save_button.setStyleSheet("font-size: 16px; background-color: green;")
+        self.save_button.clicked.connect(self.save_theme)
+        button_layout.addWidget(self.save_button)
 
-    def import_theme_file(self):
-        file_path = filedialog.askopenfilename(title="Select Theme File", filetypes=[("NSS files", "*.nss")])
-        if file_path:
-            self.backup_current_theme()
-            shutil.copyfile(file_path, self.theme_file)
-            self.load_theme_file()
-            messagebox.showinfo("Success", "Theme imported successfully.")
-        
-    def reset_to_default(self):
-        if os.path.exists(self.backup_file):
-            shutil.copyfile(self.backup_file, self.theme_file)
-            self.load_theme_file()
-            messagebox.showinfo("Success", "Theme reset to default successfully.")
+        self.import_button = QPushButton('Import Theme')
+        self.import_button.setStyleSheet("font-size: 16px;")
+        self.import_button.clicked.connect(self.import_theme)
+        button_layout.addWidget(self.import_button)
+
+        self.reset_button = QPushButton('Reset to Default')
+        self.reset_button.setStyleSheet("font-size: 16px;")
+        self.reset_button.clicked.connect(self.reset_to_default)
+        button_layout.addWidget(self.reset_button)
+
+        main_layout.addLayout(button_layout)
+
+    def load_theme(self):
+        if os.path.exists(THEME_PATH):
+            try:
+                with open(THEME_PATH, 'r') as file:
+                    theme_content = file.read()
+                    self.parse_theme(theme_content)
+                    self.create_form()
+            except Exception as e:
+                print(f"Failed to load theme: {e}")
+
+    def parse_theme(self, content):
+        self.theme_data = {}
+        lines = content.splitlines()
+        current_section = None
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('theme') or line.startswith('{') or line.startswith('}'):
+                continue
+
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip().strip('"')
+                self.theme_data[key] = value
+
+    def create_form(self):
+        self.tabs.clear()
+
+        slider_ranges = {
+            "border.size": (0, 10),
+            "item.opacity": (0, 100),
+            "item.radius": (0, 4),
+            "shadow.size": (0, 30),
+            "shadow.opacity": (0, 100),
+            "separator.size": (0, 40),
+            "separator.opacity": (0, 100),
+            "background.opacity": (0, 100),
+            "font.size": (6, 100),
+            "border.radius": (0, 4),
+            "background.effect": (0, 3),
+            "item.prefix": (0, 2),
+            "font.weight": (1, 9),
+        }
+
+        categories = {
+            "General": ["name", "view", "dark"],
+            "Border": ["border.enabled", "border.size", "border.color", "border.opacity", "border.radius"],
+            "Image": ["image.enabled", "image.align", "image.color", "image.scale"],
+            "Background": ["background.color", "background.opacity", "background.effect"],
+            "Item": [
+                "item.opacity", "item.radius", "item.prefix", "item.text.normal",
+                "item.text.select", "item.text.normal-disabled", "item.text.select-disabled",
+                "item.back.select", "item.back.select-disabled", "item.border.normal",
+                "item.border.normal.disabled", "item.border.select", "item.border.select.disabled"
+            ],
+            "Font": ["font.size", "font.name", "font.weight", "font.italic"],
+            "Shadow": ["shadow.enabled", "shadow.size", "shadow.opacity", "shadow.color"],
+            "Separator": ["separator.size", "separator.color", "separator.opacity"],
+            "Symbol": [
+                "symbol.normal", "symbol.select", "symbol.normal-disabled",
+                "symbol.select-disabled"
+            ]
+        }
+
+        display_names = {
+            "name": "Theme",
+            "view": "View Size",
+            "dark": "Dark Mode",
+            "border.enabled": "Enable Border",
+            "border.size": "Border Size",
+            "border.color": "Border Color",
+            "border.opacity": "Border Opacity",
+            "border.radius": "Border Radius",
+            "image.enabled": "Enable Image",
+            "image.align": "Image Alignment",
+            "image.color": "Image Color",
+            "image.scale": "Image Scale",
+            "background.color": "Background Color",
+            "background.opacity": "Background Opacity",
+            "background.effect": "Background Effect",
+            "item.opacity": "Item Opacity",
+            "item.radius": "Item Radius",
+            "item.prefix": "Item Prefix",
+            "item.text.normal": "Normal Text",
+            "item.text.select": "Selected Text",
+            "item.text.normal-disabled": "Disabled Text",
+            "item.text.select-disabled": "Disabled Selected Text",
+            "item.back.select": "Selected Background",
+            "item.back.select-disabled": "Disabled Background",
+            "item.border.normal": "Border",
+            "item.border.normal.disabled": "Disabled Border",
+            "item.border.select": "Selected Border",
+            "item.border.select.disabled": "Disabled Selected Broder",
+            "font.size": "Font Size",
+            "font.name": "Font Name",
+            "font.weight": "Font Weight",
+            "font.italic": "Italic",
+            "shadow.enabled": "Enable Shadow",
+            "shadow.size": "Shadow Size",
+            "shadow.opacity": "Shadow Opacity",
+            "shadow.color": "Shadow Color",
+            "separator.size": "Separator Size",
+            "separator.color": "Separator Color",
+            "separator.opacity": "Separator Opacity",
+            "symbol.normal": "Normal Symbol",
+            "symbol.select": "Selected Symbol",
+            "symbol.normal-disabled": "Disabled Symbol",
+            "symbol.select-disabled": "Selected Disabled Symbol"
+        }
+
+        for category, keys in categories.items():
+            tab = QWidget()
+            scroll_area = QScrollArea()
+            scroll_area.setWidgetResizable(True)
+            tab_layout = QVBoxLayout(tab)
+            form_layout = QFormLayout()
+            form_layout.setVerticalSpacing(15)
+
+            for key in keys:
+                if key in self.theme_data:
+                    value = self.theme_data[key]
+                    display_name = display_names.get(key, key)
+                    if value.lower() in ["true", "false"]:
+                        self.add_checkbox(form_layout, display_name, key, value.lower() == "true")
+                    elif value.startswith("#"):
+                        self.add_color_picker(form_layout, display_name, key, value)
+                    elif key == "background.color":
+                        self.add_background_color_picker(form_layout, display_name, key, value)
+                    elif value.isdigit():
+                        min_val, max_val = slider_ranges.get(key, (0, 100))
+                        self.add_slider(form_layout, display_name, key, int(value), min_val, max_val)
+                    elif key in ["name", "view", "font.name"]:
+                        self.add_dropdown(form_layout, display_name, key, value)
+                    else:
+                        self.add_text_input(form_layout, display_name, key, value)
+
+            scroll_area.setLayout(form_layout)
+            tab_layout.addWidget(scroll_area)
+            self.tabs.addTab(tab, category)
+
+    def add_checkbox(self, layout, display_name, key, checked):
+        checkbox = QCheckBox()
+        checkbox.setChecked(checked)
+        checkbox.stateChanged.connect(lambda state, k=key: self.update_theme_data(k, checkbox.isChecked()))
+        layout.addRow(QLabel(display_name), checkbox)
+
+    def add_color_picker(self, layout, display_name, key, value):
+        hbox = QHBoxLayout()
+        button = QPushButton()
+        button.setStyleSheet(f"background-color: {value}; width: 50px; height: 25px;")
+        button.clicked.connect(lambda: self.open_color_dialog(key, button))
+        hbox.addWidget(button)
+        line_edit = QLineEdit(value)
+        line_edit.setFixedWidth(100)
+        line_edit.textChanged.connect(lambda text, k=key: self.update_theme_data(k, text))
+        hbox.addWidget(line_edit)
+        layout.addRow(QLabel(display_name), hbox)
+
+    def add_background_color_picker(self, layout, display_name, key, value):
+        hbox = QHBoxLayout()
+        button = QPushButton()
+        button.setStyleSheet(f"background-color: {value if value != 'default' else '#FFFFFF'}; width: 50px; height: 25px;")
+        button.clicked.connect(lambda: self.open_color_dialog(key, button))
+        hbox.addWidget(button)
+        line_edit = QLineEdit(value if value != 'default' else "")
+        line_edit.setFixedWidth(100)
+        line_edit.setEnabled(value != 'default')
+        line_edit.textChanged.connect(lambda text, k=key: self.update_theme_data(k, text))
+        hbox.addWidget(line_edit)
+        default_checkbox = QCheckBox("Default")
+        default_checkbox.setChecked(value == 'default')
+        default_checkbox.stateChanged.connect(lambda state, le=line_edit, b=button: self.toggle_background_default(state, le, b))
+        hbox.addWidget(default_checkbox)
+        layout.addRow(QLabel(display_name), hbox)
+
+    def open_color_dialog(self, key, button):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            hex_color = color.name()
+            button.setStyleSheet(f"background-color: {hex_color}")
+            self.theme_data[key] = hex_color
+
+    def toggle_background_default(self, state, line_edit, button):
+        if state == Qt.Checked:
+            line_edit.setEnabled(False)
+            line_edit.setText("")
+            button.setStyleSheet("background-color: #FFFFFF")
+            self.theme_data['background.color'] = 'default'
         else:
-            messagebox.showwarning("Warning", "No backup file found. Cannot reset to default.")
+            line_edit.setEnabled(True)
+            self.theme_data['background.color'] = line_edit.text()
 
-    def update_theme(self, section, key, value, parent_section=None):
-        section_found = False
-        parent_found = False if parent_section else True
+    def add_slider(self, layout, display_name, key, value, min_val, max_val):
+        hbox = QHBoxLayout()
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(min_val)
+        slider.setMaximum(max_val)
+        slider.setValue(value)
+        label = QLabel(str(value))
+        slider.valueChanged.connect(lambda val, k=key, l=label: self.update_slider_value(k, val, l))
+        hbox.addWidget(slider)
+        hbox.addWidget(label)
+        layout.addRow(QLabel(display_name), hbox)
 
-        for i, line in enumerate(self.theme_content):
-            if parent_section and parent_section in line:
-                parent_found = True
+    def update_slider_value(self, key, value, label):
+        label.setText(str(value))
+        self.theme_data[key] = value
 
-            if parent_found and section in line:
-                section_found = True
+    def add_dropdown(self, layout, display_name, key, value):
+        dropdown = QComboBox()
+        options = []
+        if key == "name":
+            options = ["auto", "classic", "white", "black", "modern"]
+        elif key == "view":
+            options = ["auto", "compact", "small", "medium", "large", "wide"]
+        elif key == "font.name":
+            options = ["Segoe UI Variable Text", "Comic Sans MS", "Impact", "Arial", "Helvetica", "Times New Roman", "Courier New", 
+                       "Calibri", "Cambria", "Garamond", "Georgia", "Tahoma", "Trebuchet MS", "Century Gothic", "Franklin Gothic Medium", "Consolas"]
 
-            if section_found and key in line:
-                if isinstance(value, str):
-                    value_str = f'{value}'  
-                else:
-                    value_str = str(value)
-                self.theme_content[i] = f"\t\t{key.strip()} = {value_str}\n"
-                break
+        dropdown.addItems(options)
+        dropdown.setCurrentText(value if key != "view" else value.split('.')[1])
+        dropdown.currentTextChanged.connect(lambda text, k=key: self.update_theme_data(k, text if key != "view" else f"view.{text}"))
+        layout.addRow(QLabel(display_name), dropdown)
 
-            if section_found and "}" in line:
-                break
+    def add_text_input(self, layout, display_name, key, value):
+        line_edit = QLineEdit(value)
+        line_edit.textChanged.connect(lambda text, k=key: self.update_theme_data(k, text))
+        layout.addRow(QLabel(display_name), line_edit)
 
-    def create_slider(self, parent, label, from_, to, command, initial, current_value):
-        frame = ttk.Frame(parent)
-        frame.pack(fill='x', padx=5, pady=5)
-        ttk.Label(frame, text=label).pack(side='left')
+    def update_theme_data(self, key, value):
+        if isinstance(value, bool):
+            self.theme_data[key] = "true" if value else "false"
+        else:
+            self.theme_data[key] = str(value)
 
-        slider_value = tk.IntVar(value=current_value)
-        value_label = ttk.Label(frame, text=str(current_value))
-        value_label.pack(side='left', padx=5)
+    def save_theme(self):
+        try:
+            with open(THEME_PATH, 'w') as file:
+                file.write("theme\n{\n")
+                for key, value in self.theme_data.items():
+                    if key in ["name", "font.name"]:
+                        file.write(f"  {key} = \"{value}\"\n")
+                    elif key == "view":
+                        file.write(f"  view = {value}\n")
+                    else:
+                        file.write(f"  {key} = {value}\n")
+                file.write("}\n")
+        except Exception as e:
+            print(f"Failed to save theme: {e}")
 
-        slider = ttk.Scale(frame, from_=from_, to=to, orient='horizontal', 
-                           command=lambda value: self.update_slider_value(value, slider_value, value_label, command))
-        slider.set(initial)
-        slider.pack(side='left', fill='x', expand=True)
+    def import_theme(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import Theme File", "", "All Files (*);;Text Files (*.nss)", options=options)
+        if file_path:
+            try:
+                with open(file_path, 'r') as file:
+                    theme_content = file.read()
+                    self.parse_theme(theme_content)
+                    self.create_form()
+            except Exception as e:
+                print(f"Failed to import theme: {e}")
 
-        return slider
+    def reset_to_default(self):
+        backup_path = os.path.join(os.path.dirname(THEME_PATH), 'theme_backup.nss')
+        try:
+            if os.path.exists(THEME_PATH):
+                os.rename(THEME_PATH, backup_path)
+            self.load_theme()
+        except Exception as e:
+            print(f"Failed to reset theme to default: {e}")
 
-    def update_slider_value(self, value, slider_value, value_label, command):
-        value = int(float(value))
-        slider_value.set(value)
-        value_label.config(text=str(value))
-        command(value)
-
-    def create_dropdown(self, parent, label, options, command):
-        frame = ttk.Frame(parent)
-        frame.pack(fill='x', padx=35, pady=35)
-        ttk.Label(frame, text=label).pack(side='left')
-        selected_option = tk.StringVar()
-        dropdown = ttk.OptionMenu(frame, selected_option, options[0], *options, command=command)
-        dropdown.pack(side='right', fill='x', expand=False)
-        return dropdown
-
-    def create_color_picker(self, parent, label, section, key, parent_section=None):
-        frame = ttk.Frame(parent)
-        frame.pack(fill='x', padx=5, pady=5)
-        ttk.Label(frame, text=label).pack(side='left')
-        
-        color_var = tk.StringVar()
-        color_entry = ttk.Entry(frame, textvariable=color_var, width=10)
-        color_entry.pack(side='right', padx=5)
-
-        def pick_color():
-            color = colorchooser.askcolor()[1]
-            if color:
-                color_var.set(color)
-                self.update_theme(section, key, color, parent_section)
-        
-        color_var.trace_add("write", lambda *args: self.update_theme(section, key, color_var.get(), parent_section))
-
-        button = ttk.Button(frame, text="Choose Color", command=pick_color)
-        button.pack(side='right', fill='x', expand=False)
-
-        return button, color_entry
-
-    def create_tabs(self):
-        self.create_theme_tab()
-        self.create_text_tab()
-        self.create_background_tab()
-        self.create_item_tab()
-        self.create_border_tab()
-        self.create_shadow_tab()
-        self.create_font_tab()
-        self.create_separator_tab()
-        self.create_symbol_tab()
-        self.create_image_tab()
-
-    def create_text_tab(self):
-        text_tab = ttk.Frame(self.notebook)
-        self.notebook.add(text_tab, text='Text')
-
-        # Frame for text colors
-        text_frame = ttk.Frame(text_tab)
-        text_frame.pack(fill='x', padx=5, pady=5)
-        
-        for label, color_key in [("TEXT", "normal"),
-                                 ("Disabled", "normal.disabled"),
-                                 ("Selected", "select"),
-                                 ("Selected Disabled", "select.disabled")]:
-            self.create_color_picker(text_tab, label, 'text', color_key, 'item')
-
-        # Frame for text colors
-        text_frame = ttk.Frame(text_tab)
-        text_frame.pack(fill='x', padx=10, pady=10)
-        
-        for label, color_key in [("BACK", "select"),
-                                 ("Disabled BACK", "select.disabled")]:
-            self.create_color_picker(text_tab, label, 'back', color_key, 'item')
-
-        # Frame for text colors
-        text_frame = ttk.Frame(text_tab)
-        text_frame.pack(fill='x', padx=10, pady=10)
-        
-        for label, color_key in [("BORDER", "normal"),
-                                 ("Disabled BORDER", "normal.disabled"),
-                                 ("Selected BORDER", "select"),
-                                 ("Selected Disabled BORDER", "select.disabled")]:
-            self.create_color_picker(text_tab, label, 'border', color_key, 'item')
-
-    def create_background_tab(self):
-        background_tab = ttk.Frame(self.notebook)
-        self.notebook.add(background_tab, text='Background')
-        
-        text_frame = ttk.Frame(background_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_color_picker(background_tab, "Background Color", 'background', 'color')
-
-        text_frame = ttk.Frame(background_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_slider(background_tab, "Background Opacity", 0, 100, lambda value: self.update_theme('background', 'opacity', value), 100, 100)
-        
-        text_frame = ttk.Frame(background_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_dropdown(background_tab, "Effect: 1 Transparent, 2 Blur, 3 Acrylic", ["Disable", "1", "2", "3"], lambda value: self.update_theme('background', 'effect', f'{value}'))
-
-    def create_item_tab(self):
-        item_tab = ttk.Frame(self.notebook)
-        self.notebook.add(item_tab, text='Item')
-        
-        text_frame = ttk.Frame(item_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_slider(item_tab, "Item Opacity", 0, 100, lambda value: self.update_theme('item', 'opacity', value), 100, 100)
-
-        text_frame = ttk.Frame(item_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_slider(item_tab, "Item Radius", 0, 4, lambda value: self.update_theme('item', 'radius', value), 3, 4)
-
-    def create_border_tab(self):
-        border_tab = ttk.Frame(self.notebook)
-        self.notebook.add(border_tab, text='Border')
-
-        self.create_dropdown(border_tab, "Enable Border", ["true", "false"], lambda value: self.update_theme('theme', 'border.enabled', value))
-        self.create_color_picker(border_tab, "Border Color", 'theme', 'border.color')
-        self.create_slider(border_tab, "Border Size", 0, 10, lambda value: self.update_theme('theme', 'border.size', value), 0, 10)
-        self.create_slider(border_tab, "Border Opacity", 0, 100, lambda value: self.update_theme('theme', 'border.opacity', value), 0, 100)
-        self.create_slider(border_tab, "Border Radius", 0, 4, lambda value: self.update_theme('theme', 'border.radius', value), 3, 4)
-        
-    def create_shadow_tab(self):
-        shadow_tab = ttk.Frame(self.notebook)
-        self.notebook.add(shadow_tab, text='Shadow')
-
-        self.create_dropdown(shadow_tab, "Enable Shadow", ["true", "false"], lambda value: self.update_theme('shadow', 'enabled', value))
-        self.create_color_picker(shadow_tab, "Shadow Color", 'shadow', 'color')
-        self.create_slider(shadow_tab, "Shadow Size", 0, 30, lambda value: self.update_theme('shadow', 'size', value), 0, 10)
-        self.create_slider(shadow_tab, "Shadow Opacity", 0, 100, lambda value: self.update_theme('shadow', 'opacity', value), 0, 100)
-
-    def create_font_tab(self):
-        font_tab = ttk.Frame(self.notebook)
-        self.notebook.add(font_tab, text='Font')
-
-        self.create_slider(font_tab, "Font Size", 6, 100, lambda value: self.update_theme('font', 'size', value), 14, 100)
-        self.create_dropdown(font_tab, "Font Name", ["Segoe UI Variable Text", "tahoma", "verdana", "arial"], lambda value: self.update_theme('font', 'name', f'"{value}"'))
-        self.create_slider(font_tab, "Weight", 1, 9, lambda value: self.update_theme('font', 'weight', value), 1, 9)
-        self.create_dropdown(font_tab, "Font Italic", ["true", "false"], lambda value: self.update_theme('font', 'italic', value))
-
-    def create_theme_tab(self):
-        theme_tab = ttk.Frame(self.notebook)
-        self.notebook.add(theme_tab, text='Theme')
-        self.create_dropdown(theme_tab, "Theme", ["auto", "modern", "classic", "white", "black"], lambda value: self.update_theme('theme', 'name', f'"{value}"'))
-        self.create_dropdown(theme_tab, "Theme Size", ["auto", "small", "medium", "large", "wide", "compact"], lambda value: self.update_theme('theme', 'view', f'view.{value}'))
-        self.create_dropdown(theme_tab, "Dark Mode", ["true", "false"], lambda value: self.update_theme('theme', 'dark', value))
-
-    def create_separator_tab(self):
-        separator_tab = ttk.Frame(self.notebook)
-        self.notebook.add(separator_tab, text='Separator')
-
-        text_frame = ttk.Frame(separator_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_slider(separator_tab, "Separator Size", 0, 40, lambda value: self.update_theme('separator', 'size', value), 0, 40)
-
-        text_frame = ttk.Frame(separator_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_color_picker(separator_tab, "Separator Color", 'separator', 'color')
-
-        text_frame = ttk.Frame(separator_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_slider(separator_tab, "Separator Opacity", 0, 100, lambda value: self.update_theme('separator', 'opacity', value), 100, 100)
-
-    def create_symbol_tab(self):
-        symbol_tab = ttk.Frame(self.notebook)
-        self.notebook.add(symbol_tab, text='Symbol')
-
-        self.create_color_picker(symbol_tab, "Normal Symbol", 'symbol', 'normal')
-
-        text_frame = ttk.Frame(symbol_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_color_picker(symbol_tab, "Selected Symbol", 'symbol', 'select')
-
-        text_frame = ttk.Frame(symbol_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_color_picker(symbol_tab, "Disabled Symbol", 'symbol', 'normal-disabled')
-
-        text_frame = ttk.Frame(symbol_tab)
-        text_frame.pack(fill='x', padx=18, pady=18)
-        
-        self.create_color_picker(symbol_tab, "Selected Disabled Symbol", 'symbol', 'select-disabled')
-
-    def create_image_tab(self):
-        image_tab = ttk.Frame(self.notebook)
-        self.notebook.add(image_tab, text='Image')
-
-        self.create_dropdown(image_tab, "Enable Image", ["true", "false"], lambda value: self.update_theme('theme', 'image.enabled', value))
-        self.create_color_picker(image_tab, "Image Color", 'theme', 'image.color')
-        self.create_dropdown(image_tab, "Image Scale", ["true", "false"], lambda value: self.update_theme('theme', 'image.scale', value))
-        self.create_dropdown(image_tab, "Image Align", ["0", "1", "2"], lambda value: self.update_theme('theme', 'image.align', value))
-
-    def create_buttons(self):
-        button_frame = ttk.Frame(self.root)
-        button_frame.pack(fill='x', pady=10)
-
-        save_button = ttk.Button(button_frame, text="Save", command=self.save_theme_file)
-        save_button.pack(side='left', padx=5)
-
-        import_button = ttk.Button(button_frame, text="Import Theme", command=self.import_theme_file)
-        import_button.pack(side='left', padx=5)
-
-        reset_button = ttk.Button(button_frame, text="Reset to Default", command=self.reset_to_default)
-        reset_button.pack(side='left', padx=5)
-
-        exit_button = ttk.Button(button_frame, text="Exit", command=self.root.quit)
-        exit_button.pack(side='right', padx=5)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = ThemeEditor(root)
-    root.mainloop()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(ICON_PATH))
+    editor = ThemeEditor()
+    editor.show()
+    sys.exit(app.exec_())

@@ -1,6 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QListWidget, QPushButton, QMessageBox, QLineEdit, QFileDialog, QListWidgetItem)
+from PyQt5.QtGui import QIcon
 
 class DragDropListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -29,7 +30,8 @@ class DragDropListWidget(QListWidget):
 class MainWindow(QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
-
+        
+        self.setWindowIcon(QIcon(r"C:\Program Files\Nilesoft Shell\icons\modify.ico"))
         self.setWindowTitle("iMAboud - Context Menu Modifier")
         self.setGeometry(100, 100, 800, 600)
 
