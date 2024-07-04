@@ -121,15 +121,15 @@ class ThemeEditor(QMainWindow):
         self.tabs.clear()
 
         icon_paths = {
-            "General": r"C:\Program Files\iMA Menu\script\theme-icons\general.ico",
-            "Border": r"C:\Program Files\iMA Menu\script\theme-icons\Border.ico",
-            "Image": r"C:\Program Files\iMA Menu\script\theme-icons\Image.ico",
-            "Background": r"C:\Program Files\iMA Menu\script\theme-icons\Background.ico",
-            "Item": r"C:\Program Files\iMA Menu\script\theme-icons\Item.ico",
-            "Font": r"C:\Program Files\iMA Menu\script\theme-icons\Font.ico",
-            "Shadow": r"C:\Program Files\iMA Menu\script\theme-icons\Shadow.ico",
-            "Separator": r"C:\Program Files\iMA Menu\script\theme-icons\Separator.ico",
-            "Symbol": r"C:\Program Files\iMA Menu\script\theme-icons\Symbol.ico",
+            "General": r"C:\Program Files\Nilesoft Shell\script\theme-icons\general.ico",
+            "Border": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Border.ico",
+            "Image": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Image.ico",
+            "Background": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Background.ico",
+            "Item": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Item.ico",
+            "Font": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Font.ico",
+            "Shadow": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Shadow.ico",
+            "Separator": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Separator.ico",
+            "Symbol": r"C:\Program Files\Nilesoft Shell\script\theme-icons\Symbol.ico",
         }
         
         slider_ranges = {
