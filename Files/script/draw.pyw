@@ -2,10 +2,13 @@ import tkinter as tk
 from tkinter import colorchooser
 import ctypes
 import random
+from PIL import Image, ImageDraw, ImageTk
+import os
 
 class DrawingApp:
     def __init__(self, master):
         self.master = master
+        self.icons_path = 'C:\\Program Files\\Nilesoft Shell\\script\\draw-icons\\'
         self.master.attributes('-fullscreen', True)
         self.master.attributes('-topmost', True)
         self.master.attributes('-alpha', 0.7)
@@ -22,7 +25,7 @@ class DrawingApp:
         self.is_drawing = False
         self.erase_mode = False
         self.mirror_mode = False
-        self.drawing_tool = 'brush'  # Set default tool to brush
+        self.drawing_tool = 'brush'  
         self.opacity = 0.7
         self.current_stroke = []
         self.random_color_mode = False
@@ -48,39 +51,55 @@ class DrawingApp:
         controls_frame = tk.Frame(self.master, bg='black')
         controls_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
 
-        self.brush_button = tk.Button(controls_frame, text="Brush", command=lambda: self.set_tool('brush'))
+        self.brush_button = self.create_icon_button(controls_frame, 'brush', "Brush", lambda: self.set_tool('brush'))
         self.brush_button.grid(row=0, column=1, padx=5, pady=5)
 
-        self.circle_button = tk.Button(controls_frame, text="Circle", command=lambda: self.set_tool('circle'))
+        self.circle_button = self.create_icon_button(controls_frame, 'circle', "Circle", lambda: self.set_tool('circle'))
         self.circle_button.grid(row=0, column=2, padx=5, pady=5)
-        
-        self.square_button = tk.Button(controls_frame, text="Square", command=lambda: self.set_tool('square'))
+
+        self.square_button = self.create_icon_button(controls_frame, 'square', "Square", lambda: self.set_tool('square'))
         self.square_button.grid(row=0, column=3, padx=5, pady=5)
 
-        self.line_button = tk.Button(controls_frame, text="Line", command=lambda: self.set_tool('line'))
+        self.line_button = self.create_icon_button(controls_frame, 'line', "Line", lambda: self.set_tool('line'))
         self.line_button.grid(row=0, column=4, padx=5, pady=5)
-        
+
         size_label = tk.Label(controls_frame, text="Size:", bg='black', fg='white')
         size_label.grid(row=0, column=5, padx=5, pady=5)
 
-        self.size_scale = tk.Scale(controls_frame, from_=1, to=100, orient=tk.HORIZONTAL, command=self.change_size)
+        self.size_scale = tk.Scale(controls_frame, from_=1, to=100, orient=tk.HORIZONTAL, command=self.change_size, length=100, showvalue=1, sliderlength=15, highlightthickness=0, troughcolor='black', fg='white', bg='black')
         self.size_scale.set(self.size)
         self.size_scale.grid(row=0, column=6, padx=5, pady=5)
 
-        self.erase_button = tk.Button(controls_frame, text="Erase", command=self.toggle_erase_mode)
+        self.erase_button = self.create_icon_button(controls_frame, 'erase', "Erase", self.toggle_erase_mode)
         self.erase_button.grid(row=0, column=7, padx=5, pady=5)
 
-        self.mirror_button = tk.Button(controls_frame, text="Mirror", command=self.toggle_mirror_mode)
+        self.mirror_button = self.create_icon_button(controls_frame, 'mirror', "Mirror", self.toggle_mirror_mode)
         self.mirror_button.grid(row=0, column=8, padx=5, pady=5)
 
-
-        self.random_color_button = self.create_rainbow_button(controls_frame, "RANDOM", self.toggle_random_color_mode)
+        self.random_color_button = self.create_icon_button(controls_frame, 'random', "RANDOM", self.toggle_random_color_mode)
         self.random_color_button.grid(row=0, column=9, padx=5, pady=5)
 
-
-        clear_button = tk.Button(controls_frame, text="Clear All", command=self.clear_all, bg='red')
+        clear_button = self.create_icon_button(controls_frame, 'clear', "Clear All", self.clear_all)
         clear_button.grid(row=0, column=10, padx=5, pady=5)
 
+        save_button = self.create_icon_button(controls_frame, 'save', "Save", self.save_options)
+        save_button.grid(row=0, column=11, padx=5, pady=5)
+
+
+
+    def create_icon_button(self, parent, icon_name, text, command):
+        icon_path = os.path.join(self.icons_path, f'{icon_name}.ico')
+        try:
+            icon_image = Image.open(icon_path)
+            icon_photo = ImageTk.PhotoImage(icon_image)
+            button = tk.Button(parent, image=icon_photo, command=lambda: [command(), self.draw_canvas.focus_set()], bg='black', relief=tk.FLAT, bd=0)
+            button.image = icon_photo  
+        except Exception as e:
+            print(f"Icon not found for {text}: {e}")
+            button = tk.Button(parent, text=text, command=lambda: [command(), self.draw_canvas.focus_set()], bg='black', relief=tk.FLAT, bd=0)
+        return button
+
+    
 
     def create_rainbow_button(self, parent, text, command):
         colors = ["red", "orange", "green", "yellow", "brown", "indigo", "violet"]
@@ -300,6 +319,63 @@ class DrawingApp:
 
     def update_opacity(self):
         self.master.attributes('-alpha', self.opacity)
+
+    def save_options(self):
+        save_options_window = tk.Toplevel(self.master)
+        save_options_window.title("Save Options")
+        save_options_window.transient(self.master)  
+        save_options_window.grab_set()  
+        save_options_window.focus_set()  
+
+        save_transparent_button = tk.Button(save_options_window, text="Save PNG (Transparent)", command=self.save_png_transparent)
+        save_transparent_button.pack(padx=20, pady=10)
+    
+        save_white_button = tk.Button(save_options_window, text="Save PNG (White Background)", command=self.save_png_white)
+        save_white_button.pack(padx=20, pady=10)
+
+
+    def save_png_transparent(self):
+        self.save_image(background='transparent')
+
+    def save_png_white(self):
+        self.save_image(background='white')
+
+    def save_image(self, background='transparent'):
+        x = self.master.winfo_rootx() + self.draw_canvas.winfo_x()
+        y = self.master.winfo_rooty() + self.draw_canvas.winfo_y()
+        width = self.draw_canvas.winfo_width()
+        height = self.draw_canvas.winfo_height()
+
+        self.master.withdraw()
+        self.master.update_idletasks()
+
+        if background == 'transparent':
+            image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        else:
+            image = Image.new('RGBA', (width, height), (255, 255, 255, 255))
+
+        draw = ImageDraw.Draw(image)
+
+        for action in self.action_history:
+            tool = action[0]
+            if tool == 'line':
+                _, start, end, size, color = action
+                draw.line([start, end], fill=color, width=size)
+            elif tool == 'circle':
+                _, start, r, size, color = action
+                x0, y0 = start
+                draw.ellipse([x0 - r, y0 - r, x0 + r, y0 + r], outline=color, width=size)
+            elif tool == 'square':
+                _, start, end, size, color = action
+                draw.rectangle([start, end], outline=color, width=size)
+            elif tool == 'brush_stroke':
+                for point in action[1]:
+                    x, y, size, color = point
+                    draw.ellipse([x - size, y - size, x + size, y + size], fill=color, outline=color)
+
+        file_path = 'drawing.png'
+        image.save(file_path)
+        self.master.deiconify()
 
     def quit(self, event=None):
         self.master.quit()

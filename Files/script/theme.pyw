@@ -1,16 +1,25 @@
 import sys
 import os
+import pyautogui
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QCheckBox, QSlider, QComboBox, QColorDialog, QFileDialog,
     QTabWidget, QScrollArea, QFormLayout
 )
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QColor
+from PyQt5.QtCore import Qt, QTimer
 
 ICON_PATH = r"C:\Program Files\Nilesoft Shell\icons\theme.ico"
-THEME_PATH = r"c:\program files\nilesoft shell\imports\theme.nss"
+THEME_PATH = r"c:\program files\Nilesoft Shell\imports\theme.nss"
 
+def perform_ctrl_right_click(self):
+    try:
+        pyautogui.keyDown('ctrl')  
+        pyautogui.click(button='right')  
+        pyautogui.keyUp('ctrl')  
+    except Exception as e:
+        print(f"Failed to perform Ctrl+Right Click: {e}")
+        
 class ThemeEditor(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -28,26 +37,59 @@ class ThemeEditor(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
 
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("font-size: 14px;")
+        self.tabs.setTabPosition(QTabWidget.North)  
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { border: 0; }
+            QTabBar::tab {
+                background: #2b2b2b;
+                color: #ffffff;
+                border: 1px solid #1e1e1e;
+                border-radius: 10px;
+                padding: 10px;
+                margin: 5px;
+            }
+            QTabBar::tab:selected {
+                background: #3d3d3d;
+            }
+        """)
         main_layout.addWidget(self.tabs)
 
         button_layout = QHBoxLayout()
         self.save_button = QPushButton('Save Theme')
-        self.save_button.setStyleSheet("font-size: 16px; background-color: green;")
+        self.save_button.setStyleSheet("""
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 10px;
+            padding: 10px;
+        """)
         self.save_button.clicked.connect(self.save_theme)
         button_layout.addWidget(self.save_button)
 
         self.import_button = QPushButton('Import Theme')
-        self.import_button.setStyleSheet("font-size: 16px;")
+        self.import_button.setStyleSheet("""
+            font-size: 16px;
+            background-color: #f0ad4e;
+            color: white;
+            border-radius: 10px;
+            padding: 10px;
+        """)
         self.import_button.clicked.connect(self.import_theme)
         button_layout.addWidget(self.import_button)
 
         self.reset_button = QPushButton('Reset to Default')
-        self.reset_button.setStyleSheet("font-size: 16px;")
+        self.reset_button.setStyleSheet("""
+            font-size: 16px;
+            background-color: #d9534f;
+            color: white;
+            border-radius: 10px;
+            padding: 10px;
+        """)
         self.reset_button.clicked.connect(self.reset_to_default)
         button_layout.addWidget(self.reset_button)
 
         main_layout.addLayout(button_layout)
+
 
     def load_theme(self):
         if os.path.exists(THEME_PATH):
@@ -78,6 +120,18 @@ class ThemeEditor(QMainWindow):
     def create_form(self):
         self.tabs.clear()
 
+        icon_paths = {
+            "General": r"C:\Program Files\iMA Menu\script\theme-icons\general.ico",
+            "Border": r"C:\Program Files\iMA Menu\script\theme-icons\Border.ico",
+            "Image": r"C:\Program Files\iMA Menu\script\theme-icons\Image.ico",
+            "Background": r"C:\Program Files\iMA Menu\script\theme-icons\Background.ico",
+            "Item": r"C:\Program Files\iMA Menu\script\theme-icons\Item.ico",
+            "Font": r"C:\Program Files\iMA Menu\script\theme-icons\Font.ico",
+            "Shadow": r"C:\Program Files\iMA Menu\script\theme-icons\Shadow.ico",
+            "Separator": r"C:\Program Files\iMA Menu\script\theme-icons\Separator.ico",
+            "Symbol": r"C:\Program Files\iMA Menu\script\theme-icons\Symbol.ico",
+        }
+        
         slider_ranges = {
             "border.size": (0, 10),
             "item.opacity": (0, 100),
@@ -129,7 +183,7 @@ class ThemeEditor(QMainWindow):
             "image.scale": "Image Scale",
             "background.color": "Background Color",
             "background.opacity": "Background Opacity",
-            "background.effect": "Background Effect",
+            "background.effect": "Background Effect : 0 = Disabled, 1 = Transparent, 2 = Blur, 3 = Acrylic",
             "item.opacity": "Item Opacity",
             "item.radius": "Item Radius",
             "item.prefix": "Item Prefix",
@@ -188,7 +242,7 @@ class ThemeEditor(QMainWindow):
 
             scroll_area.setLayout(form_layout)
             tab_layout.addWidget(scroll_area)
-            self.tabs.addTab(tab, category)
+            self.tabs.addTab(tab, QIcon(icon_paths.get(category)), category) 
 
     def add_checkbox(self, layout, display_name, key, checked):
         checkbox = QCheckBox()
@@ -297,8 +351,18 @@ class ThemeEditor(QMainWindow):
                     else:
                         file.write(f"  {key} = {value}\n")
                 file.write("}\n")
+
+            QTimer.singleShot(300, self.perform_ctrl_right_click)
         except Exception as e:
             print(f"Failed to save theme: {e}")
+
+    def perform_ctrl_right_click(self):
+        try:
+            pyautogui.keyDown('ctrl')  
+            pyautogui.click(button='right')  
+            pyautogui.keyUp('ctrl')  
+        except Exception as e:
+            print(f"Failed to perform Ctrl+Right Click: {e}")
 
     def import_theme(self):
         options = QFileDialog.Options()
