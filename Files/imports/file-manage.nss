@@ -10,8 +10,8 @@
 	
 
 
-item(title='Search' cmd='C:\Program Files\iMA Menu\script\search.bat' image='C:\Program Files\iMA Menu\icons\search.ico')
-item(title='Draw' cmd='C:\Program Files\iMA Menu\script\draw.pyw' image='C:\Program Files\iMA Menu\icons\draw.ico')
+item(title='Search' cmd='C:\Program Files\Nilesoft Shell\script\search.bat' image='C:\Program Files\Nilesoft Shell\icons\search.ico')
+item(title='Draw' cmd='C:\Program Files\Nilesoft Shell\script\draw.pyw' image='C:\Program Files\Nilesoft Shell\icons\draw.ico')
 
 
 	menu(mode="single" type='file' find='.dll|.ocx' separator="before" title='Register Server' image=\uea86)
@@ -25,8 +25,8 @@ item(title='Draw' cmd='C:\Program Files\iMA Menu\script\draw.pyw' image='C:\Prog
 
 	}
 	
-item(title='Clean' cmd='C:\Program Files\iMA Menu\script\cleantemp.bat' icon='C:\Program Files\iMA Menu\icons\broom.ico')
-item(title='Color' cmd='C:\Program Files\iMA Menu\script\hex.py' icon='C:\Program Files\iMA Menu\icons\color.ico')
+item(title='Clean' cmd='C:\Program Files\Nilesoft Shell\script\cleantemp.bat' icon='C:\Program Files\Nilesoft Shell\icons\broom.ico')
+item(title='Color' cmd='C:\Program Files\Nilesoft Shell\script\hex.py' icon='C:\Program Files\Nilesoft Shell\icons\color.ico')
 
         
 }
