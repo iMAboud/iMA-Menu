@@ -65,9 +65,8 @@ _____________________________________________________________________
 
 ## Installation
 
-- Unzip `iMA Menu` and set it aside for now
 - Install all required from the table above "running the commands is recommended and easier".
-- After Nilesoft Shell is installed copy all contents of `iMA Menu` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
+- After Nilesoft Shell is installed copy all contents of `files` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
 - Hold CTRL+Right-Click to update context menu.
 
 _____________________________________________________________________
