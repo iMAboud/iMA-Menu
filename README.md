@@ -15,7 +15,7 @@
 _____________________________________________________________________
 ## Download Installer
 
-[iMA Menu installer beta 1](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.1/iMA.Menu-beta.1.exe)
+[iMA Menu installer beta 2](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.1/iMA.Menu-beta.2.exe)
 
 _____________________________________________________________________
 
