@@ -1,3 +1,5 @@
+<div align="center">
+
 # iMShare
 
 <div align="center">
@@ -7,15 +9,13 @@
 
 </div>
 
-- iMShare adds a lot of useful features right on your context menu.
-- Large file sharing between devices - Video/Image editing - Draw over apps - Search and set a wallpaper - Youtube and X downloader, and more.
+- iMShare adds a lot of useful features right on your context menu, and allows easy theming and editing without priour programming knowledge.
 
 ![](https://i.imgur.com/NlXTZOy.png) ![](https://i.imgur.com/wIaeznc.png) ![](https://i.imgur.com/VWCJmhs.png) ![](https://i.imgur.com/bJqrU9K.png)
 ![Manage](https://i.imgur.com/n4fQIsC.png) 
 
 
 ## Update
-- Added GUI to edit the theme.nss
 - Added a GUI to the "modify" file to easily edit, remove or add anything in the context menu. 
 - StremiM utilizes "Peario" and "Stremio" to stream a movie to a friend the easy way. 
 - Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
@@ -24,46 +24,49 @@
 ## Features
 
 - Transfer files super fast with no size limit to any PC with just a pass code.
-- Download a video or directly conver it to audio from Youtube or X with a button.
+- Download a video or directly convert it to audio from Youtube or any site.
 - Remove background of any image.
-- Color picking to hex over desktop and programs. 
+- Color picking to hex over desktop and programs.
+- Draw over apps, scroll wheel to increase of decrease opacity of desktop.
+- An app to easily change the context menu (right click) theme
+- An app to remove or change the names and icon of any item in context menu
+- Customize items in cotext menu to make any item appear with holding shift, or inside a menu or hide it completly.
 - Merging 2 media files.
 - Resize dimensions of an image and aspect of a video.
 - MP4 to MP3
 - Video to GIF, no limit, gif can be up to 2 hours (it might go longer, I didn't test it).
 - Convert any video to any format.
 - Reduce file size of any image or video without losing too much quality. 
-- Draw over apps, scroll wheel to increase of decrease opacity of desktop.
 - Change a wallpaper with commands, search a wallpaper, select from options and it'll save and set as background instantly.
 - Clean temp/cookies/cache..etc.
-- Open multiple accounts e.g: Steam, Valorant.. with "TcNo Account Switcher" but from context menu. 
 - Custom theme and settings for Nilesoft for minimalism.
-- Fast search any file in all drives, copy the path, paste and you're redirected to that path. 
+- Fast search any file in all drives, copy the path, paste and you're redirected to that path.
+- Stream to any friend that has this installed, and watch any movie/series synced in a lobby using perio & stremio.
 - Lightweight, fast, easy, portable, no background apps, almost %100 pre-configured and ready to use.
 - Fully automated, with pre-configured scripts, automatically sets the location path where you click.
-- Additional features and config details from [Nilesoft](https://github.com/moudey/Shell) and [Croc](https://github.com/schollz/croc) [yt-dlp](https://github.com/yt-dlp/yt-dlp) repositories.
+- I'm always adding and fixing features, so I might've missed a few more features.
 
-## Requierments
 
-Download|Manuall installation
+## Requierments & Everything you need
+
+Name|installation 
 :---|:---
 [iMShare](https://raw.githubusercontent.com/iMAboud/iMShare/main/iMShare.zip)| Or download zip from the repo.
-[Nilesoft Shell](https://nilesoft.org/download/shell/1.9.15/setup.exe)| Or run in powershell: `winget install nilesoft.shell`
-[Schollz Croc](https://github.com/schollz/croc/releases/download/v9.6.15/croc_v9.6.15_Windows-64bit.zip)|Or run in powershell: `winget install schollz.croc`
-[Python](https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe)|Or run in powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check add python to path.
-[yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)|Or run in powershell: `python -m pip install -U yt-dlp[default]`
-[ffmpeg](https://www.gyan.dev/ffmpeg/builds/)|Or use this one line installer from [TCNOco](https://github.com/TCNOco) `iex (irm ffmpeg.tc.ht)`
-Backgroundremover|In powershell run: `pip install backgroundremover`
-Hex & Draw|In powershell run: `pip install pyautogui pyperclip pynput colorama pillow PyQt5`
+Nilesoft Shell| In Powershell: `winget install nilesoft.shell`
+Schollz Croc|In Powershell: `winget install schollz.croc`
+Python|In Powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check both add python to path and use admin.
+yt-dlp|In Powershell: `python -m pip install -U yt-dlp[default]`
+ffmpeg|In Powershell: `iex (irm ffmpeg.tc.ht)`
+Packages |In powershell: `pip install backgroundremover pyautogui pyperclip pynput colorama pillow PyQt5`
+
 
 ## Installation
 
 - Unzip `iMShare` and set it aside for now
 - Install all required from the table above "running the commands is recommended and easier".
-- After Nilesoft Shell is installed and activated copy all contents of `files` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
+- After Nilesoft Shell is installed copy all contents of `iMShare` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
 - Hold CTRL+Right-Click to update context menu.
 
-   *Note: If context menu didn't update, try restarting Windows Explorer from Task Manager.*
 
 ## IMPORTANT STEP:
 - Navigate to C:\Program Files\Nilesoft Shell\script and right-click EDIT **croc.bat**
@@ -230,3 +233,6 @@ item(title='Theme' cmd='C:\Program Files\Nilesoft Shell\script\theme.pyw' image=
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+</div>
+
