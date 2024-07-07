@@ -15,7 +15,7 @@
 _____________________________________________________________________
 ## Download Installer
 
-[iMA Menu installer beta 1](https://github.com/iMAboud/iMShare/releases/download/v0.1-beta.1/iMA.Menu-beta.1.exe)
+[iMA Menu installer beta 1](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.1/iMA.Menu-beta.1.exe)
 
 _____________________________________________________________________
 
@@ -53,7 +53,7 @@ _____________________________________________________________________
 
 Name|installation 
 :---|:---
-[iMA Menu](https://raw.githubusercontent.com/iMAboud/iMShare/main/iMShare.zip)| Or download zip from the repo.
+iMA Menu| Download the repo as zip.
 Nilesoft Shell| In Powershell: `winget install nilesoft.shell`
 Schollz Croc|In Powershell: `winget install schollz.croc`
 Python|In Powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check both add python to path and use admin.
