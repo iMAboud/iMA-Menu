@@ -5,9 +5,9 @@ theme
   image.align = 2
   dark = true
   border.enabled = false
-  border.size = 2
-  border.color = #6972d8
-  border.opacity = 30
+  border.size = 6
+  border.color = #3006ff
+  border.opacity = 38
   border.radius = 3
   image.enabled = true
   image.color = #ffffff
@@ -37,7 +37,7 @@ theme
   shadow.opacity = 0
   shadow.color = #000000
   separator.size = 0
-  separator.color = 1
+  separator.color = 49
   separator.opacity = 100
   symbol.normal = #ffffff
   symbol.select = #ffffff
