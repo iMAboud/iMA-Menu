@@ -1,13 +1,13 @@
 <div align="center">
 
-# iMShare
+# iMA Menu
 
 
 [![PayPal](https://img.shields.io/badge/Paypal-blue)](https://www.paypal.com/paypalme/imaboud)
 [![Donate](https://img.shields.io/badge/Donate-%23008080)](https://buymeacoffee.com/imaboud)
 
 
-- iMShare adds a lot of useful features right on your context menu, and allows easy theming and editing without priour programming knowledge.
+- iMA Menu adds a lot of useful features right on your context menu, and allows easy theming and editing without priour programming knowledge.
 
 ![](https://i.imgur.com/fO94CpQ.png)
 
@@ -53,7 +53,7 @@ _____________________________________________________________________
 
 Name|installation 
 :---|:---
-[iMShare](https://raw.githubusercontent.com/iMAboud/iMShare/main/iMShare.zip)| Or download zip from the repo.
+[iMA Menu](https://raw.githubusercontent.com/iMAboud/iMShare/main/iMShare.zip)| Or download zip from the repo.
 Nilesoft Shell| In Powershell: `winget install nilesoft.shell`
 Schollz Croc|In Powershell: `winget install schollz.croc`
 Python|In Powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check both add python to path and use admin.
@@ -65,9 +65,9 @@ _____________________________________________________________________
 
 ## Installation
 
-- Unzip `iMShare` and set it aside for now
+- Unzip `iMA Menu` and set it aside for now
 - Install all required from the table above "running the commands is recommended and easier".
-- After Nilesoft Shell is installed copy all contents of `iMShare` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
+- After Nilesoft Shell is installed copy all contents of `iMA Menu` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
 - Hold CTRL+Right-Click to update context menu.
 
 _____________________________________________________________________
