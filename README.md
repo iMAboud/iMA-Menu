@@ -2,7 +2,6 @@
 
 # iMShare
 
-<div align="center">
 
 [![PayPal](https://img.shields.io/badge/Paypal-blue)](https://www.paypal.com/paypalme/imaboud)
 [![Donate](https://img.shields.io/badge/Donate-%23008080)](https://buymeacoffee.com/imaboud)
@@ -15,11 +14,15 @@
 ![Manage](https://i.imgur.com/n4fQIsC.png) 
 
 
-## Update
-- Added a GUI to the "modify" file to easily edit, remove or add anything in the context menu. 
-- StremiM utilizes "Peario" and "Stremio" to stream a movie to a friend the easy way. 
-- Added Color picking anywhere, right click on the pixel color to copy hex to clipboard
-- Added Merging 2 files (Video / Audio) to overlap. 
+_____________________________________________________________________
+## Download Installer
+
+[iMA Menu installer beta 1](https://github.com/iMAboud/iMShare/releases/download/v0.1-beta.1/iMA.Menu-beta.1.exe)
+
+_____________________________________________________________________
+
+
+
 
 ## Features
 
@@ -47,7 +50,7 @@
 - I'm always adding and fixing features, so I might've missed a few more features.
 
 
-## Requierments & Everything you need
+## Setup manually
 
 Name|installation 
 :---|:---
