@@ -8,7 +8,7 @@ start /min timeout /t 1 /nobreak >nul
 
 rem Execute the following commands
 echo Running Chrome...
-start "" "C:\Program Files\iMA Menu\script\imstream\stream.vbs"
+start "" "C:\Program Files\Nilesoft Shell\script\imstream\stream.vbs"
 
 timeout /t 5 /nobreak >nul
 
