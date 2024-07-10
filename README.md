@@ -66,7 +66,7 @@ _____________________________________________________________________
 
 - Install all required from the table above "running the commands is recommended and easier".
 - Move the folder `iMA Menu` into C:\Program Files.
-- Go to "C:\Program Files\iMA Menu", and run "Shell.exe" As Admin, and click "Resgister".
+- Go to "C:\Program Files\iMA Menu", and run "Shell.exe" As Admin, and click "Register".
 
 _____________________________________________________________________
 
