@@ -20,7 +20,7 @@ menu( mode="multiple" vis=key.shift() title="Pin/Unpin" image=icon.pin)
 menu(mode="multiple" title=title.options image=icon.more_options)
 {
 
-remove(find="undo|redo|open in terminal")
+remove(find="undo|redo")
 }
 
 import 'imports/file-manage.nss'
