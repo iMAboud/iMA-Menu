@@ -54,7 +54,6 @@ _____________________________________________________________________
 Name|installation 
 :---|:---
 iMA Menu| Download the repo as zip.
-Nilesoft Shell| In Powershell: `winget install nilesoft.shell`
 Schollz Croc|In Powershell: `winget install schollz.croc`
 Python|In Powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check both add python to path and use admin.
 yt-dlp|In Powershell: `python -m pip install -U yt-dlp[default]`
@@ -66,13 +65,13 @@ _____________________________________________________________________
 ## Installation
 
 - Install all required from the table above "running the commands is recommended and easier".
-- After Nilesoft Shell is installed copy all contents of `files` into Nilesoft's installation folder C:\Program Files\Nilesoft Shell
-- Hold CTRL+Right-Click to update context menu.
+- Move the folder `iMA Menu` into C:\Program Files.
+- Go to "C:\Program Files\iMA Menu", and run "Shell.exe" As Admin, and click "Resgister".
 
 _____________________________________________________________________
 
 ## IMPORTANT STEP:
-- Navigate to C:\Program Files\Nilesoft Shell\script and right-click EDIT **croc.bat**
+- Navigate to C:\Program Files\iMA Menu\script and right-click EDIT **croc.bat**
 - Change the line "SET_YOUR_CODE_HERE" to your password. **6+ character**
 e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboard)\""`
 
@@ -159,7 +158,7 @@ _____________________________________________________________________
 You need to aquire the API from "https://api.unsplash.com".
 It's free of charge and easy to sign-up. Once you create your Application page setup in `unsplash` you'll get your own free API.
 - Copy your `Access Key`
-- Open **wallpaper.py** located in Nilesoft's folder **script**
+- Open **wallpaper.py** located in iMA Menu's folder **script**
 - Replace the key with "YOUR_ACESS_KEY"
 - Save & Exit
 _____________________________________________________________________
