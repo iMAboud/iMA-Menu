@@ -3,7 +3,6 @@
 # iMA Menu
 
 
-[![PayPal](https://img.shields.io/badge/Paypal-blue)](https://www.paypal.com/paypalme/imaboud)
 [![Donate](https://img.shields.io/badge/Donate-%23008080)](https://buymeacoffee.com/imaboud)
 
 
