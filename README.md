@@ -2,8 +2,7 @@
 
 # iMA Menu
 
-
-[![Donate](https://img.shields.io/badge/Donate-%23008080)](https://buymeacoffee.com/imaboud)
+<a href="https://www.buymeacoffee.com/imaboud" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 
 - iMA Menu adds a lot of useful features right on your context menu, and allows easy theming and editing without priour programming knowledge.
