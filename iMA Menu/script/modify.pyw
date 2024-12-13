@@ -80,7 +80,7 @@ class MainWindow(QWidget):
         right_layout.addWidget(self.ids_label)
         global ids_list
         ids_list = DragDropListWidget()
-        placeholder_ids = ["id.add_a_network_location", "id.adjust_date_time", "id.align_icons_to_grid", "id.arrange_by",
+        placeholder_ids = ["id.add_a_network_location", "id.align_icons_to_grid", "id.arrange_by",
                            "id.auto_arrange_icons", "id.autoplay", "id.cancel", "id.cascade_windows", "id.cast_to_device",
                            "id.cleanup", "id.collapse", "id.collapse_all_groups", "id.collapse_group", "id.command_prompt",
                            "id.compressed", "id.configure", "id.content", "id.control_panel", "id.copy", "id.copy_as_path",
