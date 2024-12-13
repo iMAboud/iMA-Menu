@@ -4,7 +4,6 @@ where=this.id(
 id.print,
 id.cortana,
 id.add_a_network_location,
-id.adjust_date_time,
 id.align_icons_to_grid,
 id.arrange_by,
 id.auto_arrange_icons,
