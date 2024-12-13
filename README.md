@@ -72,9 +72,16 @@ _____________________________________________________________________
 _____________________________________________________________________
 
 ## IMPORTANT STEP:
-- Navigate to C:\Program Files\iMA Menu\script and right-click EDIT **croc.bat**
+- Navigate to C:\Program Files\iMA Menu and launch "iMA Code.exe", then type your 6+ password and save.
+  
+This will be used by other PC to receive a file from you.
+  
+---- Or Manually ----
+- In \iMA Menu\script , right-click EDIT **croc.bat**
 - Change the line "SET_YOUR_CODE_HERE" to your password. **6+ character**
 e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboard)\""`
+
+Removing "--code" will make croc generate a unique password for each file 
 
 _____________________________________________________________________
 
