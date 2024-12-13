@@ -13,10 +13,10 @@
 _____________________________________________________________________
 ## Download Installer
 
-[iMA Menu](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.6/iMA.Menu.exe)
+[iMA Menu](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.7/iMA.Menu.exe)
 Includes all features below
 
-[iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.6/iMA.Menu.Light.exe)
+[iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.7/iMA.Menu.-.Light.exe)
 Includes only the menu and croc feature
 _____________________________________________________________________
 
