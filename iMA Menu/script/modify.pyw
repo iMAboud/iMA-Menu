@@ -1,13 +1,50 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QListWidget, QPushButton, QMessageBox, QLineEdit, QFileDialog, QListWidgetItem)
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QColor
+from PyQt5.QtCore import Qt, QPropertyAnimation, QRect
+# Create the application
+app = QApplication(sys.argv)
 
+# Set the application-wide stylesheet
+app.setStyleSheet("""
+    QListWidget, QLineEdit {
+        color: #FFFFFF; /* Sets text color to white */
+        background-color: #333333; /* Optional: Set background color for better contrast */
+    }
+""")
 class DragDropListWidget(QListWidget):
     def __init__(self, parent=None):
         super(DragDropListWidget, self).__init__(parent)
         self.setAcceptDrops(True)
         self.setDragEnabled(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        self.setStyleSheet("""
+            QListWidget {
+                background-color: rgba(0, 0, 0, 0.2);
+                border-radius: 10px;
+                padding: 5px;
+            }
+            QScrollBar:vertical {
+                width: 8px;
+                background: transparent;
+                margin: 0px;
+                opacity: 0; /* Hide scrollbar initially */
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255, 255, 255, 0.6);
+                border-radius: 4px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+                background: none;
+            }
+            QScrollBar:vertical:hover {
+                opacity: 1; /* Make scrollbar visible on hover */
+                background: transparent;
+            }
+        """)
 
     def dragEnterEvent(self, event):
         if event.source() != self:
@@ -52,22 +89,28 @@ class MainWindow(QWidget):
         left_layout = QVBoxLayout()
         layout.addLayout(left_layout)
 
-        self.hide_label = QLabel("HIDE it from everywhere")
+        self.hide_label = QLabel("HIDE")
+        self.hide_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-bottom: 5px;")
         left_layout.addWidget(self.hide_label)
+
         global hide_list
         hide_list = DragDropListWidget()
         hide_list.addItems(hide_lines)
         left_layout.addWidget(hide_list)
 
-        self.more_label = QLabel("Add it to MORE OPTIONS")
+        self.more_label = QLabel("MORE OPTIONS")
+        self.more_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-top: 5px;")
         left_layout.addWidget(self.more_label)
+
         global more_list
         more_list = DragDropListWidget()
         more_list.addItems(more_lines)
         left_layout.addWidget(more_list)
 
-        self.shift_label = QLabel("Displayed with SHIFT+RC")
+        self.shift_label = QLabel("SHIFT+RIGH-CLICK")
+        self.shift_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-top: 5px;")
         left_layout.addWidget(self.shift_label)
+
         global shift_list
         shift_list = DragDropListWidget()
         shift_list.addItems(shift_lines)
@@ -77,7 +120,9 @@ class MainWindow(QWidget):
         layout.addLayout(right_layout)
 
         self.ids_label = QLabel("IDS")
+        self.ids_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin: 5px;")
         right_layout.addWidget(self.ids_label)
+
         global ids_list
         ids_list = DragDropListWidget()
         placeholder_ids = ["id.add_a_network_location", "id.align_icons_to_grid", "id.arrange_by",
@@ -120,49 +165,111 @@ class MainWindow(QWidget):
         ids_list.addItems(filtered_ids)
         right_layout.addWidget(ids_list)
 
-        # New Section for Old and New Name
+        # Layout for Old Name
+        old_name_layout = QHBoxLayout()
         self.old_name_label = QLabel("Old name:")
-        right_layout.addWidget(self.old_name_label)
+        self.old_name_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px;")
+        old_name_layout.addWidget(self.old_name_label)
+
         self.old_name_input = QLineEdit()
-        right_layout.addWidget(self.old_name_input)
+        self.old_name_input.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
+        old_name_layout.addWidget(self.old_name_input)
+        right_layout.addLayout(old_name_layout)
 
+        # Layout for New Name
+        new_name_layout = QHBoxLayout()
         self.new_name_label = QLabel("New name:")
-        right_layout.addWidget(self.new_name_label)
-        self.new_name_input = QLineEdit()
-        right_layout.addWidget(self.new_name_input)
+        self.new_name_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px;")
+        new_name_layout.addWidget(self.new_name_label)
 
+        self.new_name_input = QLineEdit()
+        self.new_name_input.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
+        new_name_layout.addWidget(self.new_name_input)
+        right_layout.addLayout(new_name_layout)
+
+        # Layout for Icon and Select Icon Button
+        icon_layout = QHBoxLayout()
         self.icon_label = QLabel("Icon:")
-        right_layout.addWidget(self.icon_label)
+        self.icon_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px;")
+        icon_layout.addWidget(self.icon_label)
 
         self.icon_input = QLineEdit()
-        right_layout.addWidget(self.icon_input)
+        self.icon_input.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
+        icon_layout.addWidget(self.icon_input)
 
         self.icon_button = QPushButton("Select Icon")
+        self.icon_button.setStyleSheet("background-color: #0078d4; color: #FFFFFF; border-radius: 8px; padding: 5px;")
         self.icon_button.clicked.connect(self.select_icon)
-        right_layout.addWidget(self.icon_button)
+        icon_layout.addWidget(self.icon_button)
+        right_layout.addLayout(icon_layout)
 
+        # Modify Button
         self.modify_button = QPushButton("Modify")
+        self.modify_button.setStyleSheet("background-color: #1a73e8; color: #FFFFFF; border-radius: 8px; padding: 10px; margin-top: 20px;")
         self.modify_button.clicked.connect(self.modify_name)
         right_layout.addWidget(self.modify_button)
 
+        # Modification List
         global modification_list
         self.modification_list = QListWidget()
-        self.modification_list        .addItems(modify_lines)
+        self.modification_list.addItems(modify_lines)
+        self.modification_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+
+        self.modification_list.setStyleSheet("""
+            QListWidget {
+                background-color: rgba(0, 0, 0, 0.2);
+                border-radius: 10px;
+                padding: 5px;
+            }
+            QScrollBar:vertical {
+                width: 8px;
+                background: transparent;
+                margin: 0px;
+                opacity: 0; /* Hide scrollbar initially */
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255, 255, 255, 0.6);
+                border-radius: 4px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+                background: none;
+            }
+            QScrollBar:vertical:hover {
+                opacity: 1; /* Make scrollbar visible on hover */
+                background: transparent;
+            }
+        """)
         right_layout.addWidget(self.modification_list)
 
-        self.delete_button = QPushButton("Delete")
-        self.delete_button.setStyleSheet("background-color: #6d191e;")
+        # Delete and Save Buttons
+        button_layout = QHBoxLayout()
 
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.setStyleSheet("background-color: #d32f2f; color: #FFFFFF; border-radius: 8px; padding: 10px;")
         self.delete_button.clicked.connect(self.delete_modification)
-        right_layout.addWidget(self.delete_button)
+        button_layout.addWidget(self.delete_button)
 
         self.save_button = QPushButton("Save Changes")
-        self.save_button.setStyleSheet("background-color: #1b602e;")
-
+        self.save_button.setStyleSheet("background-color: #1b602e; color: #FFFFFF; border-radius: 8px; padding: 10px;")
         self.save_button.clicked.connect(save_changes)
-        right_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.save_button)
 
+        # Add the button layout to the right_layout
+        right_layout.addLayout(button_layout)
+
+        # Final Layout and Styling
         self.setLayout(layout)
+        self.setStyleSheet("background-color: #1E1E1E; border-radius: 22px; padding: 5px;")
+
+        self.animate_window()
+
+    def animate_window(self):
+        animation = QPropertyAnimation(self, b"geometry")
+        animation.setDuration(500)
+        animation.setStartValue(QRect(100, 100, 800, 600))
+        animation.setEndValue(QRect(100, 100, 800, 600))
+        animation.start()
 
     def filter_ids(self, ids, *lines_lists):
         used_ids = set()
@@ -170,7 +277,6 @@ class MainWindow(QWidget):
             for line in lines:
                 if line.startswith("id."):
                     used_ids.add(line.strip().rstrip(','))
-
         return [id_ for id_ in ids if id_ not in used_ids]
 
     def select_icon(self):
@@ -195,9 +301,16 @@ class MainWindow(QWidget):
 
             append_to_file(filepath, modify_command)
             self.modification_list.addItem(modify_line)
-            QMessageBox.information(self, "Modify Name", f"Modified '{old_name}' to '{new_name}' with icon '{icon}'")
-        else:
-            QMessageBox.warning(self, "Input Error", "Old name and new name must be provided")
+        
+            # After modification, refresh the modification list
+            self.refresh_modification_list()
+        
+            if old_name and new_name:  # Check if both old and new names are provided
+                QMessageBox.information(self, "Modify Name", f"Modified '{old_name}' to '{new_name}' with icon '{icon}'")
+            else:
+                QMessageBox.warning(self, "Input Error", "Old name and new name must be provided")
+
+
 
     def delete_modification(self):
         selected_items = self.modification_list.selectedItems()
@@ -206,8 +319,30 @@ class MainWindow(QWidget):
             return
 
         for item in selected_items:
-            self.modification_list.takeItem(self.modification_list.row(item))
-            delete_from_file(filepath, item.text().split(','))
+            try:
+                elements = item.text().split('|')
+                elements = [element.strip() for element in elements]
+                if len(elements) < 2:
+                    raise ValueError("Invalid modification format")
+
+                self.modification_list.takeItem(self.modification_list.row(item))
+                delete_from_file(filepath, elements)
+            
+                # After deletion, refresh the modification list
+                self.refresh_modification_list()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"An error occurred while deleting: {str(e)}")
+            
+    def refresh_modification_list(self):
+        """Refresh the modification list by reading the file content again"""
+        content = read_file(filepath)
+        modify_lines = extract_modify_lines(content)
+        self.modification_list.clear()
+        self.modification_list.addItems(modify_lines)
+
+
+
 
 def read_file(filepath):
     with open(filepath, 'r') as file:
@@ -222,13 +357,21 @@ def append_to_file(filepath, line):
         file.write("\n" + line)
 
 def delete_from_file(filepath, elements):
-    old_name, new_name, *icon = elements
-    with open(filepath, 'r') as file:
-        lines = file.readlines()
-    with open(filepath, 'w') as file:
-        for line in lines:
-            if old_name not in line or new_name not in line or (icon and icon[0] not in line):
+    try:
+        old_name, new_name = elements[:2]  # Ensure we get at least old and new names
+        icon = elements[2] if len(elements) > 2 else None
+
+        with open(filepath, 'r') as file:
+            lines = file.readlines()
+
+        with open(filepath, 'w') as file:
+            for line in lines:
+                if old_name in line and new_name in line and (not icon or icon in line):
+                    continue  # Skip lines matching the criteria
                 file.write(line)
+    except Exception as e:
+        raise RuntimeError(f"Failed to delete modification from file: {str(e)}")
+
 
 def extract_lines(content, start_marker, end_marker):
     sections = []
