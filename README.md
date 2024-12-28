@@ -1,6 +1,6 @@
 <div align="center">
 
-# iMA Menu
+![](https://i.imgur.com/Nn5hli0.png)
 
 <a href="https://www.buymeacoffee.com/imaboud" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
@@ -17,7 +17,7 @@ _____________________________________________________________________
 Includes all features below
 
 [iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.1-beta.7/iMA.Menu.-.Light.exe)
-Includes only the menu and croc feature
+Includes only the menu and Send/Receieve feature
 _____________________________________________________________________
 
 
@@ -63,7 +63,7 @@ Packages |In powershell: `pip install backgroundremover pyautogui pyperclip pynp
 
 _____________________________________________________________________
 
-## Installation
+## Manual Installation
 
 - Install all required from the table above "running the commands is recommended and easier".
 - Move the folder `iMA Menu` into C:\Program Files.
@@ -104,7 +104,7 @@ _____________________________________________________________________
  **Configure Croc:**
    Make Croc auto accepts once you insert a password without typing "Y" to confirm everytime.
 - From powershell run `Croc --yes --remember`
-- Insert a password "You can transfer a file to yourself to save the configuration".
+- Insert any 6 characters.
 
 If you want to generate a unique code everytime you want to share a file simly remove the command `--code`& your code from **croc.bat**.
 
@@ -112,7 +112,7 @@ If you want to generate a unique code everytime you want to share a file simly r
 
 _____________________________________________________________________
 
-## YouTube & X downloader 
+## YouTube & other sites downloader 
 ![](https://i.imgur.com/5slVepk.png)
 - Copy the video's link
 - Right-Click an empty space (This is where your video will be saved in)
@@ -161,16 +161,6 @@ _____________________________________________________________________
 
 _____________________________________________________________________
 
-**Wallpaper Changer**
-
-You need to aquire the API from "https://api.unsplash.com".
-It's free of charge and easy to sign-up. Once you create your Application page setup in `unsplash` you'll get your own free API.
-- Copy your `Access Key`
-- Open **wallpaper.py** located in iMA Menu's folder **script**
-- Replace the key with "YOUR_ACESS_KEY"
-- Save & Exit
-_____________________________________________________________________
-
 **Color Picking**
 - Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
 
@@ -182,7 +172,7 @@ _____________________________________________________________________
 
 _____________________________________________________________________
 
-**StremiM**
+**StremiM** Hidden by default
 
 <img src="https://i.imgur.com/wD3OsGX.png" alt="Modify" width="400">
 
@@ -201,24 +191,28 @@ Stream anything from Stremio using peario with an automation to open peario + st
 - To watch, click "Watch", type your friend's code, it will retreve the link, pastes it in chrome and opens it as an app. 
 
 - The script will automatically resends the link multiple times if you have more than 1 friend you want to share the link to it will do it automatically after you copy the link just set and wait for all of them to connect, it will loop until you're done. 
-
 _____________________________________________________________________
 
+**Settings**
 
-**Account Switching**
-- I might update this with my own Valorant account switching configuration, which uses TcNo Account Switching but for now TcNo has too many bugs so I'll updat this later.
+![](https://i.imgur.com/Uk3TwEg.png)
 
-_____________________________________________________________________
+- Right-click Taskbar > iMA Mneu > Settings
 
-**Remove/Add/Edit**
-- In the GUI in taskbar > Shell > modify
+(Modify tab)
 - You can add any item to Hide box to hide it everywhere, or in More options menu or active with Shift button, just drag an id from the ids list and drop it in any of the boxes. 
 - You can edit any option in context menu's name and icon, write the old name, and the new name you want and if you don't want to add a custom icon you can leave the icon option blank, it will use the default icon. 
 - You can see and delete any custom display name to set it as the default name and icon.
-_____________________________________________________________________
 
-**GUI Theme editor**
-- Taskbar > Shell > theme 
+(Theme tab)
+- Change the conext menu's theme here (UI is very ugly I know, and missing a lot of features but I'm working on it).
+
+(Shell tab) 
+- Hide any thing from context menu in (remove items)
+- Add or remove a custom file containing commands or shortcuts in (import files)
+
+(Shortcut tab)
+- Add a shortcut or command in 1 file (import shortcut.nss from Shell tab if not imported).
 
 _____________________________________________________________________
 
@@ -231,22 +225,6 @@ _____________________________________________________________________
 <img src="https://i.imgur.com/2GMg2cx.png" alt="Theme" width="400">
 <img src="https://i.imgur.com/FQFhX81.png" alt="Modify" width="400">
 
-
-_____________________________________________________________________
-
-**Added GUI to taskbar**
-
-![](https://i.imgur.com/lWG7w2c.png)
-
-_____________________________________________________________________
-_____________________________________________________________________
-
-## issues & fixes
-- Color picking only works on 1 monitor, I'll try to fix this.
-- background remover may not work, not sure why but will investigate.
-
-_____________________________________________________________________
-_____________________________________________________________________
 _____________________________________________________________________
   
 ## License
