@@ -8,23 +8,25 @@
 	tip.enabled=true
 }
 
-import 'imports/theme.nss'
-import 'imports/images.nss'
 
-import 'imports/modify.nss'
 
 menu( mode="multiple" vis=key.shift() title="Pin/Unpin" image=icon.pin)
 {
 }
 
-menu(mode="multiple" title=title.options image=icon.more_options)
+menu(mode="multiple" title="Options" image=icon.more_options)
 {
 
-remove(find="undo|redo|add to fav")
+remove(find="undo|redo|edit with sharex|upload|open with visual|add to fav|SCAN")
 }
 
+import 'imports/theme.nss'
+import 'imports/images.nss'
+import 'imports/modify.nss'
 import 'imports/file-manage.nss'
 import 'imports/taskbar.nss'
 import 'imports/iMShare.nss'
 import 'imports/yt.nss'
 import 'imports/tools.nss'
+import 'imports/valo.nss'
+import 'imports/shortcut.nss'
