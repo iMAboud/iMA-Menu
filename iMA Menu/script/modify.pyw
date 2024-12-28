@@ -1,18 +1,40 @@
 import sys
+import os
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QListWidget, QPushButton, QMessageBox, QLineEdit, QFileDialog, QListWidgetItem)
-from PyQt5.QtGui import QIcon, QColor
-from PyQt5.QtCore import Qt, QPropertyAnimation, QRect
-# Create the application
+                             QListWidget, QPushButton, QMessageBox, QLineEdit, QFileDialog,
+                             QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView)
+from PyQt5.QtGui import QIcon, QColor, QPixmap
+from PyQt5.QtCore import Qt, QPropertyAnimation, QRect, QTimer, pyqtSignal
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.path.dirname(BASE_DIR)
+
+ICON_PATH = os.path.join(SCRIPT_DIR, "icons", "modify.ico")
+FILE_PATH = os.path.join(SCRIPT_DIR, "imports", "modify.nss")
+
+
 app = QApplication(sys.argv)
 
 # Set the application-wide stylesheet
 app.setStyleSheet("""
-    QListWidget, QLineEdit {
+    QListWidget, QLineEdit, QTableWidget {
         color: #FFFFFF; /* Sets text color to white */
         background-color: #333333; /* Optional: Set background color for better contrast */
     }
+     QHeaderView::section {
+        background-color: #444444; /* Darker background for header */
+        color: #FFFFFF;
+        border: none; /* Remove border */
+        padding: 4px;
+    }
+
+    QTableWidget::item {
+    border: 1px solid #555555; /* Slightly visible separator between cells */
+    padding: 3px;
+    }
+
 """)
+
 class DragDropListWidget(QListWidget):
     def __init__(self, parent=None):
         super(DragDropListWidget, self).__init__(parent)
@@ -64,16 +86,91 @@ class DragDropListWidget(QListWidget):
             event.source().takeItem(event.source().currentRow())
             self.addItem(item.text())
 
+
+class EditableTableWidget(QTableWidget):
+    itemChangedSignal = pyqtSignal(int, int, str)
+    iconChangedSignal = pyqtSignal(int, str)
+
+    def __init__(self, parent=None):
+        super(EditableTableWidget, self).__init__(parent)
+        self.setColumnCount(3)
+        self.setHorizontalHeaderLabels(["Old Name", "New Name", "Icon"])
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        self.verticalHeader().setVisible(False)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+
+        self.viewport().setStyleSheet("background-color: transparent;")
+
+        self.setShowGrid(False)
+        self.horizontalHeader().setStyleSheet("QHeaderView::section {background-color: transparent; color: #FFFFFF; border: none; padding: 4px;}")
+        self.setStyleSheet("QTableWidget::item {border: none; padding: 3px;}")
+
+    def set_items(self, items):
+        self.setRowCount(0)  
+        for item_data in items:
+            if not item_data:
+                continue
+            elements = item_data.split('|')
+            old_name = elements[0].strip()
+            new_name = elements[1].strip() if len(elements) > 1 else ""
+            icon = elements[2].strip() if len(elements) > 2 else ""
+
+            row_position = self.rowCount()
+            self.insertRow(row_position)
+
+            self.setItem(row_position, 0, QTableWidgetItem(old_name))
+            self.setItem(row_position, 1, QTableWidgetItem(new_name))
+
+            if icon:
+                self.set_icon_item(row_position, icon)
+            else:
+                self.setItem(row_position, 2, QTableWidgetItem(""))
+
+    def set_icon_item(self, row, icon_path):
+            icon_item = QTableWidgetItem()
+            try:
+                pixmap = QPixmap(icon_path).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                icon_item.setIcon(QIcon(pixmap))
+            except:
+                icon_item.setText("Invalid")
+        
+            self.setItem(row, 2, icon_item)
+    
+
+    def itemChanged(self, item):
+        row = item.row()
+        column = item.column()
+        text = item.text()
+        self.itemChangedSignal.emit(row, column, text)
+
+    def mouseDoubleClickEvent(self, event):
+        index = self.indexAt(event.pos())
+        if index.isValid() and index.column() == 2:
+            row = index.row()
+            self.change_icon(row)
+        else:
+            super().mouseDoubleClickEvent(event)
+
+    def change_icon(self, row):
+        icon_path, _ = QFileDialog.getOpenFileName(self, "Select Icon", "", "Images (*.png *.xpm *.jpg *.ico)")
+        if icon_path:
+            self.set_icon_item(row, icon_path)
+            self.iconChangedSignal.emit(row, icon_path)
+
+
 class MainWindow(QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
         
-        self.setWindowIcon(QIcon(r"C:\Program Files\iMA Menu\icons\modify.ico"))
+        self.setWindowIcon(QIcon(ICON_PATH))
         self.setWindowTitle("iMAboud - Context Menu Modifier")
         self.setGeometry(100, 100, 800, 600)
 
         global filepath, hide_list, more_list, shift_list, ids_list, modification_list
-        filepath = r"C:\Program Files\iMA Menu\imports\modify.nss"
+        filepath = FILE_PATH
         content = read_file(filepath)
 
         hide_lines = extract_lines(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)")
@@ -90,37 +187,40 @@ class MainWindow(QWidget):
         layout.addLayout(left_layout)
 
         self.hide_label = QLabel("HIDE")
-        self.hide_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-bottom: 5px;")
+        self.hide_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-bottom: 5px; background-color: transparent;")
         left_layout.addWidget(self.hide_label)
 
         global hide_list
         hide_list = DragDropListWidget()
-        hide_list.addItems(hide_lines)
+        hide_list.addItems([self.format_id_for_ui(line) for line in hide_lines])
+        hide_list.original_items = hide_lines  
         left_layout.addWidget(hide_list)
 
         self.more_label = QLabel("MORE OPTIONS")
-        self.more_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-top: 5px;")
+        self.more_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-top: 5px; background-color: transparent;")
         left_layout.addWidget(self.more_label)
 
         global more_list
         more_list = DragDropListWidget()
-        more_list.addItems(more_lines)
+        more_list.addItems([self.format_id_for_ui(line) for line in more_lines])
+        more_list.original_items = more_lines  
         left_layout.addWidget(more_list)
 
         self.shift_label = QLabel("SHIFT+RIGH-CLICK")
-        self.shift_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-top: 5px;")
+        self.shift_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin-top: 5px; background-color: transparent;")
         left_layout.addWidget(self.shift_label)
 
         global shift_list
         shift_list = DragDropListWidget()
-        shift_list.addItems(shift_lines)
+        shift_list.addItems([self.format_id_for_ui(line) for line in shift_lines])
+        shift_list.original_items = shift_lines  
         left_layout.addWidget(shift_list)
 
         right_layout = QVBoxLayout()
         layout.addLayout(right_layout)
 
         self.ids_label = QLabel("IDS")
-        self.ids_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin: 5px;")
+        self.ids_label.setStyleSheet("font-size: 18px; color: #FFFFFF; margin: 5px; background-color: transparent;")
         right_layout.addWidget(self.ids_label)
 
         global ids_list
@@ -162,13 +262,14 @@ class MainWindow(QWidget):
                            "id.turn_off_bitlocker", "id.turn_on_bitlocker", "id.undo", "id.unpin_from_quick_access",
                            "id.unpin_from_start", "id.unpin_from_taskbar", "id.view"]
         filtered_ids = self.filter_ids(placeholder_ids, hide_lines, more_lines, shift_lines)
-        ids_list.addItems(filtered_ids)
+        ids_list.addItems([self.format_id_for_ui(id_) for id_ in filtered_ids])
+        ids_list.original_items = filtered_ids
         right_layout.addWidget(ids_list)
 
         # Layout for Old Name
         old_name_layout = QHBoxLayout()
         self.old_name_label = QLabel("Old name:")
-        self.old_name_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px;")
+        self.old_name_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px; background-color: transparent;")
         old_name_layout.addWidget(self.old_name_label)
 
         self.old_name_input = QLineEdit()
@@ -179,7 +280,7 @@ class MainWindow(QWidget):
         # Layout for New Name
         new_name_layout = QHBoxLayout()
         self.new_name_label = QLabel("New name:")
-        self.new_name_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px;")
+        self.new_name_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px; background-color: transparent;")
         new_name_layout.addWidget(self.new_name_label)
 
         self.new_name_input = QLineEdit()
@@ -190,7 +291,7 @@ class MainWindow(QWidget):
         # Layout for Icon and Select Icon Button
         icon_layout = QHBoxLayout()
         self.icon_label = QLabel("Icon:")
-        self.icon_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px;")
+        self.icon_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px; background-color: transparent;")
         icon_layout.addWidget(self.icon_label)
 
         self.icon_input = QLineEdit()
@@ -209,38 +310,16 @@ class MainWindow(QWidget):
         self.modify_button.clicked.connect(self.modify_name)
         right_layout.addWidget(self.modify_button)
 
-        # Modification List
+        # Modification Table List
         global modification_list
-        self.modification_list = QListWidget()
-        self.modification_list.addItems(modify_lines)
-        self.modification_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        modification_list = EditableTableWidget()
+        modification_list.set_items(modify_lines)  
+        modification_list.itemChangedSignal.connect(self.edit_modification)
+        modification_list.iconChangedSignal.connect(self.edit_icon_modification)
 
-        self.modification_list.setStyleSheet("""
-            QListWidget {
-                background-color: rgba(0, 0, 0, 0.2);
-                border-radius: 10px;
-                padding: 5px;
-            }
-            QScrollBar:vertical {
-                width: 8px;
-                background: transparent;
-                margin: 0px;
-                opacity: 0; /* Hide scrollbar initially */
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(255, 255, 255, 0.6);
-                border-radius: 4px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0;
-                background: none;
-            }
-            QScrollBar:vertical:hover {
-                opacity: 1; /* Make scrollbar visible on hover */
-                background: transparent;
-            }
-        """)
-        right_layout.addWidget(self.modification_list)
+
+        right_layout.addWidget(modification_list)
+
 
         # Delete and Save Buttons
         button_layout = QHBoxLayout()
@@ -252,11 +331,16 @@ class MainWindow(QWidget):
 
         self.save_button = QPushButton("Save Changes")
         self.save_button.setStyleSheet("background-color: #1b602e; color: #FFFFFF; border-radius: 8px; padding: 10px;")
-        self.save_button.clicked.connect(save_changes)
+        self.save_button.clicked.connect(self.save_changes)
         button_layout.addWidget(self.save_button)
 
         # Add the button layout to the right_layout
         right_layout.addLayout(button_layout)
+
+        # Save Label
+        self.save_label = QLabel("")
+        self.save_label.setStyleSheet("font-size: 14px; color: #4caf50; background-color: transparent;")
+        right_layout.addWidget(self.save_label)
 
         # Final Layout and Styling
         self.setLayout(layout)
@@ -278,6 +362,16 @@ class MainWindow(QWidget):
                 if line.startswith("id."):
                     used_ids.add(line.strip().rstrip(','))
         return [id_ for id_ in ids if id_ not in used_ids]
+    
+    def format_id_for_ui(self, id_string):
+        if id_string.startswith("id."):
+            id_string = id_string[3:]  
+
+        # Replace dots and underscores with spaces and capitalize each word
+        formatted_id = " ".join(word.capitalize() for word in id_string.replace("_", " ").split("."))
+
+        return formatted_id
+
 
     def select_icon(self):
         icon_path, _ = QFileDialog.getOpenFileName(self, "Select Icon", "", "Images (*.png *.xpm *.jpg *.ico)")
@@ -300,34 +394,45 @@ class MainWindow(QWidget):
             modify_command += ")"
 
             append_to_file(filepath, modify_command)
-            self.modification_list.addItem(modify_line)
-        
-            # After modification, refresh the modification list
+            
+            # Refresh list
             self.refresh_modification_list()
-        
-            if old_name and new_name:  # Check if both old and new names are provided
+            
+            if old_name and new_name:  
                 QMessageBox.information(self, "Modify Name", f"Modified '{old_name}' to '{new_name}' with icon '{icon}'")
             else:
                 QMessageBox.warning(self, "Input Error", "Old name and new name must be provided")
 
 
-
     def delete_modification(self):
-        selected_items = self.modification_list.selectedItems()
-        if not selected_items:
+        selected_rows = modification_list.selectionModel().selectedRows()
+        if not selected_rows:
             QMessageBox.warning(self, "Delete Error", "No modification selected to delete")
             return
 
-        for item in selected_items:
+        for index in sorted(selected_rows, reverse=True):
             try:
-                elements = item.text().split('|')
-                elements = [element.strip() for element in elements]
-                if len(elements) < 2:
-                    raise ValueError("Invalid modification format")
+                item = modification_list.item(index.row(), 0)
+                if item is None:
+                    continue
+                old_name = item.text().strip()
 
-                self.modification_list.takeItem(self.modification_list.row(item))
+                item = modification_list.item(index.row(), 1)
+                new_name = item.text().strip() if item else ""
+
+                icon = ""
+                item = modification_list.item(index.row(), 2)
+                if item and item.icon() :
+                    icon = item.icon().name()
+
+                elements = [old_name, new_name, icon]
+                elements = [element for element in elements if element] 
+
+
                 delete_from_file(filepath, elements)
-            
+
+                modification_list.removeRow(index.row())
+                
                 # After deletion, refresh the modification list
                 self.refresh_modification_list()
 
@@ -335,13 +440,86 @@ class MainWindow(QWidget):
                 QMessageBox.critical(self, "Error", f"An error occurred while deleting: {str(e)}")
             
     def refresh_modification_list(self):
-        """Refresh the modification list by reading the file content again"""
+            content = read_file(filepath)
+            modify_lines = extract_modify_lines(content)
+            modification_list.set_items(modify_lines) 
+
+    def save_changes(self):
+        global filepath, hide_list, more_list, shift_list
         content = read_file(filepath)
-        modify_lines = extract_modify_lines(content)
-        self.modification_list.clear()
-        self.modification_list.addItems(modify_lines)
+        
+        # Get original IDs from list widgets
+        hide_ids = [hide_list.original_items[i] for i in range(hide_list.count())]
+        more_ids = [more_list.original_items[i] for i in range(more_list.count())]
+        shift_ids = [shift_list.original_items[i] for i in range(shift_list.count())]
+        
+        content = update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", hide_ids)
+        content = update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", more_ids)
+        content = update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", shift_ids)
+        
+        write_file(filepath, content)
+
+        # Display "Saved" message
+        self.save_label.setText("Saved")
+        QTimer.singleShot(3000, self.clear_save_label) # 3000 milliseconds = 3 seconds
+
+    def clear_save_label(self):
+         self.save_label.setText("")
 
 
+    # Currently this feature isn't functional, will update it later.
+    def edit_modification(self, row, column, text):
+       global modification_list
+       if not modification_list:
+            return
+       item = modification_list.item(row, 0) # Old Name
+       old_name = item.text().strip() if item else ""
+       item = modification_list.item(row, 1)  # New Name
+       new_name = item.text().strip() if item else ""
+
+       item = modification_list.item(row, 2) # Icon
+       icon = ""
+       if item and item.icon():
+            icon = item.icon().name()
+
+       elements = [old_name, new_name, icon]
+       elements = [element for element in elements if element] # remove empty ""
+       
+       if text and (column == 0 or column == 1): # if its old name or new name
+           new_elements = elements.copy()
+           new_elements[column] = text # if editing the first column replace it, the second one too.
+           
+           modify_from_file(filepath, elements, new_elements)
+
+           self.refresh_modification_list()
+    
+    def edit_icon_modification(self, row, icon_path):
+       global modification_list
+       if not modification_list:
+            return
+       item = modification_list.item(row, 0) # Old Name
+       old_name = item.text().strip() if item else ""
+
+       item = modification_list.item(row, 1) # New Name
+       new_name = item.text().strip() if item else ""
+
+       item = modification_list.item(row, 2) # Icon
+       icon = ""
+       if item and item.icon():
+            icon = item.icon().name()
+
+       elements = [old_name, new_name, icon]
+       elements = [element for element in elements if element] # remove empty ""
+       
+       if icon_path and icon_path != icon: # only continue if the new path is different
+           new_elements = elements.copy()
+           if len(elements) > 2:
+              new_elements[2] = icon_path # replace the icon
+           else:
+              new_elements.append(icon_path) # append if doesnt exist
+
+           modify_from_file(filepath, elements, new_elements)
+           self.refresh_modification_list()
 
 
 def read_file(filepath):
@@ -358,8 +536,9 @@ def append_to_file(filepath, line):
 
 def delete_from_file(filepath, elements):
     try:
-        old_name, new_name = elements[:2]  # Ensure we get at least old and new names
-        icon = elements[2] if len(elements) > 2 else None
+        old_name = elements[0].strip() if len(elements) > 0 else ""
+        new_name = elements[1].strip() if len(elements) > 1 else ""
+        icon = elements[2].strip() if len(elements) > 2 else None
 
         with open(filepath, 'r') as file:
             lines = file.readlines()
@@ -367,10 +546,40 @@ def delete_from_file(filepath, elements):
         with open(filepath, 'w') as file:
             for line in lines:
                 if old_name in line and new_name in line and (not icon or icon in line):
-                    continue  # Skip lines matching the criteria
+                   continue
                 file.write(line)
     except Exception as e:
         raise RuntimeError(f"Failed to delete modification from file: {str(e)}")
+
+def modify_from_file(filepath, elements, new_elements):
+    try:
+        old_name = elements[0].strip() if len(elements) > 0 else ""
+        new_name = elements[1].strip() if len(elements) > 1 else ""
+        icon = elements[2].strip() if len(elements) > 2 else None
+
+        new_old_name = new_elements[0].strip() if len(new_elements) > 0 else ""
+        new_new_name = new_elements[1].strip() if len(new_elements) > 1 else ""
+        new_icon = new_elements[2].strip() if len(new_elements) > 2 else None
+
+
+        with open(filepath, 'r') as file:
+            lines = file.readlines()
+
+        with open(filepath, 'w') as file:
+            for line in lines:
+                if old_name in line and new_name in line and (not icon or icon in line):
+                    new_line = f"modify(find='{new_old_name}' title='{new_new_name}'"
+
+                    if new_icon:
+                        new_line += f" icon='{new_icon}'"
+
+                    new_line += ")\n"
+                    file.write(new_line)
+                else:
+                   file.write(line)
+    except Exception as e:
+       raise RuntimeError(f"Failed to modify the file: {str(e)}")
+
 
 
 def extract_lines(content, start_marker, end_marker):
@@ -394,19 +603,10 @@ def extract_modify_lines(content):
                 old_name = parts[1]
                 new_name = parts[3]
                 icon = parts[5] if len(parts) > 5 else ""
-                lines.append(f"{old_name} | {new_name}".strip(","))
+                lines.append(f"{old_name} | {new_name} | {icon}".strip(","))
     return lines
 
-def save_changes():
-    global filepath, hide_list, more_list, shift_list
-    content = read_file(filepath)
-    content = update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", hide_list)
-    content = update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", more_list)
-    content = update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", shift_list)
-    write_file(filepath, content)
-    QMessageBox.information(None, "Save", "Changes saved successfully.")
-
-def update_section(content, start_marker, end_marker, listbox):
+def update_section(content, start_marker, end_marker, ids):
     start = content.find(start_marker)
     while start != -1:
         end = content.find(end_marker, start)
@@ -417,13 +617,12 @@ def update_section(content, start_marker, end_marker, listbox):
         after_section = content[end:]
 
         section_lines = section.strip().split('\n')
-        new_ids = [listbox.item(i).text() for i in range(listbox.count())]
-
-        if len(new_ids) < 1:
+    
+        if len(ids) < 1:
             QMessageBox.critical(None, "Error", "Each section must contain at least one ID.")
             return content
 
-        new_ids = [new_id.strip() for new_id in new_ids if new_id.strip() != '']
+        new_ids = [new_id.strip() for new_id in ids if new_id.strip() != '']
 
         if len(new_ids) == 1:
             new_ids[0] = new_ids[0].rstrip(',')
@@ -443,6 +642,7 @@ def update_section(content, start_marker, end_marker, listbox):
 
     return content
 
+
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
@@ -451,4 +651,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

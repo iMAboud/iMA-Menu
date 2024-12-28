@@ -15,4 +15,4 @@ echo.
 echo.
 
 
-powershell -NoExit -Command "Croc send --code YOURCODEHERE \"$(Get-Clipboard)\"" 
+powershell -NoExit -Command "Croc send --code \"$(Get-Clipboard)\"" 

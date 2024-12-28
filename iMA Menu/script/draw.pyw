@@ -5,10 +5,15 @@ import random
 from PIL import Image, ImageDraw, ImageTk
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.path.dirname(BASE_DIR)
+
+ICONS_PATH = os.path.join(SCRIPT_DIR, "script", "draw-icons")
+
 class DrawingApp:
     def __init__(self, master):
         self.master = master
-        self.icons_path = 'C:\\Program Files\\iMA Menu\\script\\draw-icons\\'
+        self.icons_path = ICONS_PATH
         self.master.attributes('-fullscreen', True)
         self.master.attributes('-topmost', True)
         self.master.attributes('-alpha', 0.7)
@@ -25,7 +30,7 @@ class DrawingApp:
         self.is_drawing = False
         self.erase_mode = False
         self.mirror_mode = False
-        self.drawing_tool = 'brush'  # Set default tool to brush
+        self.drawing_tool = 'brush'  
         self.opacity = 0.7
         self.current_stroke = []
         self.random_color_mode = False
@@ -93,7 +98,7 @@ class DrawingApp:
             icon_image = Image.open(icon_path)
             icon_photo = ImageTk.PhotoImage(icon_image)
             button = tk.Button(parent, image=icon_photo, command=lambda: [command(), self.draw_canvas.focus_set()], bg='black', relief=tk.FLAT, bd=0)
-            button.image = icon_photo  # Keep a reference to avoid garbage collection
+            button.image = icon_photo
         except Exception as e:
             print(f"Icon not found for {text}: {e}")
             button = tk.Button(parent, text=text, command=lambda: [command(), self.draw_canvas.focus_set()], bg='black', relief=tk.FLAT, bd=0)
@@ -312,9 +317,9 @@ class DrawingApp:
 
     def on_mousewheel(self, event):
         if event.delta > 0:
-            self.opacity += 0.1
+            self.opacity = min(1.0, self.opacity + 0.1)
         else:
-            self.opacity = max(0.1, self.opacity - 0.1)
+            self.opacity = max(0.01, self.opacity - 0.2)
         self.update_opacity()
 
     def update_opacity(self):
@@ -323,9 +328,9 @@ class DrawingApp:
     def save_options(self):
         save_options_window = tk.Toplevel(self.master)
         save_options_window.title("Save Options")
-        save_options_window.transient(self.master)  # Set the save options window to be a child of the main window
-        save_options_window.grab_set()  # Make the save options window modal
-        save_options_window.focus_set()  # Set the focus to the save options window
+        save_options_window.transient(self.master) 
+        save_options_window.grab_set()  
+        save_options_window.focus_set()  
 
         save_transparent_button = tk.Button(save_options_window, text="Save PNG (Transparent)", command=self.save_png_transparent)
         save_transparent_button.pack(padx=20, pady=10)
