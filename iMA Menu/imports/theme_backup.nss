@@ -1,7 +1,7 @@
 theme
 {
   name = "modern"
-  view = view.medium
+  view = view.small
   image.align = 2
   dark = true
   border.enabled = false
@@ -10,17 +10,17 @@ theme
   border.opacity = 36
   border.radius = 3
   image.enabled = true
-  image.color = [#888888, #888888]
+  image.color = #ffffff
   image.scale = true
   background.color = default
   background.opacity = 0
   background.effect = 3
   item.opacity = 100
   item.radius = 3
-  item.prefix = 1
-  item.text.normal = #888888
+  item.prefix = 0
+  item.text.normal = #55ff7f
   item.text.select = #ffffff
-  item.text.normal-disabled = #404040
+  item.text.normal-disabled = #a6adc8
   item.text.select-disabled = 1
   item.back.select = #000f0f
   item.back.select-disabled = #242323

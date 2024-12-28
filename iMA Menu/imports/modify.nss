@@ -144,12 +144,9 @@ id.open_command_window_here,
 id.open_powershell_window_here) vis=key.shift())
 
 
+
+
 modify(type="recyclebin" where=window.is_desktop and this.id==id.empty_recycle_bin pos=1 sep)
-
-modify(find="unpin" pos="bottom" menu="Pin/Unpin")
-
-modify(find="pin" pos="top" menu="Pin/Unpin")
-
 
 modify(where=this.id==id.copy_as_path title='Path' menu="Manage")
 
@@ -157,4 +154,5 @@ modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]
     pos="bottom" menu="Terminal")
 
 
-
+modify(find='EDIT WITH IDLE' title='Edit Idle' icon=\uE230)
+modify(find='EDIT IN NOTEPAD' title='Edit Notepad' icon=\uE113)

@@ -1,9 +1,5 @@
-    menu(title='YouTube' image='C:\Program Files\iMA Menu\icons\YouTube.ico')
-    {
-        item(title='Video' cmd='C:\Program Files\iMA Menu\script\video.bat' image='C:\Program Files\iMA Menu\icons\video.ico')
-item(title='Audio' cmd='C:\Program Files\iMA Menu\script\audio.bat' image='C:\Program Files\iMA Menu\icons\audio.ico')
-
-
-    }
-
-
+menu(title='YouTube' image=\uE248)
+{
+    item(title='Video' cmd='@app.dir\script\video.bat' image=\uE248)
+    item(title='Audio' cmd='@app.dir\script\audio.bat' image=\uE155)
+}
