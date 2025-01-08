@@ -6,13 +6,16 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QL
 from PyQt5.QtGui import QIcon, QColor, QPixmap
 from PyQt5.QtCore import Qt, QPropertyAnimation, QRect, QTimer, pyqtSignal
 
+# Get the directory of the current script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(BASE_DIR)
 
+# Construct paths relative to the script directory
 ICON_PATH = os.path.join(SCRIPT_DIR, "icons", "modify.ico")
 FILE_PATH = os.path.join(SCRIPT_DIR, "imports", "modify.nss")
 
 
+# Create the application
 app = QApplication(sys.argv)
 
 # Set the application-wide stylesheet
@@ -102,14 +105,16 @@ class EditableTableWidget(QTableWidget):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
 
+        # Set a transparent background for viewport
         self.viewport().setStyleSheet("background-color: transparent;")
 
+        # Remove grid lines
         self.setShowGrid(False)
         self.horizontalHeader().setStyleSheet("QHeaderView::section {background-color: transparent; color: #FFFFFF; border: none; padding: 4px;}")
         self.setStyleSheet("QTableWidget::item {border: none; padding: 3px;}")
 
     def set_items(self, items):
-        self.setRowCount(0)  
+        self.setRowCount(0)  # Clear existing rows
         for item_data in items:
             if not item_data:
                 continue
@@ -193,7 +198,7 @@ class MainWindow(QWidget):
         global hide_list
         hide_list = DragDropListWidget()
         hide_list.addItems([self.format_id_for_ui(line) for line in hide_lines])
-        hide_list.original_items = hide_lines  
+        hide_list.original_items = hide_lines  # Store original IDs
         left_layout.addWidget(hide_list)
 
         self.more_label = QLabel("MORE OPTIONS")
@@ -203,7 +208,7 @@ class MainWindow(QWidget):
         global more_list
         more_list = DragDropListWidget()
         more_list.addItems([self.format_id_for_ui(line) for line in more_lines])
-        more_list.original_items = more_lines  
+        more_list.original_items = more_lines  # Store original IDs
         left_layout.addWidget(more_list)
 
         self.shift_label = QLabel("SHIFT+RIGH-CLICK")
@@ -213,7 +218,7 @@ class MainWindow(QWidget):
         global shift_list
         shift_list = DragDropListWidget()
         shift_list.addItems([self.format_id_for_ui(line) for line in shift_lines])
-        shift_list.original_items = shift_lines  
+        shift_list.original_items = shift_lines  # Store original IDs
         left_layout.addWidget(shift_list)
 
         right_layout = QVBoxLayout()
@@ -313,7 +318,7 @@ class MainWindow(QWidget):
         # Modification Table List
         global modification_list
         modification_list = EditableTableWidget()
-        modification_list.set_items(modify_lines)  
+        modification_list.set_items(modify_lines)  # Load existing modifications
         modification_list.itemChangedSignal.connect(self.edit_modification)
         modification_list.iconChangedSignal.connect(self.edit_icon_modification)
 
@@ -365,7 +370,7 @@ class MainWindow(QWidget):
     
     def format_id_for_ui(self, id_string):
         if id_string.startswith("id."):
-            id_string = id_string[3:]  
+            id_string = id_string[3:]  # remove "id." prefix
 
         # Replace dots and underscores with spaces and capitalize each word
         formatted_id = " ".join(word.capitalize() for word in id_string.replace("_", " ").split("."))
@@ -398,7 +403,7 @@ class MainWindow(QWidget):
             # Refresh list
             self.refresh_modification_list()
             
-            if old_name and new_name:  
+            if old_name and new_name:  # Check if both old and new names are provided
                 QMessageBox.information(self, "Modify Name", f"Modified '{old_name}' to '{new_name}' with icon '{icon}'")
             else:
                 QMessageBox.warning(self, "Input Error", "Old name and new name must be provided")
@@ -426,7 +431,7 @@ class MainWindow(QWidget):
                     icon = item.icon().name()
 
                 elements = [old_name, new_name, icon]
-                elements = [element for element in elements if element] 
+                elements = [element for element in elements if element] # remove empty ""
 
 
                 delete_from_file(filepath, elements)
@@ -442,7 +447,8 @@ class MainWindow(QWidget):
     def refresh_modification_list(self):
             content = read_file(filepath)
             modify_lines = extract_modify_lines(content)
-            modification_list.set_items(modify_lines) 
+            modification_list.set_items(modify_lines) # Load fresh modifications
+
 
     def save_changes(self):
         global filepath, hide_list, more_list, shift_list
@@ -461,13 +467,11 @@ class MainWindow(QWidget):
 
         # Display "Saved" message
         self.save_label.setText("Saved")
-        QTimer.singleShot(3000, self.clear_save_label) # 3000 milliseconds = 3 seconds
+        QTimer.singleShot(5000, self.clear_save_label) # 5000 milliseconds = 5 seconds
 
     def clear_save_label(self):
          self.save_label.setText("")
-
-
-    # Currently this feature isn't functional, will update it later.
+         
     def edit_modification(self, row, column, text):
        global modification_list
        if not modification_list:
@@ -568,6 +572,7 @@ def modify_from_file(filepath, elements, new_elements):
         with open(filepath, 'w') as file:
             for line in lines:
                 if old_name in line and new_name in line and (not icon or icon in line):
+                   # Construct the new line
                     new_line = f"modify(find='{new_old_name}' title='{new_new_name}'"
 
                     if new_icon:

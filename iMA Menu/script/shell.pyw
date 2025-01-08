@@ -99,7 +99,7 @@ class RoundedInputDialog(QDialog):
         buttons_layout.addWidget(cancel_button)
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
-        self.input_field.setFocus()  
+        self.input_field.setFocus()  # Set focus to the input field
 
     def getText(self):
         if self.exec_() == QDialog.Accepted:
@@ -327,10 +327,12 @@ class ShellEditor(QWidget):
 
     def mousePressEvent(self, event):
           if event.button() == Qt.LeftButton:
+             # Deselect from remove list
              if not self.remove_list.geometry().contains(event.pos()):
                  if not self.add_remove_button.geometry().contains(event.pos()) and not self.remove_text_remove_button.geometry().contains(event.pos()):
                      self.remove_list.clearSelection()
 
+            # Deselect from import list
              if not self.import_list.geometry().contains(event.pos()):
                 if not self.add_import_button.geometry().contains(event.pos()) and not self.remove_import_button.geometry().contains(event.pos()):
                     self.import_list.clearSelection()

@@ -5,7 +5,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QEvent
 import os
 from modify import MainWindow as ModifyWindow
 from theme import ThemeEditor
-from shortcut import MainWindow as ShortcutWindow
+from shortcut_creator import MainWindow as ShortcutWindow
 from PyQt5 import QtCore
 from shell import ShellEditor
 import tkinter as tk

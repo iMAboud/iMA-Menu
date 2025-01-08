@@ -5,11 +5,12 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QCheckBox, QSlider, QComboBox, QColorDialog, QFileDialog,
     QScrollArea, QFrame, QSplitter, QStackedWidget, QGridLayout, QSpacerItem,
-    QSizePolicy
+    QSizePolicy, QRadioButton, QButtonGroup
 )
 from PyQt5.QtGui import QIcon, QColor, QFont, QPixmap, QPainter, QPolygon
 from PyQt5.QtCore import Qt, QTimer, QSize, pyqtSignal, QPoint
 import shutil
+import math
 
 # --- Constants ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,96 +25,34 @@ class ColorPickerButton(QPushButton):
 
     def __init__(self, initial_color="#ffffff", parent=None):
         super().__init__(parent)
-        self.setFixedSize(30, 30)
-        self.set_color(initial_color)
+        self.setFixedSize(50, 50)
+        self.setStyleSheet("border: 1px solid #444; border-radius: 25px;")
+        self.label = QLabel(self)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setStyleSheet("background-color: transparent; color: #ddd;")
+        self.layout = QVBoxLayout(self)
+        self.layout.addWidget(self.label)
+        self.hex_color = initial_color
+        self.is_default = False  # Add an attribute to track if it's default
+        self.set_color(initial_color) #ensure label is set on start
         self.clicked.connect(self._open_color_dialog)
-        self.setStyleSheet("border: 2px solid #444;")
 
     def set_color(self, hex_color):
         self.hex_color = hex_color
-        self.setStyleSheet(f"background-color: {hex_color}; border: 2px solid #444;")
+        self.setStyleSheet(f"background-color: {hex_color}; border: 1px solid #444; border-radius: 25px;")
+        self.label.setStyleSheet("background-color: transparent; color: #ddd; border: none;") # Remove label border
+        self.label.setText(hex_color if not self.is_default else "default") #update label
+    def set_default(self, is_default):
+        self.is_default = is_default
+        self.set_color(self.hex_color)
 
     def _open_color_dialog(self):
+        if self.is_default:
+              self.set_default(False) # Remove default state
         color = QColorDialog.getColor(QColor(self.hex_color), self)
         if color.isValid():
             self.set_color(color.name())
             self.colorChanged.emit(self.hex_color)
-
-# --- Collapsible Section ---
-class CollapsibleSection(QWidget):
-    def __init__(self, title, parent=None):
-        super().__init__(parent)
-        self.is_collapsed = False
-        self._setup_ui(title)
-
-    def _setup_ui(self, title):
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-
-        self.header = QPushButton(title, self)
-        self.header.setStyleSheet("""QPushButton {
-            background-color: #333;
-            color: #ddd;
-            border: 2px solid #444;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 14px;
-            text-align: left;
-            margin-bottom: 1px;
-        }
-        QPushButton:hover {
-            background-color: #444;
-        }""")
-        self.header.setCursor(Qt.PointingHandCursor)
-        self.header.clicked.connect(self._toggle)
-        self.main_layout.addWidget(self.header)
-
-        self.content_area = QWidget()
-        self.content_layout = QVBoxLayout(self.content_area)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(0)
-        self.main_layout.addWidget(self.content_area)
-        self.content_area.hide()
-
-    def _toggle(self):
-        self.is_collapsed = not self.is_collapsed
-        self.content_area.setVisible(not self.is_collapsed)
-
-    def add_widget(self, widget):
-        self.content_layout.addWidget(widget)
-
-# --- Expand Arrow Button ---
-class ExpandArrowButton(QPushButton):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(18, 18)
-        self.setCursor(Qt.PointingHandCursor)
-        self.is_expanded = False
-        self._update_arrow_icon()
-
-    def _update_arrow_icon(self):
-        pixmap = QPixmap(18, 18)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        polygon = QPolygon()
-        if self.is_expanded:
-            polygon.append(QPoint(0, 5))
-            polygon.append(QPoint(9, 14))
-            polygon.append(QPoint(18, 5))
-        else:
-             polygon.append(QPoint(5, 0))
-             polygon.append(QPoint(14, 9))
-             polygon.append(QPoint(5, 18))
-        painter.setBrush(QColor("#ddd"))
-        painter.drawPolygon(polygon)
-        painter.end()
-        self.setIcon(QIcon(pixmap))
-        self.setStyleSheet("QPushButton { border: none; }")
-
-    def toggle_expand(self):
-        self.is_expanded = not self.is_expanded
-        self._update_arrow_icon()
 
 # --- Main Theme Editor ---
 class ThemeEditor(QMainWindow):
@@ -132,10 +71,10 @@ class ThemeEditor(QMainWindow):
             "background.opacity": (0, 100),
             "font.size": (6, 100),
             "border.radius": (0, 4),
-            "background.effect": (0, 3),
-            "item.prefix": (0, 2),
-            "font.weight": (1, 9),
+             "item.prefix": (0, 2),
+             "font.weight": (1, 9),
         }
+        self.color_pickers = {} # Keep track of color pickers for default toggle
         self._setup_ui()
         self._load_theme()
         self.setWindowIcon(QIcon(ICON_PATH))
@@ -149,86 +88,69 @@ class ThemeEditor(QMainWindow):
 
     def _setup_ui(self):
         self.setWindowTitle('iMAboud - Theme Editor')
-        self.setGeometry(100, 100, 1000, 700)
+        self.setGeometry(100, 100, 900, 700)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
-        splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(splitter)
+        main_layout = QGridLayout(central_widget)
+        central_widget.setStyleSheet("background-color: #2b2b2b;")
+        main_layout.setSpacing(15) # Spacing between frames
 
-        self.sidebar = QFrame()
-        self.sidebar.setFixedWidth(180)
-        self.sidebar.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
-        sidebar_layout = QVBoxLayout(self.sidebar)
-        splitter.addWidget(self.sidebar)
+        # Create Frames
+        self.dropdown_frame = QFrame(self)
+        self.dropdown_frame.setStyleSheet("QFrame { border: 1px solid #444; border-radius: 5px;}")
+        self.slider_frame = QFrame(self)
+        self.slider_frame.setStyleSheet("QFrame { border: 1px solid #444; border-radius: 5px;}")
+        self.checkbox_frame = QFrame(self)
+        self.checkbox_frame.setStyleSheet("QFrame { border: 1px solid #444; border-radius: 5px;}")
+        self.color_picker_frame = QFrame(self)
+        self.color_picker_frame.setStyleSheet("QFrame { border: 1px solid #444; border-radius: 5px;}")
+        self.additional_settings_frame = QFrame(self)
+        self.additional_settings_frame.setStyleSheet("QFrame { border: 1px solid #444; border-radius: 5px;}")
 
-        self.tab_area = QFrame()
-        self.tab_area.setStyleSheet("background-color: #333; border: none;")
-        self.tab_area_layout = QVBoxLayout(self.tab_area)
-        splitter.addWidget(self.tab_area)
-
-        self.tab_buttons = {}
-        icon_paths = {
-            "General": os.path.join(SCRIPT_DIR, "script", "theme-icons", "general.ico"),
-            "Border": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Border.ico"),
-            "Image": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Image.ico"),
-            "Background": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Background.ico"),
-            "Item": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Item.ico"),
-            "Font": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Font.ico"),
-            "Shadow": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Shadow.ico"),
-            "Separator": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Separator.ico"),
-            "Symbol": os.path.join(SCRIPT_DIR, "script", "theme-icons", "Symbol.ico"),
-        }
-
-        categories = ["General", "Border", "Background", "Item", "Font", "Shadow", "Separator", "Image", "Symbol"]
-        for category in categories:
-            tab_button = QPushButton(QIcon(icon_paths.get(category)), category, self)
-            tab_button.setStyleSheet("""QPushButton {
-                background-color: #333;
-                color: #ddd;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 14px;
-                text-align: left;
-                margin: 1px;
-            }
-            QPushButton:hover {
-                background-color: #444;
-            }
-            QPushButton:checked {
-                background-color: #555;
-            }""")
-            tab_button.setCheckable(True)
-            tab_button.clicked.connect(lambda checked, cat=category: self._show_form(cat))
-            sidebar_layout.addWidget(tab_button)
-            self.tab_buttons[category] = tab_button
-
-        self.stacked_widget = QStackedWidget()
-        self.tab_area_layout.addWidget(self.stacked_widget)
-
-        button_layout = QVBoxLayout()
+        # Add Frames to Layout
+        main_layout.addWidget(self.dropdown_frame, 0, 0, 1, 1)
+        main_layout.addWidget(self.slider_frame, 0, 1, 1, 2)
+        main_layout.addWidget(self.checkbox_frame, 1, 0, 1, 1)
+        main_layout.addWidget(self.additional_settings_frame, 1, 1, 1, 2)
+        main_layout.addWidget(self.color_picker_frame, 2, 0, 1, 3)
+        # Create Layouts for Frames
+        self.dropdown_layout = QVBoxLayout(self.dropdown_frame)
+        self.dropdown_layout.setContentsMargins(10, 10, 10, 10)
+        self.dropdown_layout.setSpacing(5)
+        self.slider_layout = QGridLayout(self.slider_frame)
+        self.slider_layout.setContentsMargins(10, 10, 10, 10)
+        self.slider_layout.setSpacing(5)
+        self.checkbox_layout = QVBoxLayout(self.checkbox_frame)
+        self.checkbox_layout.setContentsMargins(10, 10, 10, 10)
+        self.checkbox_layout.setSpacing(5)
+        self.color_picker_layout = QGridLayout(self.color_picker_frame)
+        self.color_picker_layout.setContentsMargins(10, 10, 10, 10)
+        self.color_picker_layout.setSpacing(5)
+        self.additional_settings_layout = QVBoxLayout(self.additional_settings_frame)
+        self.additional_settings_layout.setContentsMargins(10, 10, 10, 10)
+        self.additional_settings_layout.setSpacing(5)
+        # Control Buttons
+        button_layout = QHBoxLayout()
         self.save_button = QPushButton('Save Theme', self)
         self.save_button.clicked.connect(self._save_theme)
         self.import_button = QPushButton('Import Theme', self)
         self.import_button.clicked.connect(self._import_theme)
         self.reset_button = QPushButton('Reset to Default', self)
         self.reset_button.clicked.connect(self._reset_to_default)
-
         for btn in [self.save_button, self.import_button, self.reset_button]:
-            btn.setStyleSheet("""QPushButton {
-                font-size: 14px;
-                color: white;
-                background-color: #444;
-                border-radius: 4px;
-                padding: 10px;
-                margin: 2px;
+           btn.setStyleSheet("""QPushButton {
+               font-size: 14px;
+               color: white;
+               background-color: #444;
+               border-radius: 4px;
+               padding: 10px;
+               margin: 2px;
             }
-            QPushButton:hover {
-                background-color: #555;
+           QPushButton:hover {
+               background-color: #555;
             }""")
-            button_layout.addWidget(btn)
-        sidebar_layout.addLayout(button_layout)
+           button_layout.addWidget(btn)
+        main_layout.addLayout(button_layout, 3, 0, 1, 3)
 
     def _load_theme(self):
         if os.path.exists(THEME_PATH):
@@ -253,27 +175,50 @@ class ThemeEditor(QMainWindow):
                 key, value = line.split('=', 1)
                 self.theme_data[key.strip()] = value.strip().strip('"')
     def _create_form(self):
-        while self.stacked_widget.count() > 0:
-            widget = self.stacked_widget.widget(0)
-            self.stacked_widget.removeWidget(widget)
-            widget.deleteLater()
+        # Clear Existing Layouts
+        while self.dropdown_layout.count():
+           item = self.dropdown_layout.takeAt(0)
+           widget = item.widget()
+           if widget:
+              widget.deleteLater()
+        while self.slider_layout.count():
+           item = self.slider_layout.takeAt(0)
+           widget = item.widget()
+           if widget:
+              widget.deleteLater()
+        while self.checkbox_layout.count():
+           item = self.checkbox_layout.takeAt(0)
+           widget = item.widget()
+           if widget:
+              widget.deleteLater()
+        while self.color_picker_layout.count():
+            item = self.color_picker_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                 widget.deleteLater()
+        while self.additional_settings_layout.count():
+           item = self.additional_settings_layout.takeAt(0)
+           widget = item.widget()
+           if widget:
+              widget.deleteLater()
 
         categories = {
             "General": ["name", "view"],
-            "Border": ["border.enabled", "border.size", "border.color", "border.opacity", "border.radius"],
-            "Background": ["background.color", "background.opacity", "background.effect"],
-            "Item": [
+            "Border": ["border.enabled", "border.size", "border.opacity", "border.radius"],
+            "Background": ["background.opacity"],
+             "Item": [
                 "item.opacity", "item.radius", "item.prefix", "item.text.normal",
-                "item.text.select", "item.text.normal-disabled", "item.text.select-disabled",
-                "item.back.select", "item.back.select-disabled", "item.border.normal",
-                "item.border.normal.disabled", "item.border.select", "item.border.select.disabled"
+                "item.text.select", "item.text.normal-disabled",
+                 "item.back.select",  "item.border.normal",
+                "item.border.normal.disabled",  "item.border.select",
+                "item.back.select-disabled",  "item.border.select.disabled", "item.text.select-disabled"
             ],
             "Font": ["font.size", "font.name", "font.weight", "font.italic"],
             "Shadow": ["shadow.enabled", "shadow.size", "shadow.opacity", "shadow.color"],
             "Separator": ["separator.size", "separator.color", "separator.opacity"],
             "Image": ["image.enabled", "image.color"],
-            "Symbol": [
-                "symbol.normal", "symbol.select", "symbol.normal-disabled",
+             "Symbol": [
+                 "symbol.normal", "symbol.select", "symbol.normal-disabled",
                 "symbol.select-disabled"
             ]
         }
@@ -287,9 +232,9 @@ class ThemeEditor(QMainWindow):
             "border.radius": "Border Radius",
             "image.enabled": "Enable Image",
             "image.color": "Image Color",
-            "background.color": "Background Color",
+             "background.color": "Background Color",
             "background.opacity": "Background Opacity",
-            "background.effect": "Background Effect : 0 = Disabled, 1 = Transparent, 2 = Blur, 3 = Acrylic",
+             "background.effect": "Background Effect",
             "item.radius": "Item Radius",
             "item.text.normal": "Normal Text",
             "item.text.select": "Selected Text",
@@ -300,7 +245,7 @@ class ThemeEditor(QMainWindow):
             "item.border.select.disabled": "Selected Disabled Border",
             "item.text.normal-disabled": "Normal Disabled Text",
             "item.text.select-disabled": "Selected Disabled Text",
-            "item.back.select-disabled": "Selected Disabled Background",
+              "item.back.select-disabled": "Selected Disabled Background",
             "font.size": "Font Size",
             "font.name": "Font Name",
             "font.weight": "Font Weight",
@@ -311,163 +256,160 @@ class ThemeEditor(QMainWindow):
             "shadow.color": "Shadow Color",
             "separator.size": "Separator Size",
             "separator.color": "Separator Color",
-            "separator.opacity": "Separator Opacity",
-            "symbol.normal": "Normal Symbol",
+             "separator.opacity": "Separator Opacity",
+             "symbol.normal": "Normal Symbol",
             "symbol.select": "Selected Symbol",
-            "symbol.normal-disabled": "Disabled Symbol",
-            "symbol.select-disabled": "Selected Disabled Symbol"
+              "symbol.normal-disabled": "Disabled Symbol",
+             "symbol.select-disabled": "Selected Disabled Symbol"
         }
-
+        slider_index = 0
+        color_index = 0
         for category, keys in categories.items():
-            form_scroll = QScrollArea()
-            form_scroll.setWidgetResizable(True)
-            form_widget = QWidget()
-            form_layout = QVBoxLayout(form_widget)
-            form_layout.setContentsMargins(5, 5, 5, 5)
-            form_layout.setSpacing(10)
+            for key in keys:
+                if key in self.theme_data:
+                    value = self.theme_data[key]
+                    display_name = display_names.get(key, key)
+                    if key == "item.opacity":
+                       min_val, max_val = self.slider_ranges.get(key, (0, 100))
+                       self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                       slider_index+=1
+                    elif key == "background.opacity":
+                        min_val, max_val = self.slider_ranges.get(key, (0, 100))
+                        self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                        slider_index+=1
+                    elif key == "border.opacity":
+                        min_val, max_val = self.slider_ranges.get(key, (0, 100))
+                        self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                        slider_index+=1
+                    elif key == "shadow.opacity":
+                       min_val, max_val = self.slider_ranges.get(key, (0, 100))
+                       self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                       slider_index+=1
+                    elif key == "separator.opacity":
+                        min_val, max_val = self.slider_ranges.get(key, (0, 100))
+                        self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                        slider_index+=1
+                    elif key == "border.size":
+                        min_val, max_val = self.slider_ranges.get(key, (0, 10))
+                        self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                        slider_index+=1
+                    elif key == "shadow.size":
+                        min_val, max_val = self.slider_ranges.get(key, (0, 30))
+                        self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                        slider_index+=1
+                    elif key == "separator.size":
+                         min_val, max_val = self.slider_ranges.get(key, (0, 40))
+                         self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                         slider_index+=1
+                    elif key == "border.radius":
+                         min_val, max_val = self.slider_ranges.get(key, (0, 4))
+                         self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                         slider_index+=1
+                    elif key == "item.radius":
+                       min_val, max_val = self.slider_ranges.get(key, (0, 4))
+                       self._add_slider(self.slider_layout, display_name, key, int(value), min_val, max_val, math.floor(slider_index/2), slider_index%2)
+                       slider_index+=1
+                    elif value.lower() in ["true", "false"] and key != "font.italic":
+                       self._add_checkbox(self.checkbox_layout, display_name, key, value.lower() == "true")
+                    elif value.startswith("#"):
+                        self._add_color_picker(self.color_picker_layout, display_name, key, value, color_index)
+                        color_index+=1
+                    elif key == "font.italic":
+                         self._add_checkbox(self.checkbox_layout, display_name, key, value.lower() == "true")
+                    elif key in ["name", "view", "font.name"]:
+                         self._add_dropdown(self.dropdown_layout, display_name, key, value)
+                    elif key == "font.weight":
+                        min_val, max_val = self.slider_ranges.get(key, (1, 9))
+                        self._add_slider(self.additional_settings_layout, display_name, key, int(value), min_val, max_val,  math.floor(slider_index/2), slider_index%2)
+                        slider_index += 1
+                    else:
+                        self._add_text_input(self.additional_settings_layout, display_name, key, value)
+        if "Item" in categories:
+          self._add_item_settings(main_layout, display_names)
+        self._add_font_and_image_settings(main_layout, display_names) #Move font and image settings, background settings are added here.
 
-            if category == "Item":
-                self._add_item_settings(form_layout, display_names)
-            else:
-                for key in keys:
-                   if key in self.theme_data:
-                       value = self.theme_data[key]
-                       display_name = display_names.get(key, key)
-                       if value.lower() in ["true", "false"]:
-                           self._add_checkbox(form_layout, display_name, key, value.lower() == "true")
-                       elif value.startswith("#"):
-                           if key == "background.color":
-                              self._add_background_color_picker(form_layout, display_name, key, value)
-                           else:
-                               self._add_color_picker(form_layout, display_name, key, value)
-                       elif value.isdigit():
-                            min_val, max_val = self.slider_ranges.get(key, (0, 100))
-                            self._add_slider(form_layout, display_name, key, int(value), min_val, max_val)
-                       elif key in ["name", "view", "font.name"]:
-                            self._add_dropdown(form_layout, display_name, key, value)
-                       else:
-                            self._add_text_input(form_layout, display_name, key, value)
+    def _add_font_and_image_settings(self, layout, display_names):
+       # Font Size Control
+        font_size_key = "font.size"
+        font_size_display_name = display_names.get(font_size_key, font_size_key)
+        font_size_value = int(self.theme_data.get(font_size_key, "14"))  # Default font size to 14 if not found
+        min_font_size, max_font_size = self.slider_ranges.get(font_size_key, (6, 100))  # Default to 6-100 if not found
+        self._add_slider(self.additional_settings_layout, font_size_display_name, font_size_key, font_size_value, min_font_size, max_font_size, 0, 0)
+        # Image Color Control
+        image_color_key = "image.color"
+        image_color_display_name = display_names.get(image_color_key, image_color_key)
+        image_color_value = self.theme_data.get(image_color_key, "['#ffffff', '#ffffff']")
+        self._add_image_color_picker(self.additional_settings_layout, image_color_display_name, image_color_key, image_color_value, 1) # Add to correct frame
+        #Background color
+        background_color_key = "background.color"
+        background_color_display_name = display_names.get(background_color_key, "Background Color")
+        background_color_value = self.theme_data.get(background_color_key, '#ffffff')
+        self._add_background_color_picker(self.additional_settings_layout, background_color_display_name, background_color_key, background_color_value, 2)
+        #Background Effect radio group
+        background_effect_key = "background.effect"
+        background_effect_display_name = display_names.get(background_effect_key, "Background Effect")
+        background_effect_value = self.theme_data.get(background_effect_key, "disabled")
+        self._add_radio_switcher(self.additional_settings_layout, background_effect_display_name, background_effect_key, background_effect_value, 3)
 
-            form_scroll.setWidget(form_widget)
-            self.stacked_widget.addWidget(form_scroll)
     def _add_item_settings(self, layout, display_names):
-
        text_keys = {
             "normal": "item.text.normal",
             "select": "item.text.select",
             "normal-disabled": "item.text.normal-disabled",
-            "select-disabled": "item.text.select-disabled",
+             "select-disabled": "item.text.select-disabled",
         }
 
        border_keys = {
             "normal": "item.border.normal",
             "select": "item.border.select",
             "normal-disabled": "item.border.normal.disabled",
-            "select-disabled": "item.border.select.disabled",
+             "select-disabled": "item.border.select.disabled",
         }
 
        back_keys = {
            "select":"item.back.select",
            "select-disabled": "item.back.select-disabled"
        }
-
-        # Unified Text Color
-       text_group = CollapsibleSection("Text Settings")
-       unified_text_color = self.theme_data.get(text_keys["normal"], '#ffffff')
-       def update_text_color(color):
-          for key in text_keys.values():
-              if not key.endswith('-disabled'):
-                self._update_theme_data(key, color)
-                text_group.advanced_settings.layout().itemAt(list(text_keys.values()).index(key) * 2).widget().set_color(color)
-
-       text_color_picker = self._add_color_picker_no_label(unified_text_color, update_text_color)
-       text_group.add_widget(text_color_picker)
-       # Text expand area
-       text_expand = QHBoxLayout()
-       text_group.expand_arrow = ExpandArrowButton()
-       text_expand.addStretch(1)
-       text_expand.addWidget(text_group.expand_arrow)
-       text_group.add_widget(self._add_layout_widget(text_expand))
-       # Advanced Text Settings
-       text_group.advanced_settings = QWidget()
-       adv_text_layout = QVBoxLayout(text_group.advanced_settings)
-       adv_text_layout.setContentsMargins(0, 0, 0, 0)
-       adv_text_layout.setSpacing(5)
+       # Item color pickers
+       color_index = 0
        for key, value in text_keys.items():
-           if not key.endswith("disabled"):
-               color_picker = self._add_color_picker_no_label(self.theme_data.get(value, '#ffffff'), lambda color, k=value: self._update_theme_data(k, color))
-               adv_text_layout.addWidget(QLabel(f"{display_names[value]}"))
-               adv_text_layout.addWidget(color_picker)
-
-       text_group.expand_arrow.clicked.connect(lambda: self._toggle_expand_setting(text_group))
-       text_group.add_widget(text_group.advanced_settings)
-       text_group.advanced_settings.hide()
-       layout.addWidget(text_group)
-
-       # Unified Disabled Text Color
-       disabled_text_group = CollapsibleSection("Disabled Text Settings")
-       unified_disabled_text_color = self.theme_data.get(text_keys["normal-disabled"], '#a0a0a0')
-       def update_disabled_text_color(color):
-         for key in text_keys.values():
-            if key.endswith('-disabled'):
-               self._update_theme_data(key, color)
-               disabled_text_group.advanced_settings.layout().itemAt(list(text_keys.values()).index(key) - 2 ).widget().set_color(color)
-
-
-       disabled_text_color_picker = self._add_color_picker_no_label(unified_disabled_text_color, update_disabled_text_color)
-       disabled_text_group.add_widget(disabled_text_color_picker)
-        # Disabled Text Expand Area
-       disabled_text_expand = QHBoxLayout()
-       disabled_text_group.expand_arrow = ExpandArrowButton()
-       disabled_text_expand.addStretch(1)
-       disabled_text_expand.addWidget(disabled_text_group.expand_arrow)
-       disabled_text_group.add_widget(self._add_layout_widget(disabled_text_expand))
-       # Advanced Disabled Text Settings
-       disabled_text_group.advanced_settings = QWidget()
-       adv_disabled_text_layout = QVBoxLayout(disabled_text_group.advanced_settings)
-       adv_disabled_text_layout.setContentsMargins(0, 0, 0, 0)
-       adv_disabled_text_layout.setSpacing(5)
-       for key, value in text_keys.items():
-           if key.endswith("disabled"):
-                color_picker = self._add_color_picker_no_label(self.theme_data.get(value, '#a0a0a0'), lambda color, k=value: self._update_theme_data(k, color))
-                adv_disabled_text_layout.addWidget(QLabel(f"{display_names[value]}"))
-                adv_disabled_text_layout.addWidget(color_picker)
-
-       disabled_text_group.expand_arrow.clicked.connect(lambda: self._toggle_expand_setting(disabled_text_group))
-       disabled_text_group.add_widget(disabled_text_group.advanced_settings)
-       disabled_text_group.advanced_settings.hide()
-       layout.addWidget(disabled_text_group)
-
-        #Border Settings
-       border_group = CollapsibleSection("Border Settings")
-       for key, value in border_keys.items():
-          color_picker = self._add_color_picker_no_label(self.theme_data.get(value, '#444'), lambda color, k=value: self._update_theme_data(k, color))
-          border_group.add_widget(QLabel(f"{display_names[value]}"))
-          border_group.add_widget(color_picker)
-       layout.addWidget(border_group)
-        # BackGround Settings
-       back_group = CollapsibleSection("Background Settings")
+           self._add_color_picker(self.color_picker_layout, f"{display_names[value]}", value, self.theme_data.get(value, '#ffffff'), color_index)
+           color_index+=1
        for key, value in back_keys.items():
-           color_picker = self._add_color_picker_no_label(self.theme_data.get(value, '#444'), lambda color, k=value: self._update_theme_data(k, color))
-           back_group.add_widget(QLabel(f"{display_names[value]}"))
-           back_group.add_widget(color_picker)
-       layout.addWidget(back_group)
+           self._add_color_picker(self.color_picker_layout, f"{display_names[value]}", value, self.theme_data.get(value, '#444'), color_index)
+           color_index += 1
+       for key, value in border_keys.items():
+          self._add_color_picker(self.color_picker_layout, f"{display_names[value]}", value, self.theme_data.get(value, '#444'), color_index)
+          color_index+=1
 
-        # Other Settings
-       settings_keys = ["item.opacity", "item.radius", "item.prefix"]
-       other_group = CollapsibleSection("Other Item Settings")
-       for key in settings_keys:
-          if key in self.theme_data:
-              value = self.theme_data[key]
-              display_name = display_names.get(key, key)
-              min_val, max_val = self.slider_ranges.get(key, (0, 100))
-              self._add_slider(other_group.content_layout, display_name, key, int(value), min_val, max_val)
-       layout.addWidget(other_group)
-
-    def _toggle_expand_setting(self, setting_group):
-        setting_group.expand_arrow.toggle_expand()
-        setting_group.advanced_settings.setVisible(setting_group.expand_arrow.is_expanded)
-
+    def _add_radio_switcher(self, layout, display_name, key, value, row=0):
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel(display_name))
+        radio_group = QButtonGroup()
+        if key == "background.effect":
+            options = ["disabled", "transparent", "blur", "acrylic"]
+        else:
+             options = ["auto", "display", "ignore"]
+        for i, option in enumerate(options):
+            radio_button = QRadioButton(option)
+            radio_button.setChecked(value == str(i) or option == value)
+            radio_button.setStyleSheet("""QRadioButton::indicator {
+                width: 16px;
+                height: 16px;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #55aaff;
+                border: 1px solid #55aaff;
+            }
+            QRadioButton::indicator:unchecked {
+                background-color: #333;
+                border: 1px solid #555;
+            }""")
+            radio_group.addButton(radio_button)
+            hbox.addWidget(radio_button)
+            radio_button.toggled.connect(lambda checked, k=key, v=str(i), o=option: self._update_theme_data(k, v if k == "background.effect" else o) if checked else None )
+        hbox.addStretch()
+        layout.addLayout(hbox)
     def _add_checkbox(self, layout, display_name, key, checked):
         checkbox = QCheckBox()
         checkbox.setChecked(checked)
@@ -490,92 +432,125 @@ class ThemeEditor(QMainWindow):
         hbox.addWidget(checkbox)
         layout.addLayout(hbox)
 
-    def _add_layout_widget(self, layout):
-       widget = QWidget()
-       widget.setLayout(layout)
-       return widget
-    def _add_color_picker(self, layout, display_name, key, value):
-            hbox = QHBoxLayout()
-            label = QLabel(display_name)
-            hbox.addWidget(label)
-            color_button = ColorPickerButton(value)
-            color_button.colorChanged.connect(lambda color, k=key: self._update_theme_data(k, color))
-            hbox.addWidget(color_button)
-            hbox.addSpacing(10)
-            line_edit = QLineEdit(value)
-            line_edit.setFixedSize(70,30)
-            line_edit.textChanged.connect(lambda text, k=key: self._update_theme_data(k, text))
-            hbox.addWidget(line_edit)
-            hbox.addStretch(1)
-            layout.addLayout(hbox)
+    def _add_color_picker(self, layout, display_name, key, value, row):
+           color_button = ColorPickerButton(value)
+           self.color_pickers[key] = color_button
+           color_button.colorChanged.connect(lambda color, k=key: self._update_theme_data(k, color))
+           hbox = QVBoxLayout()
+           hbox.setSpacing(0)  # Remove spacing within the vertical layout
+           hbox.addWidget(color_button)
+           label = QLabel(display_name)
+           label.setStyleSheet("text-align: center; margin-bottom: 0;") # reduce space below
+           label.mousePressEvent = lambda event, k=key: self._toggle_color_default(k) #add mouse press event to label
+           hbox.addWidget(label, alignment=Qt.AlignCenter)
+           layout.addLayout(hbox, math.floor(row/5), row%5) # Modified for 5x3
+
+    def _toggle_color_default(self, key):
+         color_button = self.color_pickers.get(key)
+         if color_button:
+               if not color_button.is_default:
+                   color_button.set_default(True) # Set as default
+                   self.theme_data[key] = 'default'
+               else:
+                 color_button.set_default(False) # remove default
+                 self.theme_data[key] = color_button.hex_color # set back to the last used hex
+                 color_button.set_color(color_button.hex_color)
+
+    def _add_image_color_picker(self, layout, display_name, key, value, row):
+           try:
+             value = eval(value)
+           except:
+               value = ["#ffffff", "#ffffff"]
+           hbox = QHBoxLayout()
+           vbox1 = QVBoxLayout()
+           vbox2 = QVBoxLayout()
+           color_button_1 = ColorPickerButton(value[0] if isinstance(value, list) and len(value) > 0 else "#ffffff")
+           color_button_1.colorChanged.connect(lambda color, k=key: self._update_image_color(k, color, 0))
+           vbox1.addWidget(color_button_1)
+           label = QLabel(display_name + " 1")
+           label.setStyleSheet("text-align: center;")
+           vbox1.addWidget(label, alignment=Qt.AlignCenter)
+           color_button_2 = ColorPickerButton(value[1] if isinstance(value, list) and len(value) > 1 else "#ffffff")
+           color_button_2.colorChanged.connect(lambda color, k=key: self._update_image_color(k, color, 1))
+           vbox2.addWidget(color_button_2)
+           label2 = QLabel(display_name + " 2")
+           label2.setStyleSheet("text-align: center;")
+           vbox2.addWidget(label2, alignment=Qt.AlignCenter)
+           hbox.addLayout(vbox1)
+           hbox.addLayout(vbox2)
+           layout.addLayout(hbox, math.floor(row/2), row%2)
+    def _update_image_color(self, key, color, index):
+        try:
+            value = eval(self.theme_data.get(key, "['#ffffff', '#ffffff']"))
+            if isinstance(value, list) and len(value) > index:
+                value[index] = color
+                self.theme_data[key] = str(value)
+        except:
+             self.theme_data[key] = "['#ffffff', '#ffffff']"
 
     def _add_color_picker_no_label(self, initial_color, color_changed_func):
-            hbox = QHBoxLayout()
-            color_button = ColorPickerButton(initial_color)
-            color_button.colorChanged.connect(color_changed_func)
-            hbox.addWidget(color_button)
-            hbox.addSpacing(10)
-            line_edit = QLineEdit(initial_color)
-            line_edit.setFixedSize(70, 30)
-            line_edit.textChanged.connect(lambda text,  c=color_button: c.set_color(text))
-            hbox.addWidget(line_edit)
-            hbox.addStretch(1)
-            widget = QWidget()
-            widget.setLayout(hbox)
-            return widget
+        color_button = ColorPickerButton(initial_color)
+        color_button.colorChanged.connect(color_changed_func)
+        return color_button
 
-    def _add_background_color_picker(self, layout, display_name, key, value):
-            hbox = QHBoxLayout()
-            label = QLabel(display_name)
-            hbox.addWidget(label)
-            color_button = ColorPickerButton(value if value != 'default' else "#ffffff")
-            color_button.colorChanged.connect(lambda color, k=key: self._update_background_color(color, k))
-            hbox.addWidget(color_button)
-            hbox.addSpacing(10)
-            line_edit = QLineEdit(value if value != 'default' else "")
-            line_edit.setFixedSize(70, 30)
-            line_edit.setEnabled(value != 'default')
-            line_edit.textChanged.connect(lambda text, k=key: self._update_theme_data(k, text))
-            hbox.addWidget(line_edit)
-            default_checkbox = QCheckBox("Default")
-            default_checkbox.setChecked(value == 'default')
-            default_checkbox.stateChanged.connect(lambda state, le=line_edit, cb=color_button: self._toggle_background_default(state, le, cb))
-            hbox.addWidget(default_checkbox)
-            hbox.addStretch(1)
-            layout.addLayout(hbox)
+    def _add_background_color_picker(self, layout, display_name, key, value, row):
+        hbox = QHBoxLayout()
+        radio_group = QButtonGroup()
+        default_radio = QRadioButton("Default")
+        default_radio.setChecked(value == 'default')
+        default_radio.toggled.connect(lambda checked, k=key: self._toggle_background_default(checked, color_button) )
+        hbox.addWidget(default_radio)
+        radio_group.addButton(default_radio)
+        color_button = ColorPickerButton(value if value != 'default' else "#ffffff")
+        color_button.setEnabled(value != 'default')
+        color_button.colorChanged.connect(lambda color, k=key: self._update_background_color(color, k))
+        hbox.addWidget(color_button)
+        custom_radio = QRadioButton("Custom")
+        custom_radio.setChecked(value != 'default')
+        hbox.addWidget(custom_radio)
+        radio_group.addButton(custom_radio)
+        custom_radio.toggled.connect(lambda checked, k=key, cb=color_button, v=value: self._toggle_background_color(checked, cb, v) )
+        hbox.addStretch()
+        hbox2 = QVBoxLayout()
+        hbox2.addWidget(QLabel(display_name))
+        hbox2.addLayout(hbox)
+        layout.addLayout(hbox2, math.floor(row/2), row%2)
+    def _toggle_background_color(self, state, color_button, value):
+        color_button.setEnabled(state)
+        if not state:
+           self.theme_data['background.color'] = "default"
+           color_button.set_color("#ffffff")
+        else:
+            self.theme_data["background.color"] = value if value != "default" else "#ffffff"
+            color_button.set_color(value if value != "default" else "#ffffff")
 
     def _update_background_color(self, color, key):
-         self.theme_data[key] = color
+            self.theme_data[key] = color
 
-    def _toggle_background_default(self, state, line_edit, button):
-         if state == Qt.Checked:
-               line_edit.setEnabled(False)
-               line_edit.setText("")
-               button.set_color("#FFFFFF")
+    def _toggle_background_default(self, state, color_button):
+         if state:
+               color_button.setEnabled(False)
+               color_button.set_color("#ffffff")
                self.theme_data['background.color'] = 'default'
          else:
-                line_edit.setEnabled(True)
-                self.theme_data['background.color'] = line_edit.text()
-
-    def _add_slider(self, layout, display_name, key, value, min_val, max_val):
-            hbox = QHBoxLayout()
-            label = QLabel(display_name)
-            hbox.addWidget(label)
-            slider = QSlider(Qt.Horizontal)
-            slider.setMinimum(min_val)
-            slider.setMaximum(max_val)
-            slider.setValue(value)
-            slider.setStyleSheet("""QSlider::groove:horizontal {border: 1px solid #444;height: 4px;background: #444;}
-                QSlider::handle:horizontal {background: #55aaff;border: 1px solid #55aaff;width: 12px;margin: -4px 0;border-radius: 5px;}
-                QSlider::sub-page:horizontal {background: #55aaff;}""")
-            label_val = QLabel(str(value))
-            label_val.setFixedWidth(25)
-            slider.valueChanged.connect(lambda val, k=key, l=label_val: self._update_slider_value(k, val, l))
-            hbox.addWidget(slider)
-            hbox.addWidget(label_val)
-            hbox.addStretch(1)
-            layout.addLayout(hbox)
-
+             color_button.setEnabled(True)
+    def _add_slider(self, layout, display_name, key, value, min_val, max_val, row, column):
+        hbox = QHBoxLayout()
+        label = QLabel(display_name)
+        hbox.addWidget(label)
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(min_val)
+        slider.setMaximum(max_val)
+        slider.setValue(value)
+        slider.setStyleSheet("""QSlider::groove:horizontal {border: 1px solid #444;height: 4px;background: #444;}
+            QSlider::handle:horizontal {background: #55aaff;border: 1px solid #55aaff;width: 12px;margin: -4px 0;border-radius: 5px;}
+            QSlider::sub-page:horizontal {background: #55aaff;}""")
+        label_val = QLabel(str(value))
+        label_val.setFixedWidth(25)
+        slider.valueChanged.connect(lambda val, k=key, l=label_val: self._update_slider_value(k, val, l))
+        hbox.addWidget(slider)
+        hbox.addWidget(label_val)
+        layout.addLayout(hbox, row, column)
     def _update_slider_value(self, key, value, label):
         label.setText(str(value))
         self.theme_data[key] = value
@@ -667,7 +642,6 @@ class ThemeEditor(QMainWindow):
                     else:
                         file.write(f"  {key} = {value}\n")
                 file.write("}\n")
-
             QTimer.singleShot(300, self._perform_ctrl_right_click)
         except Exception as e:
             print(f"Error in save_theme: {e}")
@@ -710,14 +684,6 @@ class ThemeEditor(QMainWindow):
             self.theme_data = {}
             self._load_theme()
 
-    def _show_form(self, category):
-        for btn in self.tab_buttons.values():
-            btn.setChecked(False)
-        self.tab_buttons[category].setChecked(True)
-        index = list(self.tab_buttons.keys()).index(category)
-        self.stacked_widget.setCurrentIndex(index)
-
-
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(ICON_PATH))
@@ -729,6 +695,13 @@ if __name__ == '__main__':
             color: #ddd;
             font-size: 14px;
             margin-right: 8px;
+        }
+        QLabel#SectionTitle {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ddd;
+            margin-bottom: 10px;
+            text-align: center;
         }
        QScrollBar:vertical {
             border: none;

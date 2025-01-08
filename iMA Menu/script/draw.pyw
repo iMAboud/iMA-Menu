@@ -5,9 +5,11 @@ import random
 from PIL import Image, ImageDraw, ImageTk
 import os
 
+# Get the directory of the current script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(BASE_DIR)
 
+# Construct paths relative to the script directory
 ICONS_PATH = os.path.join(SCRIPT_DIR, "script", "draw-icons")
 
 class DrawingApp:
@@ -30,7 +32,7 @@ class DrawingApp:
         self.is_drawing = False
         self.erase_mode = False
         self.mirror_mode = False
-        self.drawing_tool = 'brush'  
+        self.drawing_tool = 'brush'  # Set default tool to brush
         self.opacity = 0.7
         self.current_stroke = []
         self.random_color_mode = False
@@ -98,7 +100,7 @@ class DrawingApp:
             icon_image = Image.open(icon_path)
             icon_photo = ImageTk.PhotoImage(icon_image)
             button = tk.Button(parent, image=icon_photo, command=lambda: [command(), self.draw_canvas.focus_set()], bg='black', relief=tk.FLAT, bd=0)
-            button.image = icon_photo
+            button.image = icon_photo  # Keep a reference to avoid garbage collection
         except Exception as e:
             print(f"Icon not found for {text}: {e}")
             button = tk.Button(parent, text=text, command=lambda: [command(), self.draw_canvas.focus_set()], bg='black', relief=tk.FLAT, bd=0)
