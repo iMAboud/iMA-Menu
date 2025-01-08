@@ -44,7 +44,7 @@ set "pattern=https://"
 
 :: Ensure the pattern matches the beginning of the URL
 if "!url:~0,8!"=="%pattern%" (
-    start "" "C:\Program Files\iMA Menu\script\imstream\watch.vbs"
+    start "" "script\imstream\watch.vbs"
 ) else (
     echo The last line is not a valid URL, not opening the site.
 )

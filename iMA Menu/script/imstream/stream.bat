@@ -8,7 +8,7 @@ start /min timeout /t 1 /nobreak >nul
 
 rem Execute the following commands
 echo Running Chrome...
-start "" "C:\Program Files\iMA Menu\script\imstream\stream.vbs"
+start "" "stream.vbs"
 
 timeout /t 5 /nobreak >nul
 
@@ -20,7 +20,7 @@ for /f "usebackq delims=" %%a in (`powershell -NoLogo -NoProfile -Command "Get-C
 echo %link% | findstr /R "^http[s]*://.*$" >nul
 if not errorlevel 1 (
     echo Link copied to clipboard. Sending link using Croc...
-    powershell -Command "Croc send --text \"%link%\" --code YOURCODEHERE"
+    powershell -Command "Croc send --text \"%link%\" --code immmmm"
     if %errorlevel% equ 0 (
         echo Link sent successfully.
     ) else (
