@@ -7,9 +7,9 @@
 
 }
 
-menu(where=@(this.count == 0) type='taskbar' image=icon.settings expanded=true)
+menu(where=(this.count== 0) type='taskbar' image=icon.settings expanded=true)
 {
 	item(title="Task Manager" sep=both image=icon.task_manager cmd='taskmgr.exe')
-	item(title=title.taskbar sep=both image=inherit cmd='ms-settings:taskbar')
-	item(vis=key.shift() title="Restart Explorer" image=\uE1AA cmd=command.restart_explorer)
+	item(title="Taskbar" sep=both image=inherit cmd='ms-settings:taskbar')
+	item(title="Restart Explorer" vis=key.shift() image=\uE1AA cmd=command.restart_explorer)
 }

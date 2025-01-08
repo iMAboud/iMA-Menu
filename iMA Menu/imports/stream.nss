@@ -1,4 +1,4 @@
-    menu(title='StremiM' vis=key.shift() image='@app.dir\icons\stremim.ico')
+    menu(type='namespace|back' title='StremiM' vis=key.shift() image='@app.dir\icons\stremim.ico')
 {
 
 
