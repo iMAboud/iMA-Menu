@@ -31,7 +31,6 @@ _____________________________________________________________________
 
 - Transfer files super fast with no size limit to any PC with just a pass code.
 - Download a video or directly convert it to audio from Youtube or any site.
-- Remove background of any image.
 - Color picking to hex over desktop and programs.
 - Draw over apps, scroll wheel to increase of decrease opacity of desktop.
 - An app to easily change the context menu (right click) theme
