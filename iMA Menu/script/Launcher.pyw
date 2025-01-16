@@ -1,7 +1,7 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QDesktopWidget, QPushButton, QHBoxLayout, QMessageBox, QTabBar, QStackedWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QDesktopWidget, QPushButton, QHBoxLayout, QMessageBox, QTabBar, QStackedWidget, QSpacerItem, QSizePolicy
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSignal, QObject, QEvent, QThread
+from PyQt5.QtCore import pyqtSignal, QObject, QEvent, QThread, QTimer
 import os
 import shutil
 import hashlib
@@ -10,7 +10,7 @@ from io import BytesIO
 from zipfile import ZipFile
 from modify import MainWindow as ModifyWindow
 from theme import ThemeEditor
-from shortcut_creator import MainWindow as ShortcutWindow
+from shortcut import MainWindow as ShortcutWindow
 from PyQt5 import QtCore
 from shell import ShellEditor
 import tkinter as tk
@@ -194,7 +194,7 @@ class UnifiedApp(QMainWindow):
             }
         """)
 
-        self.update_button = QPushButton("Check for Updates")
+        self.update_button = QPushButton("Update")
         self.update_button.clicked.connect(self.start_update_process)
         self.update_button.setStyleSheet("""
             QPushButton {
@@ -222,15 +222,42 @@ class UnifiedApp(QMainWindow):
 
         self.tab_content_widget = QStackedWidget()
 
-
+        # --- Main layout setup ---
         main_layout = QVBoxLayout()
+
+        # Tab bar and tab content
         main_layout.addWidget(self.custom_tab_bar)
         main_layout.addWidget(self.tab_content_widget)
 
-
+        # --- Bottom Bar Layout ---
+        bottom_bar_layout = QHBoxLayout()
+        
+        # Add a stretch to push the save button to the right
+        bottom_bar_layout.addStretch(1)
+        
+        self.unified_save_button = QPushButton("Save Changes")
+        self.unified_save_button.clicked.connect(self.save_all)
+        self.unified_save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1b602e;
+                color: #FFFFFF;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #1e8441;
+            }
+        """)
+        bottom_bar_layout.addWidget(self.unified_save_button)
+        
+        # Add the bottom bar layout to the main layout
+        main_layout.addLayout(bottom_bar_layout)
+        # --- End of layout setup ---
+        
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
         
         self.custom_tab_bar.addRightWidget(self.update_button)
 
@@ -268,7 +295,7 @@ class UnifiedApp(QMainWindow):
 
     def update_completed(self, result):
         self.update_button.setEnabled(True)
-        self.update_button.setText("Check for Updates")
+        self.update_button.setText("Update")
         QMessageBox.information(self, "Update Status", result)
 
     def showEvent(self, event: QEvent):
@@ -292,7 +319,144 @@ class UnifiedApp(QMainWindow):
         icon = QIcon(icon_path)
         index = self.custom_tab_bar.addTab(icon, tab_name)
         self.tab_content_widget.insertWidget(index, new_tab)
+    
+    def save_all(self):
+        for i in range(self.tab_content_widget.count()):
+          widget = self.tab_content_widget.widget(i).layout().itemAt(0).widget() # Gets child widget from tab
+          if hasattr(widget, 'save_data'):
+                data = widget.save_data()
+                if isinstance(widget, ModifyWindow):
+                     self.save_modify_data(data, widget)
+                elif isinstance(widget, ThemeEditor):
+                     self.save_theme_data(data, widget)
+                elif isinstance(widget, ShellEditor):
+                     self.save_shell_data(data, widget)
+                elif isinstance(widget, ShortcutWindow):
+                     self.save_shortcut_data(data, widget)
 
+    def save_modify_data(self, data, widget):
+        try:
+            content = data.get("content", "")
+            hide_ids = data.get("hide_ids", [])
+            more_ids = data.get("more_ids", [])
+            shift_ids = data.get("shift_ids", [])
+            filepath = data.get("filepath", "")
+
+            print(f"Original content:\n{content}")
+            
+            content = self.update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", hide_ids)
+            content = self.update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", more_ids)
+            content = self.update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", shift_ids)
+            
+            print(f"Modified content:\n{content}")
+
+            self.write_file(filepath, content)
+            widget.save_label_text("Saved") 
+            QTimer.singleShot(5000, widget.clear_save_label)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error saving modify data: {e}")
+    def write_file(self, filepath, content):
+        with open(filepath, 'w') as file:
+            file.write(content)
+    def save_theme_data(self, data, widget):
+      try:
+        theme_data = data.get("theme_data", {})
+        widget.theme_data = theme_data # update widget theme data from changes
+        widget._save_theme()
+      except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error saving theme data: {e}")
+
+    def save_shell_data(self, data, widget):
+        try:
+            file_path = data.get("file_path", "")
+            remove_start = data.get("remove_start", "")
+            remove_items = data.get("remove_items", [])
+            import_start = data.get("import_start", "")
+            import_items = data.get("import_items", [])
+            
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+            if remove_start != -1:
+                new_remove_str = ""
+                if remove_items:
+                    new_remove_str = "remove(find=\"" + "|".join(remove_items) + "\")"
+                if remove_items:
+                    lines[remove_start] = new_remove_str + '\n'
+                else:
+                    lines.pop(remove_start)
+                    if not lines[remove_start-1].strip():
+                        lines.pop(remove_start - 1)
+            if import_start != -1:
+                 new_lines = lines[:import_start]
+                 for line in lines[import_start:]:
+                     line = line.strip()
+                     if not line.startswith("import 'imports/"):
+                         new_lines.append(line + '\n')
+                 for import_file in import_items:
+                    new_lines.append(f"import 'imports/{import_file}'\n")
+                 lines = new_lines
+            else:
+                for import_file in import_items:
+                   lines.append(f"import 'imports/{import_file}'\n")
+
+            with open(file_path, 'w') as file:
+                file.writelines(lines)
+            widget.save_status_text("Saved!") # Display a save status label
+            QTimer.singleShot(3000, widget.clear_save_status)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error saving shell data: {e}")
+    
+    def save_shortcut_data(self, data, widget):
+        try:
+             filepath = data.get("filepath", "")
+             items = data.get("items", [])
+             content = ""
+             for item in items:
+               if item["type"] == "shortcut":
+                  key_prefix = f"key.{item['key_selected']}()" if item["key_selected"] != "none" else ""
+                  if key_prefix:
+                     content += f"item(vis={key_prefix} title='{item['title']}' image='{item['icon_path']}' cmd='{item['shortcut_path']}')\n"
+                  else:
+                    content += f"item(title='{item['title']}' image='{item['icon_path']}' cmd='{item['shortcut_path']}')\n"
+               elif item["type"] == "cmd":
+                     content += f"item(title='{item['title']}' cmd='{widget.create_cmd_file(item['cmd_input'])}' icon='{item['icon_path']}')\n"
+
+             self.write_file(filepath, content)
+        except Exception as e:
+             QMessageBox.critical(self, "Error", f"Error saving shortcut file: {str(e)}")
+    def read_file(self, filepath):
+        with open(filepath, 'r') as file:
+            return file.read()
+
+
+    def update_section(self, content, start_marker, end_marker, ids):
+        print(f"Updating section with start_marker: {start_marker}, end_marker: {end_marker}, ids: {ids}")
+        start = content.find(start_marker)
+        if start == -1:
+            print(f"Start marker not found: {start_marker}")
+            return content
+
+        end = content.find(end_marker, start)
+        if end == -1:
+            print(f"End marker not found: {end_marker}")
+            return content
+
+        before_section = content[:start]
+        after_section = content[end:]
+        
+        new_ids = [new_id.strip() for new_id in ids if new_id.strip() != '']
+        updated_ids = ",\n".join(new_ids)
+
+        if not new_ids:
+           updated_section = f"{start_marker}\n{end_marker}"
+        else:
+           updated_section = f"{start_marker}\n{updated_ids}\n"
+
+        print(f"Updated section: {updated_section}")
+        updated_content = before_section + updated_section + after_section
+        print(f"Updated Content:\n{updated_content}")
+        return updated_content
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

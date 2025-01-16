@@ -129,28 +129,33 @@ class ThemeEditor(QMainWindow):
         self.additional_settings_layout = QVBoxLayout(self.additional_settings_frame)
         self.additional_settings_layout.setContentsMargins(10, 10, 10, 10)
         self.additional_settings_layout.setSpacing(5)
+
+        # Removed Control buttons here
         # Control Buttons
-        button_layout = QHBoxLayout()
-        self.save_button = QPushButton('Save Theme', self)
-        self.save_button.clicked.connect(self._save_theme)
-        self.import_button = QPushButton('Import Theme', self)
-        self.import_button.clicked.connect(self._import_theme)
-        self.reset_button = QPushButton('Reset to Default', self)
-        self.reset_button.clicked.connect(self._reset_to_default)
-        for btn in [self.save_button, self.import_button, self.reset_button]:
-           btn.setStyleSheet("""QPushButton {
-               font-size: 14px;
-               color: white;
-               background-color: #444;
-               border-radius: 4px;
-               padding: 10px;
-               margin: 2px;
-            }
-           QPushButton:hover {
-               background-color: #555;
-            }""")
-           button_layout.addWidget(btn)
-        main_layout.addLayout(button_layout, 3, 0, 1, 3)
+        # button_layout = QHBoxLayout()
+        # self.save_button = QPushButton('Save Theme', self)
+        # self.save_button.clicked.connect(self._save_theme)
+        # self.import_button = QPushButton('Import Theme', self)
+        # self.import_button.clicked.connect(self._import_theme)
+        # self.reset_button = QPushButton('Reset to Default', self)
+        # self.reset_button.clicked.connect(self._reset_to_default)
+        # for btn in [self.save_button, self.import_button, self.reset_button]:
+        #    btn.setStyleSheet("""QPushButton {
+        #        font-size: 14px;
+        #        color: white;
+        #        background-color: #444;
+        #        border-radius: 4px;
+        #        padding: 10px;
+        #        margin: 2px;
+        #    }
+        #   QPushButton:hover {
+        #        background-color: #555;
+        #    }""")
+        #    button_layout.addWidget(btn)
+        # main_layout.addLayout(button_layout, 3, 0, 1, 3)
+
+    def save_data(self):
+         return {"theme_data": self.theme_data}
 
     def _load_theme(self):
         if os.path.exists(THEME_PATH):
@@ -642,7 +647,6 @@ class ThemeEditor(QMainWindow):
                     else:
                         file.write(f"  {key} = {value}\n")
                 file.write("}\n")
-            QTimer.singleShot(300, self._perform_ctrl_right_click)
         except Exception as e:
             print(f"Error in save_theme: {e}")
     def _save_backup(self):
@@ -652,13 +656,14 @@ class ThemeEditor(QMainWindow):
               print(f"Failed to save backup theme: {e}")
 
 
-    def _perform_ctrl_right_click(self):
-        try:
-            pyautogui.keyDown('ctrl')
-            pyautogui.click(button='right')
-            pyautogui.keyUp('ctrl')
-        except Exception as e:
-           print(f"Error in perform_ctrl_right_click: {e}")
+    # Removed _perform_ctrl_right_click, will be called from the unified class
+    # def _perform_ctrl_right_click(self):
+    #     try:
+    #         pyautogui.keyDown('ctrl')
+    #         pyautogui.click(button='right')
+    #         pyautogui.keyUp('ctrl')
+    #     except Exception as e:
+    #        print(f"Error in perform_ctrl_right_click: {e}")
     def _import_theme(self):
             options = QFileDialog.Options()
             file_path, _ = QFileDialog.getOpenFileName(self, "Import Theme File", "", "All Files (*);;Text Files (*.nss)", options=options)

@@ -108,6 +108,7 @@ class RoundedInputDialog(QDialog):
            return "", False
 
 class ShellEditor(QWidget):
+    save_status_text_signal = pyqtSignal(str)
     def __init__(self):
         super().__init__()
         self.file_path = FILE_PATH
@@ -195,18 +196,11 @@ class ShellEditor(QWidget):
         main_layout.addLayout(remove_layout)
         main_layout.addLayout(import_layout)
 
-        self.save_button = QPushButton("Save")
-        self.save_button.clicked.connect(self.save_changes)
-        self.set_button_style(self.save_button)
-        self.save_button.setStyleSheet(self.save_button.styleSheet() + "QPushButton {background-color: #21964d;} QPushButton:hover {background-color: #1e8441;}")
 
         self.save_status_label = QLabel("")
         self.save_status_label.setStyleSheet("color: #2ecc71; font-size: 12px; background: none")
         self.save_status_label.setAlignment(Qt.AlignCenter)
         bottom_layout = QVBoxLayout()
-        bottom_button_layout = QHBoxLayout()
-        bottom_button_layout.addWidget(self.save_button)
-        bottom_layout.addLayout(bottom_button_layout)
         bottom_layout.addWidget(self.save_status_label)
         bottom_layout.setAlignment(Qt.AlignCenter)
         overall_layout = QVBoxLayout()
@@ -285,40 +279,20 @@ class ShellEditor(QWidget):
             self.import_list.takeItem(row)
             self.import_items.pop(row)
 
-    def save_changes(self):
-        try:
-            with open(self.file_path, 'r') as file:
-                lines = file.readlines()
-            if self.remove_start != -1:
-                new_remove_str = ""
-                if self.remove_items:
-                    new_remove_str = "remove(find=\"" + "|".join(self.remove_items) + "\")"
-                if self.remove_items:
-                    lines[self.remove_start] = new_remove_str + '\n'
-                else:
-                    lines.pop(self.remove_start)
-                    if not lines[self.remove_start-1].strip():
-                        lines.pop(self.remove_start - 1)
-            if self.import_start != -1:
-                 new_lines = lines[:self.import_start]
-                 for line in lines[self.import_start:]:
-                     line = line.strip()
-                     if not line.startswith("import 'imports/"):
-                         new_lines.append(line + '\n')
-                 for import_file in self.import_items:
-                    new_lines.append(f"import 'imports/{import_file}'\n")
-                 lines = new_lines
-            else:
-                for import_file in self.import_items:
-                   lines.append(f"import 'imports/{import_file}'\n")
-
-            with open(self.file_path, 'w') as file:
-                file.writelines(lines)
-            self.save_status_label.setText("Saved!")
-            QTimer.singleShot(3000, lambda: self.save_status_label.setText(""))
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error saving file: {e}")
-            
+    def save_data(self):
+       return {
+            "file_path": self.file_path,
+            "remove_start": self.remove_start,
+            "remove_items": self.remove_items,
+            "import_start": self.import_start,
+            "import_items": self.import_items
+        }
+    def save_status_text(self, text):
+        self.save_status_label.setText(text)
+    
+    def clear_save_status(self):
+        self.save_status_label.setText("")
+    
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
             self.close()

@@ -7,8 +7,10 @@ from PyQt5.QtGui import QIcon, QPixmap, QColor
 from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QRect, QTimer, QEvent
 from PyQt5.Qt import QGraphicsBlurEffect
 
+# Get the directory of the current script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(BASE_DIR)
+# Construct paths relative to the script directory
 FILE_PATH = os.path.join(SCRIPT_DIR, "imports", "shortcut.nss")
 
 class RoundedCard(QFrame):
@@ -16,7 +18,7 @@ class RoundedCard(QFrame):
         super().__init__(parent)
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
-        self.setFixedSize(120, 120)  
+        self.setFixedSize(120, 120)  # Set to fixed size
         self.setStyleSheet("background-color: #333333; border-radius: 10px; padding: 10px;")
     
         self.title_label = QLabel(title)
@@ -26,7 +28,7 @@ class RoundedCard(QFrame):
         self.image_label = QLabel()
         self.set_image(image_path)
         
-        layout = QVBoxLayout()  
+        layout = QVBoxLayout()  # Use one single layout
         layout.addWidget(self.title_label)
         layout.addWidget(self.image_label)
         layout.setAlignment(Qt.AlignCenter)
@@ -131,9 +133,9 @@ class AddItemPopup(QDialog):
                          "key.prior", "key.ralt", "key.rcontrol", "key.return", "key.right", "key.rshift",
                          "key.rwin", "key.shift", "key.snapshot", "key.space", "key.tab", "key.up", "key.win"]
 
-        self.key_dropdown.addItems([opt[4:].upper() if "key." in opt else opt for opt in key_options]) 
+        self.key_dropdown.addItems([opt[4:].upper() if "key." in opt else opt for opt in key_options])  # Show only text after "key."
         self.key_dropdown.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
-        self.key_dropdown.setCurrentIndex(0) 
+        self.key_dropdown.setCurrentIndex(0) # Initially sets the selection to the first one
 
         self.key_layout.addWidget(self.key_dropdown_label)
         self.key_layout.addWidget(self.key_dropdown)
@@ -159,9 +161,11 @@ class AddItemPopup(QDialog):
         layout.addWidget(self.popup_card)
         self.setLayout(layout)
 
+        # Properties so we can use them anywhere
         self.shortcut_button = self.shortcut_button
         self.shortcut_path_text = self.shortcut_path_text
         
+        # Initially, update the UI
         self.type_dropdown.currentIndexChanged.connect(self.update_popup_visibility)
 
     def showEvent(self, event):
@@ -232,7 +236,7 @@ class MainWindow(QWidget):
         self.setGeometry(100, 100, 800, 600)
         self.setMinimumSize(800, 600)
         self.selected_card = None
-        self.card_widgets = []
+        self.card_widgets = [] # Added
 
         global filepath
         filepath = FILE_PATH
@@ -279,11 +283,7 @@ class MainWindow(QWidget):
         self.delete_button.clicked.connect(self.delete_selected_card)
         self.delete_button.setEnabled(False)  # initially disable delete button
 
-        self.save_button = QPushButton("Save Changes")
-        self.save_button.setStyleSheet("background-color: #1b602e; color: #FFFFFF; border-radius: 8px; padding: 10px;")
-        self.save_button.clicked.connect(self.save_changes)
         button_layout.addWidget(self.delete_button)
-        button_layout.addWidget(self.save_button)
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
@@ -311,7 +311,7 @@ class MainWindow(QWidget):
         for index, item_data in enumerate(self.items):
             card = RoundedCard(item_data["title"], item_data["icon_path"], index, self)
             self.grid_layout.addWidget(card, row, col)
-            self.card_widgets.append(card)  
+            self.card_widgets.append(card)  # Track the card widget with index
             col += 1
             if col > 4:
                 col = 0
@@ -320,7 +320,7 @@ class MainWindow(QWidget):
     def open_popup(self):
       popup = AddItemPopup(self)
       popup.item_added_signal.connect(self.add_new_item)
-      popup.installEventFilter(popup) 
+      popup.installEventFilter(popup) # Click outside closes it.
       popup.exec_()
 
     def add_new_item(self, new_item):
@@ -335,36 +335,23 @@ class MainWindow(QWidget):
               del self.items[index_to_remove]
 
               # Remove the card widget from the UI
-              self.card_widgets.remove(self.selected_card)  
-              self.selected_card.setParent(None)   
-              self.selected_card.deleteLater() 
+              self.card_widgets.remove(self.selected_card)  # Remove card from tracking
+              self.selected_card.setParent(None)   # Remove it from the parent
+              self.selected_card.deleteLater()  # Destroy the card from memory
 
               # Resetting selection
               self.selected_card = None
               self.delete_button.setEnabled(False)
 
-              self.populate_cards() 
+              self.populate_cards() # Repopulate cards, indexes and UI
           else:
              QMessageBox.warning(self, "Delete Error", "Unable to delete the item")
-          
-    def save_changes(self):
-        try:
-            content = ""
-            for item in self.items:
-               if item["type"] == "shortcut":
-                  key_prefix = f"key.{item['key_selected']}()" if item["key_selected"] != "none" else ""
-                  if key_prefix:
-                     content += f"item(vis={key_prefix} title='{item['title']}' image='{item['icon_path']}' cmd='{item['shortcut_path']}')\n"
-                  else:
-                    content += f"item(title='{item['title']}' image='{item['icon_path']}' cmd='{item['shortcut_path']}')\n"
-               elif item["type"] == "cmd":
-                     content += f"item(title='{item['title']}' cmd='{self.create_cmd_file(item['cmd_input'])}' icon='{item['icon_path']}')\n"
 
-            write_file(filepath, content)
-            QMessageBox.information(self, "Save", "File saved.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error saving file: {str(e)}")
-           
+    def save_data(self):
+        return {
+            "filepath": filepath,
+            "items": self.items
+        }
 
     def create_cmd_file(self, command):
       file_path = os.path.join(os.path.dirname(filepath), 'temp_cmd.bat')
