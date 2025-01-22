@@ -20,16 +20,16 @@ THEME_BACKUP_PATH = os.path.join(SCRIPT_DIR, "imports", "theme_backup.nss")
 class ColorPickerButton(QPushButton):
     colorChanged = pyqtSignal(str)
 
-    def __init__(self, initial_color="#ffffff", parent=None):
+    def __init__(self, initial_color="#333333", parent=None):
         super().__init__(parent)
         self.setFixedSize(64, 64)  
-        self.setStyleSheet("border: 1px solid #268a86; border-radius: 16px; background-color: " + initial_color)
+        self.setStyleSheet("border: 1px solid #268a86; border-radius: 22px; background-color: #333333")
         self.hex_color = initial_color
         self.clicked.connect(self._open_color_dialog)
 
     def set_color(self, hex_color):
         self.hex_color = hex_color
-        self.setStyleSheet(f"background-color: {hex_color}; border: 1px solid #268a86; border-radius: 16px;")
+        self.setStyleSheet(f"background-color: {hex_color}; border: 1px solid #268a86; border-radius: 22px;")
 
     def _open_color_dialog(self):
         color = QColorDialog.getColor(QColor(self.hex_color), self)
@@ -578,51 +578,71 @@ class ThemeEditor(QMainWindow):
         dropdown = QComboBox()
         options = []
         if key == "name":
-             options = ["auto", "classic", "white", "black", "modern"]
+            options = ["auto", "classic", "white", "black", "modern"]
         elif key == "view":
-           options = ["auto", "compact", "small", "medium", "large", "wide"]
+            options = ["auto", "compact", "small", "medium", "large", "wide"]
         elif key == "font.name":
-             options = ["Segoe UI Variable Text", "Comic Sans MS", "Impact" , "Arial", "Helvetica", "Times  New Roman", "Courier New",
+            options = ["Segoe UI Variable Text", "Comic Sans MS", "Impact", "Arial", "Helvetica", "Times  New Roman", "Courier New",
                         "Calibri", "Cambria", "Garamond", "Georgia", "Tahoma", "Trebuchet MS", "Century Gothic", "Franklin Gothic Medium", "Consolas"]
 
         dropdown.addItems(options)
-        dropdown.setStyleSheet(f"""
-            QComboBox {{
-                border: 1px solid #268a86;
-                border-radius: 22px;
-                padding: 3px;
-                font-size: 13px;
-                background: #333;
-                color: #fff;
-                min-width: 160px;
-            }}
-        QComboBox::drop-down {{
+        dropdown.setStyleSheet("""
+        QComboBox {
+            border: 1px solid #268a86;
+            border-radius: 22px;
+            padding: 3px 8px;
+            font-size: 13px;
+            background: #333;
+            color: #fff;
+            min-width: 160px;
+        }
+        QComboBox:hover {
+            border: 1px solid #268a86;
+        }
+        QComboBox::drop-down {
             subcontrol-origin: padding;
             subcontrol-position: top right;
             width: 18px;
             border-left: 1px solid #268a86;
             border-top-right-radius: 21px;
-             border-bottom-right-radius: 21px;
-        }}
-        QComboBox::down-arrow {{
-           image: url(none);
-        }}
-       QComboBox QAbstractItemView {{
-             border: 1px solid #268a86;
+            border-bottom-right-radius: 21px;
+        }
+        QComboBox::down-arrow {
+            image: none;
+        }
+        QComboBox QAbstractItemView {
+            border: 1px solid #268a86;
+            border-radius: 22px;
             background: #333;
-       }}
-       QComboBox QAbstractItemView::item {{
+            outline: none;
+        }
+        QComboBox QAbstractItemView::item {
             color: #fff;
-        }}
-        QComboBox QAbstractItemView::item:selected {{
+            padding: 3px 8px;
+            margin: 1px;
+            border-radius: 22px;
+            text-align: center;
+        }
+        QComboBox QAbstractItemView::item:selected {
             background: #555;
-        }}""")
-        dropdown.setCurrentText(value if key != "view" else value.split('.')[1] )
-        dropdown.currentTextChanged.connect(lambda  text, k=key: self._update_theme_data(k, text if key != "view" else f"view.{text}"))
+        }
+        QComboBox QAbstractItemView::item:hover {
+             background: #268a86;
+        }
+        QComboBox QAbstractItemView::pane {
+            border-radius: 22px;
+            outline: none;
+        }
+        QComboBox QAbstractItemView::viewport {
+            border-radius: 22px;
+        }
+    """)
+        dropdown.setCurrentText(value if key != "view" else value.split('.')[1])
+        dropdown.currentTextChanged.connect(lambda text, k=key: self._update_theme_data(k, text if key != "view" else f"view.{text}"))
         hbox.addWidget(dropdown)
         hbox.addStretch(1)
         layout.addLayout(hbox)
-
+        
     def _add_text_input(self, layout, display_name, key, value):
         hbox = QHBoxLayout()
         label = QLabel(display_name)
