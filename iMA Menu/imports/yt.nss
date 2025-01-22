@@ -12,7 +12,7 @@ menu(
 menu(
     type='namespace|back' 
     title='X' 
-    image=\uE248
+    image=\uE242
     where = '@(str.contains(clipboard.get, "x.com"))'
 )
 {
@@ -23,7 +23,7 @@ menu(
 menu(
     type='namespace|back' 
     title='Reddit' 
-    image=\uE248
+    image=\uE23E
     where = '@(str.contains(clipboard.get, "redd.it"))'
 )
 {
@@ -45,7 +45,7 @@ menu(
 menu(
     type='namespace|back' 
     title='Twitch' 
-    image=\uE248
+    image=\uE241
     where = '@(str.contains(clipboard.get, "twitch.tv"))'
 )
 {

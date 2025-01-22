@@ -102,7 +102,8 @@ id.turn_off_bitlocker,
 id.troubleshoot_compatibility,
 id.remove_properties,
 id.open,
-id.view) vis=vis.remove)
+id.view
+) vis=vis.remove)
 
 // more
 modify(mode=mode.multiple
@@ -116,7 +117,8 @@ id.create_shortcut,
 id.cut,
 id.rename,
 id.paste,
-id.copy) menu=title.options)
+id.copy
+) menu=title.options)
 
 // shift
 modify(mode=single
@@ -125,7 +127,6 @@ id.open_with,
 id.options,
 id.install,
 id.display_settings,
-id.personalize,
 id.pin_current_folder_to_quick_access,
 id.pin_to_quick_access,
 id.pin_to_start,
@@ -141,10 +142,14 @@ id.command_prompt,
 id.open_windows_powershell,
 id.open_command_prompt,
 id.open_command_window_here,
-id.open_powershell_window_here) vis=key.shift())
+id.open_powershell_window_here,
+id.personalize
+) vis=key.shift())
 
 
 
+modify(find='zip' vis=key.shift())
+modify(find='Edit With photo' menu='Tools' image=\uE150)
 
 modify(type="recyclebin" where=window.is_desktop and this.id==id.empty_recycle_bin pos=1 sep)
 
@@ -154,5 +159,9 @@ modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]
     pos="bottom" menu="Terminal")
 
 
-modify(find='EDIT WITH IDLE' title='Edit Idle' icon=\uE230)
 modify(find='EDIT IN NOTEPAD' title='Edit Notepad' icon=\uE113)
+
+modify(find='7-ZIP' title='Zip' icon='C:/Users/iMA/Pictures/iCONS/Archive.ico')
+
+
+

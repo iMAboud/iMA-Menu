@@ -1,7 +1,7 @@
 ﻿menu(where=sel.count>0 type='file|dir|drive|namespace|back' mode="multiple" title='Manage' image=\uE253)
 {
 
-	item(mode="single" type="file" title="Extension" pos="4" image=\uE0B5 cmd=if(input("Change extension", "To"), 
+	item(mode="multiple" type="file" title="Extension" pos="4" image=\uE0B5 cmd=if(input("Change extension", "To"), 
 		io.rename(sel.path, path.join(sel.dir, sel.file.title + "." + input.result))))
 	
 
