@@ -22,7 +22,7 @@ class ColorPickerButton(QPushButton):
 
     def __init__(self, initial_color="#ffffff", parent=None):
         super().__init__(parent)
-        self.setFixedSize(64, 64)  # Increased Size
+        self.setFixedSize(64, 64)  
         self.setStyleSheet("border: 1px solid #268a86; border-radius: 16px; background-color: " + initial_color)
         self.hex_color = initial_color
         self.clicked.connect(self._open_color_dialog)
@@ -87,7 +87,7 @@ class ThemeEditor(QMainWindow):
         self._load_theme()
         self.setWindowIcon(QIcon(ICON_PATH))
         self.is_closing = False
-        self.launcher_background_color = "#333333"  # Set the background color of the main window to the same color as launcher
+        self.launcher_background_color = "#333333"
         self.central_widget.setStyleSheet(f"background-color: {self.launcher_background_color}; color: #fff;")
 
     def closeEvent(self, event):
@@ -133,12 +133,10 @@ class ThemeEditor(QMainWindow):
         self.item_text_tab_widget.setStyleSheet("QTabWidget::pane {border: none;} QTabBar::tab { border-bottom: none;}") #Removed Tab Border
         self.item_text_layout.addWidget(self.item_text_tab_widget)
         
-        # Create the Item Text Tab
         self.item_text_tab = QWidget()
         self.item_text_tab_layout = QVBoxLayout(self.item_text_tab)
         self.item_text_tab_widget.addTab(self.item_text_tab, "Text")
 
-        # Create the Font Tab
         self.font_tab = QWidget()
         self.font_tab_layout = QVBoxLayout(self.font_tab)
         self.item_text_tab_widget.addTab(self.font_tab, "Font")
@@ -187,7 +185,6 @@ class ThemeEditor(QMainWindow):
                 widget.deleteLater()
 
     def _create_form(self):
-         # Clear Existing Layouts
         self._clear_layout(self.general_layout)
         self._clear_layout(self.border_layout)
         self._clear_layout(self.background_layout)
@@ -215,14 +212,14 @@ class ThemeEditor(QMainWindow):
         self._add_setting_with_label(self.background_layout, "background.effect")
         self._add_setting_with_label(self.background_layout, "background.opacity")
 
-       # --- FRAME 4: Item Text and Back - Now using the first tab
+       # --- FRAME 4: Item Text and Back ---
         self._add_setting_with_label(self.item_text_tab_layout, "item.text.normal")
         self._add_setting_with_label(self.item_text_tab_layout, "item.text.select")
         self._add_setting_with_label(self.item_text_tab_layout, "item.text.normal-disabled")
         self._add_setting_with_label(self.item_text_tab_layout, "item.back.select")
 
        # --- FRAME 5: Image and Symbols ---
-        hbox = QHBoxLayout() # Hbox for image checkbox alignment
+        hbox = QHBoxLayout() 
         self._add_setting_with_label(hbox, "image.enabled")
         hbox.addStretch()
         self.image_symbol_layout.addLayout(hbox)
@@ -238,11 +235,11 @@ class ThemeEditor(QMainWindow):
         self._add_setting_with_label(self.shadow_separator_layout, "separator.color")
         self._add_setting_with_label(self.shadow_separator_layout, "separator.opacity")
 
-        # --- FRAME 7: Font - Moved to the new tab inside frame 4 ---
+        # --- FRAME 7: Font ---
         self._add_setting_with_label(self.font_tab_layout, "font.size")
+        self._add_setting_with_label(self.font_tab_layout, "font.name")
         self._add_setting_with_label(self.font_tab_layout, "font.weight")
         self._add_setting_with_label(self.font_tab_layout, "font.italic")
-        self._add_setting_with_label(self.font_tab_layout, "font.name")
 
     def _add_setting_with_label(self, layout, key, is_image = False):
         display_names = {
@@ -252,16 +249,16 @@ class ThemeEditor(QMainWindow):
             "image.enabled": "Enable Image", "image.color": "Image Color",
             "background.color": "Background Color",
             "background.opacity": "Background Opacity", "background.effect": "Background Effect",
-            "item.radius": "Item Radius", "item.text.normal": "Normal Text",
-            "item.text.select": "Selected Text", "item.back.select": "Selected Background",
-            "item.border.normal": "Item Border", "item.border.select": "Selected Border",
-            "item.text.normal-disabled": "Normal Disabled Text",
-             "item.back.select-disabled": "Selected Disabled Background", "font.size": "Font Size",
-            "font.name": "Font Name", "font.weight": "Font Weight", "font.italic": "Italic",
+            "item.radius": "Item Radius", "item.text.normal": "Text",
+            "item.text.select": "Selected Text", "item.back.select": "Text Background",
+            "item.border.normal": "Item Border", "item.border.select": "Text Border",
+            "item.text.normal-disabled": "Disabled Text",
+            "font.size": "Font Size",
+            "font.name": "Font Name", "font.weight": "Bold", "font.italic": "Italic",
             "shadow.enabled": "Enable Shadow", "shadow.size": "Shadow Size",
             "shadow.opacity": "Shadow Opacity", "shadow.color": "Shadow Color",
             "separator.size": "Separator Size", "separator.color": "Separator Color",
-            "separator.opacity": "Separator Opacity",  "symbol.normal": "Normal Symbol"
+            "separator.opacity": "Separator Opacity",  "symbol.normal": "Symbol"
         }
         display_name = display_names.get(key, key)
         if key in self.theme_data:
@@ -345,7 +342,7 @@ class ThemeEditor(QMainWindow):
             """)
         checkbox.stateChanged.connect(lambda state, k=key, chk=checkbox: self._update_theme_data(k, chk.isChecked()))
         hbox = QHBoxLayout()
-        hbox.addWidget(checkbox)  # Checkbox left of the text
+        hbox.addWidget(checkbox)  
         label = QLabel(display_name)
         label.setStyleSheet("background-color: transparent; border: none;")
         hbox.addWidget(label)
@@ -551,19 +548,19 @@ class ThemeEditor(QMainWindow):
             border-radius: 6px;
         }
         QSlider::add-page:horizontal {
-           background: #268a86;
+           background: #555;
            border-radius: 2px;
          }
         QSlider::sub-page:horizontal {
-          background: #555;
+          background: #268a86;
            border-radius: 2px;
         }
     """)
 
-        slider.setLayoutDirection(Qt.LeftToRight) # Set slider direction from left to right
+        slider.setLayoutDirection(Qt.LeftToRight)
         label_val = QLabel(str(value))
         label_val.setFixedWidth(30)
-        label_val.setStyleSheet("color: #fff; background-color: transparent; border: none; font-size: 14px; -webkit-text-stroke: 1px #268a86;") # Added font-size and teal outline
+        label_val.setStyleSheet("color: #fff; background-color: transparent; border: none; font-size: 14px; -webkit-text-stroke: 1px #268a86;")
         slider.valueChanged.connect(lambda val, k=key, l=label_val, s=slider: self._update_slider_value(k, s.value(), l))
         hbox.addWidget(slider)
         hbox.addWidget(label_val)
@@ -660,10 +657,20 @@ class ThemeEditor(QMainWindow):
             with open(THEME_PATH, 'w') as file:
                 file.write("theme\n{\n")
                 for key, value in self.theme_data.items():
-                  if key in ["name","font.name"]:
-                     file.write(f"  {key} = \"{value}\"\n")
-                  else:
-                     file.write(f"  {key} = {value}\n")
+                   if key == 'image.color':
+                        try:
+                            color_list = eval(value)
+                            if isinstance(color_list, list):
+                                formatted_value = f"[{', '.join(c if c != 'default' else '#ffffff' for c in color_list)}]"
+                                file.write(f"  {key} = {formatted_value}\n")
+                            else:
+                                file.write(f"  {key} = {value}\n")
+                        except:
+                            file.write(f"  {key} = {value}\n")
+                   elif key in ["name", "font.name"]:
+                        file.write(f"  {key} = \"{value}\"\n")
+                   else:
+                      file.write(f"  {key} = {value}\n")
                 file.write("}\n")
         except Exception as e:
             print(f"Error in save_theme: {e}")
