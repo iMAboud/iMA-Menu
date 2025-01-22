@@ -42,51 +42,53 @@ class ThemeEditor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.theme_data = {
-             "name": "modern",
-              "view": "view.medium",
-              "border.enabled": "true",
-              "border.size": "5",
-             "border.color": "default",
-              "border.opacity": "38",
-              "border.radius": "0",
-             "image.enabled": "true",
+            "name": "modern",
+            "view": "view.medium",
+            "border.enabled": "true",
+            "border.size": "5",
+            "border.color": "default",
+            "border.opacity": "38",
+            "border.radius": "0",
+            "image.enabled": "true",
             "image.color": "['#888888', '#888888']",
-             "background.color": "default",
-             "background.opacity": "0",
-             "background.effect": "3",
-              "item.radius": "2",
-              "item.text.normal": "#888888",
-             "item.text.select": "#888888",
-              "item.text.normal-disabled": "#888888",
-              "item.back.select": "#888888",
-              "item.border.normal": "#228844",
-              "item.border.select": "#888888",
-              "font.size": "auto",
-              "font.name": "Segoe UI Variable Text",
-             "font.weight": "true",
+            "background.color": "default",
+            "background.opacity": "0",
+            "background.effect": "3",
+            "item.radius": "2",
+            "item.text.normal": "#888888",
+            "item.text.select": "#888888",
+            "item.text.normal-disabled": "#888888",
+            "item.back.select": "#888888",
+            "item.border.normal": "#228844",
+            "item.border.select": "#888888",
+            "font.size": "auto",
+            "font.name": "Segoe UI Variable Text",
+            "font.weight": "true",
             "font.italic": "true",
-             "shadow.enabled": "true",
-              "shadow.size": "8",
-             "shadow.opacity": "7",
+            "shadow.enabled": "true",
+            "shadow.size": "8",
+            "shadow.opacity": "7",
             "shadow.color": "#888888",
-             "separator.size": "0",
-              "separator.color": "#888888",
-              "separator.opacity": "0",
-             "symbol.normal": "#888888",
-             "symbol.select": "#888888"
-          }
+            "separator.size": "0",
+            "separator.color": "#888888",
+            "separator.opacity": "0",
+            "symbol.normal": "#888888",
+            "symbol.select": "#888888"
+        }
         self.backup_theme_data = self.theme_data.copy()
         self.slider_ranges = {
-            "border.size": (0, 10), "item.opacity": (0, 100), "item.radius": (0, 4),
+            "border.size": (0, 10), "item.opacity": (0, 100), "item.radius": (0, 3),
             "shadow.size": (0, 30), "shadow.opacity": (0, 100), "separator.size": (0, 40),
             "separator.opacity": (0, 100), "background.opacity": (0, 100), "font.size": (6, 100),
-            "border.radius": (0, 4), "item.prefix": (0, 2), "font.weight": (1, 9)
+            "border.radius": (0, 3), "item.prefix": (0, 2), "font.weight": (1, 9)
         }
         self.color_pickers = {}
         self._setup_ui()
         self._load_theme()
         self.setWindowIcon(QIcon(ICON_PATH))
         self.is_closing = False
+        self.launcher_background_color = "#333333"  # Set the background color of the main window to the same color as launcher
+        self.central_widget.setStyleSheet(f"background-color: {self.launcher_background_color}; color: #fff;")
 
     def closeEvent(self, event):
         self.is_closing = True
@@ -97,11 +99,11 @@ class ThemeEditor(QMainWindow):
     def _setup_ui(self):
         self.setWindowTitle('iMAboud - Theme Editor')
         self.setGeometry(100, 100, 900, 700)
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QGridLayout(central_widget)
-        central_widget.setStyleSheet("background-color: #222; color: #fff;")
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        main_layout = QGridLayout(self.central_widget)
         main_layout.setSpacing(8)
+
          # Create Frames with Teal Borders
         self.general_frame = self._create_frame()
         self.border_frame = self._create_frame()
@@ -128,7 +130,7 @@ class ThemeEditor(QMainWindow):
 
         # Create a tab widget for Frame 4
         self.item_text_tab_widget = QTabWidget()
-        self.item_text_tab_widget.setStyleSheet("QTabWidget::pane {border: none;}") #Removed Tab Border
+        self.item_text_tab_widget.setStyleSheet("QTabWidget::pane {border: none;} QTabBar::tab { border-bottom: none;}") #Removed Tab Border
         self.item_text_layout.addWidget(self.item_text_tab_widget)
         
         # Create the Item Text Tab
@@ -140,7 +142,6 @@ class ThemeEditor(QMainWindow):
         self.font_tab = QWidget()
         self.font_tab_layout = QVBoxLayout(self.font_tab)
         self.item_text_tab_widget.addTab(self.font_tab, "Font")
-
 
         for layout in [self.general_layout, self.border_layout, self.background_layout, self.item_text_tab_layout,
                       self.image_symbol_layout, self.shadow_separator_layout, self.font_tab_layout]:
@@ -221,7 +222,10 @@ class ThemeEditor(QMainWindow):
         self._add_setting_with_label(self.item_text_tab_layout, "item.back.select")
 
        # --- FRAME 5: Image and Symbols ---
-        self._add_setting_with_label(self.image_symbol_layout, "image.enabled")
+        hbox = QHBoxLayout() # Hbox for image checkbox alignment
+        self._add_setting_with_label(hbox, "image.enabled")
+        hbox.addStretch()
+        self.image_symbol_layout.addLayout(hbox)
         self._add_setting_with_label(self.image_symbol_layout, "image.color", is_image=True)
         self._add_setting_with_label(self.image_symbol_layout, "symbol.normal")
 
@@ -268,7 +272,7 @@ class ThemeEditor(QMainWindow):
                            "shadow.size", "separator.size", "border.radius", "item.radius"]:
                 min_val, max_val = self.slider_ranges.get(key, (0, 100))
                 if key in ["border.size", "shadow.size", "separator.size", "border.radius", "item.radius"]:
-                    min_val, max_val = self.slider_ranges.get(key, (0, 10))
+                    min_val, max_val = self.slider_ranges.get(key, (0, 3)) if key in ["border.radius", "item.radius"] else self.slider_ranges.get(key, (0, 10))
                 self._add_slider(layout, display_name, key, int(value), min_val, max_val)
             elif value.lower() in ["true", "false"] and key != "font.italic":
                 self._add_checkbox(layout, display_name, key, value.lower() == "true")
@@ -541,24 +545,25 @@ class ThemeEditor(QMainWindow):
         QSlider::handle:horizontal {
             background: #268a86;
             border: 1px solid #268a86;
-            width: 12px; /* Increased handle size */
+            width: 12px;
             height: 12px;
             margin: -5px 0;
-            border-radius: 6px; /* Circular handle */
+            border-radius: 6px;
         }
         QSlider::add-page:horizontal {
-            background: #268a86;
-            border-radius: 2px;
-        }
+           background: #268a86;
+           border-radius: 2px;
+         }
         QSlider::sub-page:horizontal {
-            background: #333;
-             border-radius: 2px;
+          background: #555;
+           border-radius: 2px;
         }
     """)
 
+        slider.setLayoutDirection(Qt.LeftToRight) # Set slider direction from left to right
         label_val = QLabel(str(value))
-        label_val.setFixedWidth(25)
-        label_val.setStyleSheet("color: #fff; background-color: transparent; border: none;")
+        label_val.setFixedWidth(30)
+        label_val.setStyleSheet("color: #fff; background-color: transparent; border: none; font-size: 14px; -webkit-text-stroke: 1px #268a86;") # Added font-size and teal outline
         slider.valueChanged.connect(lambda val, k=key, l=label_val, s=slider: self._update_slider_value(k, s.value(), l))
         hbox.addWidget(slider)
         hbox.addWidget(label_val)
@@ -672,39 +677,45 @@ class ThemeEditor(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(ICON_PATH))
-    app.setStyleSheet("""
-        QMainWindow {
-            background-color: #222;
-        }
-        QLabel {
+    app.setStyleSheet(f"""
+        QMainWindow {{
+            background-color: #333333; /* Changed to launcher background */
+        }}
+        QLabel {{
             color: #fff;
             font-size: 13px;
             margin-right: 6px;
              padding-left: 3px;
-        }
-         QLabel#SectionTitle {
+        }}
+         QLabel#SectionTitle {{
             font-size: 15px;
             font-weight: bold;
             color: #fff;
             margin-bottom: 8px;
             text-align: center;
-        }
-        QScrollBar:vertical {
+        }}
+        QScrollBar:vertical {{
             border: none;
             background: #333;
             width: 8px;
-        }
-        QScrollBar::handle:vertical {
+        }}
+        QScrollBar::handle:vertical {{
             background: #555;
             min-height: 14px;
-        }
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             border: none;
             background: none;
-        }
-        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        }}
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
             background: none;
-        }
+        }}
+       QTabWidget::pane {{
+          border: none;
+        }}
+         QTabBar::tab {{
+          border-bottom: none;
+        }}
     """)
     editor = ThemeEditor()
     editor.show()
