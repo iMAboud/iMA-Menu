@@ -13,12 +13,11 @@
 _____________________________________________________________________
 ## Download Installer
 
-[iMA Menu installer](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Installer.exe)
+- [iMA Menu installer (3.6MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Installer.exe)
+- [iMA Menu Portable (95MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Portable.exe)
 
-Includes all features
-
-
-[iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.5/iMA.Menu.-.Light.exe)
+_____________________________________________________________________
+- [iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.5/iMA.Menu.-.Light.exe)
 
 Includes only the menu and Send/Receieve feature
 _____________________________________________________________________
