@@ -13,10 +13,9 @@
 _____________________________________________________________________
 ## Download Installer
 
-- [iMA Menu online installer (3.6MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Online.installer.exe)
-- [iMA Menu offline installer (92MB)] (Currently disabled until issues resolved)
-  
-Includes all features below
+[iMA Menu installer](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Installer.exe)
+
+Includes all features
 
 
 [iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.5/iMA.Menu.-.Light.exe)
