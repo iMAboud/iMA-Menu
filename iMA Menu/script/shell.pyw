@@ -99,7 +99,7 @@ class RoundedInputDialog(QDialog):
         buttons_layout.addWidget(cancel_button)
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
-        self.input_field.setFocus()  # Set focus to the input field
+        self.input_field.setFocus()  
 
     def getText(self):
         if self.exec_() == QDialog.Accepted:
@@ -161,7 +161,7 @@ class ShellEditor(QWidget):
         self.remove_text_remove_button.clicked.connect(self.remove_remove_items)
         self.set_button_style(self.remove_text_remove_button)
         self.remove_text_remove_button.setStyleSheet(self.remove_text_remove_button.styleSheet() + "QPushButton {background-color: #777777;} QPushButton:hover {background-color: #666666;}")
-        self.remove_list.setSelectionMode(QAbstractItemView.SingleSelection)  # Only allow one item to be selected at a time
+        self.remove_list.setSelectionMode(QAbstractItemView.SingleSelection) 
         remove_layout = QVBoxLayout()
         remove_layout.addWidget(remove_label)
         remove_layout.addWidget(self.remove_list)
@@ -184,7 +184,7 @@ class ShellEditor(QWidget):
         self.remove_import_button.clicked.connect(self.remove_import_items)
         self.set_button_style(self.remove_import_button)
         self.remove_import_button.setStyleSheet(self.remove_import_button.styleSheet() + "QPushButton {background-color: #777777;} QPushButton:hover {background-color: #666666;}")
-        self.import_list.setSelectionMode(QAbstractItemView.SingleSelection) # Only allow one item to be selected at a time
+        self.import_list.setSelectionMode(QAbstractItemView.SingleSelection) 
         import_layout = QVBoxLayout()
         import_layout.addWidget(import_label)
         import_layout.addWidget(self.import_list)
@@ -301,12 +301,10 @@ class ShellEditor(QWidget):
 
     def mousePressEvent(self, event):
           if event.button() == Qt.LeftButton:
-             # Deselect from remove list
              if not self.remove_list.geometry().contains(event.pos()):
                  if not self.add_remove_button.geometry().contains(event.pos()) and not self.remove_text_remove_button.geometry().contains(event.pos()):
                      self.remove_list.clearSelection()
 
-            # Deselect from import list
              if not self.import_list.geometry().contains(event.pos()):
                 if not self.add_import_button.geometry().contains(event.pos()) and not self.remove_import_button.geometry().contains(event.pos()):
                     self.import_list.clearSelection()
