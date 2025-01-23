@@ -232,7 +232,6 @@ class UnifiedApp(QMainWindow):
         # --- Bottom Bar Layout ---
         bottom_bar_layout = QHBoxLayout()
         
-        # Add a stretch to push the save button to the right
         bottom_bar_layout.addStretch(1)
         
         self.unified_save_button = QPushButton("Save Changes")
@@ -250,7 +249,6 @@ class UnifiedApp(QMainWindow):
         """)
         bottom_bar_layout.addWidget(self.unified_save_button)
         
-        # Add the bottom bar layout to the main layout
         main_layout.addLayout(bottom_bar_layout)
         # --- End of layout setup ---
         
@@ -266,7 +264,7 @@ class UnifiedApp(QMainWindow):
         self.add_tab("Shell", ShellEditor, os.path.join(ICONS_PATH, "shell.ico"))
         self.add_tab("Shortcut", ShortcutWindow, os.path.join(ICONS_PATH, "shortcut.ico"))
     
-        self.repo_url = "https://github.com/iMAboud/iMA-Menu/tree/main/iMA%20Menu" #This is not a raw url
+        self.repo_url = "https://github.com/iMAboud/iMA-Menu/tree/main/iMA%20Menu" 
         self.install_folder = SCRIPT_DIR
         self.skip_files = [
             os.path.join("imports","theme.nss"),
@@ -322,7 +320,7 @@ class UnifiedApp(QMainWindow):
     
     def save_all(self):
         for i in range(self.tab_content_widget.count()):
-          widget = self.tab_content_widget.widget(i).layout().itemAt(0).widget() # Gets child widget from tab
+          widget = self.tab_content_widget.widget(i).layout().itemAt(0).widget() 
           if hasattr(widget, 'save_data'):
                 data = widget.save_data()
                 if isinstance(widget, ModifyWindow):
@@ -362,7 +360,7 @@ class UnifiedApp(QMainWindow):
     def save_theme_data(self, data, widget):
       try:
         theme_data = data.get("theme_data", {})
-        widget.theme_data = theme_data # update widget theme data from changes
+        widget.theme_data = theme_data 
         widget._save_theme()
       except Exception as e:
             QMessageBox.critical(self, "Error", f"Error saving theme data: {e}")
@@ -402,7 +400,7 @@ class UnifiedApp(QMainWindow):
 
             with open(file_path, 'w') as file:
                 file.writelines(lines)
-            widget.save_status_text("Saved!") # Display a save status label
+            widget.save_status_text("Saved!")
             QTimer.singleShot(3000, widget.clear_save_status)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error saving shell data: {e}")
