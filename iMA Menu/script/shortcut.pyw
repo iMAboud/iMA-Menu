@@ -7,10 +7,8 @@ from PyQt5.QtGui import QIcon, QPixmap, QColor
 from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QRect, QTimer, QEvent
 from PyQt5.Qt import QGraphicsBlurEffect
 
-# Get the directory of the current script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(BASE_DIR)
-# Construct paths relative to the script directory
 FILE_PATH = os.path.join(SCRIPT_DIR, "imports", "shortcut.nss")
 
 class RoundedCard(QFrame):
@@ -18,7 +16,7 @@ class RoundedCard(QFrame):
         super().__init__(parent)
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
-        self.setFixedSize(120, 120)  # Set to fixed size
+        self.setFixedSize(120, 120)  
         self.setStyleSheet("background-color: #333333; border-radius: 10px; padding: 10px;")
     
         self.title_label = QLabel(title)
@@ -28,7 +26,7 @@ class RoundedCard(QFrame):
         self.image_label = QLabel()
         self.set_image(image_path)
         
-        layout = QVBoxLayout()  # Use one single layout
+        layout = QVBoxLayout()  
         layout.addWidget(self.title_label)
         layout.addWidget(self.image_label)
         layout.setAlignment(Qt.AlignCenter)
@@ -82,13 +80,11 @@ class AddItemPopup(QDialog):
         card_layout = QVBoxLayout()
         self.popup_card.setLayout(card_layout)
 
-        # Dropdown Menu for Shortcut/CMD
         self.type_dropdown = QComboBox()
         self.type_dropdown.addItems(["shortcut", "cmd"])
         self.type_dropdown.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
         card_layout.addWidget(self.type_dropdown)
 
-        # Shortcut Path selection
         self.shortcut_path_layout = QHBoxLayout()
         self.shortcut_button = QPushButton("Select Shortcut Path")
         self.shortcut_button.setStyleSheet("background-color: #0078d4; color: #FFFFFF; border-radius: 8px; padding: 5px;")
@@ -100,13 +96,11 @@ class AddItemPopup(QDialog):
         card_layout.addLayout(self.shortcut_path_layout)
         self.shortcut_path_layout.setContentsMargins(0, 0, 0, 10)
 
-        # Command Input
         self.command_input = QLineEdit()
         self.command_input.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
         card_layout.addWidget(self.command_input)
-        self.command_input.hide()  # hide this by default
+        self.command_input.hide() 
 
-        # Icon/Image
         self.icon_layout = QHBoxLayout()
         self.icon_button = QPushButton("Select Icon")
         self.icon_button.setStyleSheet("background-color: #0078d4; color: #FFFFFF; border-radius: 8px; padding: 5px;")
@@ -118,7 +112,6 @@ class AddItemPopup(QDialog):
         card_layout.addLayout(self.icon_layout)
         self.icon_layout.setContentsMargins(0, 0, 0, 10)
 
-        # Key Dropdown
         self.key_layout = QHBoxLayout()
         self.key_dropdown_label = QLabel("Key:")
         self.key_dropdown_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px; background-color: transparent;")
@@ -135,14 +128,13 @@ class AddItemPopup(QDialog):
 
         self.key_dropdown.addItems([opt[4:].upper() if "key." in opt else opt for opt in key_options])  # Show only text after "key."
         self.key_dropdown.setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 5px; color: #FFFFFF;")
-        self.key_dropdown.setCurrentIndex(0) # Initially sets the selection to the first one
+        self.key_dropdown.setCurrentIndex(0) 
 
         self.key_layout.addWidget(self.key_dropdown_label)
         self.key_layout.addWidget(self.key_dropdown)
         card_layout.addLayout(self.key_layout)
         self.key_layout.setContentsMargins(0, 0, 0, 10)
 
-        # Title Input
         self.title_layout = QHBoxLayout()
         self.title_label = QLabel("Title:")
         self.title_label.setStyleSheet("font-size: 16px; color: #FFFFFF; margin-right: 5px; background-color: transparent;")
@@ -152,7 +144,6 @@ class AddItemPopup(QDialog):
         self.title_layout.addWidget(self.title_input)
         card_layout.addLayout(self.title_layout)
 
-        # Create Button
         self.create_button = QPushButton("Add")
         self.create_button.setStyleSheet("background-color: #1a73e8; color: #FFFFFF; border-radius: 8px; padding: 10px; margin-top: 10px;")
         self.create_button.clicked.connect(self.create_item)
@@ -161,29 +152,24 @@ class AddItemPopup(QDialog):
         layout.addWidget(self.popup_card)
         self.setLayout(layout)
 
-        # Properties so we can use them anywhere
         self.shortcut_button = self.shortcut_button
         self.shortcut_path_text = self.shortcut_path_text
         
-        # Initially, update the UI
         self.type_dropdown.currentIndexChanged.connect(self.update_popup_visibility)
 
     def showEvent(self, event):
-        # Create a blur effect
         self.blur_effect = QGraphicsBlurEffect(self)
-        self.blur_effect.setBlurRadius(15)  # Adjust blur radius as needed
+        self.blur_effect.setBlurRadius(15)  
         self.parent().setGraphicsEffect(self.blur_effect)
 
-        # Move the call here
         self.update_popup_visibility()
 
     def hideEvent(self, event):
-        # Remove the blur effect when the popup closes
         self.parent().setGraphicsEffect(None)
 
     def eventFilter(self, obj, event):
        if event.type() == QEvent.MouseButtonPress and not self.popup_card.isAncestorOf(obj):
-            self.close() # Close on outside click.
+            self.close() 
             return True
        return super().eventFilter(obj, event)
 
@@ -247,7 +233,6 @@ class MainWindow(QWidget):
         layout = QVBoxLayout()
         self.setStyleSheet("background-color: #1E1E1E; border-radius: 22px; padding: 5px;")
 
-        # Add Button
         add_button_layout = QHBoxLayout()
         add_button_layout.addStretch()
         self.add_button_card = QFrame()
@@ -265,7 +250,6 @@ class MainWindow(QWidget):
         layout.addLayout(add_button_layout)
 
 
-        # Scrollable Grid Area for Cards
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet("background: transparent;")
@@ -275,13 +259,12 @@ class MainWindow(QWidget):
         layout.addWidget(self.scroll_area)
         self.populate_cards()
 
-        # Bottom Button Layout
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         self.delete_button = QPushButton("Delete")
         self.delete_button.setStyleSheet("background-color: #d32f2f; color: #FFFFFF; border-radius: 8px; padding: 10px;")
         self.delete_button.clicked.connect(self.delete_selected_card)
-        self.delete_button.setEnabled(False)  # initially disable delete button
+        self.delete_button.setEnabled(False)  
 
         button_layout.addWidget(self.delete_button)
         layout.addLayout(button_layout)
@@ -297,7 +280,6 @@ class MainWindow(QWidget):
         animation.start()
 
     def populate_cards(self):
-        # Clear existing layout and card list
         while self.grid_layout.count():
            item = self.grid_layout.takeAt(0)
            widget = item.widget()
@@ -305,13 +287,12 @@ class MainWindow(QWidget):
                widget.deleteLater()
         self.card_widgets.clear()
 
-        # Populate the cards
         row = 0
         col = 0
         for index, item_data in enumerate(self.items):
             card = RoundedCard(item_data["title"], item_data["icon_path"], index, self)
             self.grid_layout.addWidget(card, row, col)
-            self.card_widgets.append(card)  # Track the card widget with index
+            self.card_widgets.append(card)  
             col += 1
             if col > 4:
                 col = 0
@@ -320,7 +301,7 @@ class MainWindow(QWidget):
     def open_popup(self):
       popup = AddItemPopup(self)
       popup.item_added_signal.connect(self.add_new_item)
-      popup.installEventFilter(popup) # Click outside closes it.
+      popup.installEventFilter(popup) 
       popup.exec_()
 
     def add_new_item(self, new_item):
@@ -334,16 +315,14 @@ class MainWindow(QWidget):
           if 0 <= index_to_remove < len(self.items):
               del self.items[index_to_remove]
 
-              # Remove the card widget from the UI
-              self.card_widgets.remove(self.selected_card)  # Remove card from tracking
-              self.selected_card.setParent(None)   # Remove it from the parent
-              self.selected_card.deleteLater()  # Destroy the card from memory
+              self.card_widgets.remove(self.selected_card)  
+              self.selected_card.setParent(None)   
+              self.selected_card.deleteLater()  
 
-              # Resetting selection
               self.selected_card = None
               self.delete_button.setEnabled(False)
 
-              self.populate_cards() # Repopulate cards, indexes and UI
+              self.populate_cards() 
           else:
              QMessageBox.warning(self, "Delete Error", "Unable to delete the item")
 
@@ -398,7 +377,7 @@ class MainWindow(QWidget):
                  item["shortcut_path"] = cmd_value
           elif part.startswith("vis="):
             key_part = part.split("=", 1)[1].strip("'").replace("key.", "").replace("()", "")
-            item["key_selected"] = f"key.{key_part}" if key_part != "none" else "none" # for "ALL" option
+            item["key_selected"] = f"key.{key_part}" if key_part != "none" else "none" 
 
       return item
 
