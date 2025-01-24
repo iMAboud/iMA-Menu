@@ -13,8 +13,7 @@
 _____________________________________________________________________
 ## Download Installer
 
-- [iMA Menu installer (3.6MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Installer.exe)
-- [iMA Menu Portable (95MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v0.6/iMA.Menu.-.Portable.exe)
+- [iMA Menu installer (3.6MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.7/iMA.Menu.Installer.exe)
 
 _____________________________________________________________________
 - [iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.5/iMA.Menu.-.Light.exe)
@@ -219,14 +218,16 @@ _____________________________________________________________________
 
 ## Screenshots
 
-<img src="https://i.imgur.com/OGehNdS.png" alt="upload" width="400">
-<img src="https://i.imgur.com/tMEe1wy.png" alt="downloading" width="400">
 <img src="https://i.imgur.com/U6syLCl.png" alt="Draw" width="400">
 <img src="https://i.imgur.com/qQvxrdB.png" alt="HEX" width="400">
 <img src="https://i.imgur.com/2im6aLx.png" alt="Theme" width="400">
 <img src="https://i.imgur.com/DXE4QFi.png" alt="Modify" width="400">
 <img src="https://i.imgur.com/2i7VYLF.png" alt="Search" width="400">
-<img src="https://i.imgur.com/kclvUGm.png" alt="Search" width="400">
+<img src="https://i.imgur.com/kclvUGm.png" alt="Shell" width="400">
+<img src="https://i.imgur.com/sO6JntG.png" alt="Video Downloader" width="400">
+<img src="https://i.imgur.com/OGehNdS.png" alt="upload" width="400">
+<img src="https://i.imgur.com/tMEe1wy.png" alt="downloading" width="400">
+<img src="https://i.imgur.com/L40lJKt.png" alt="shortcut" width="400">
 
 _____________________________________________________________________
   
