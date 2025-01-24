@@ -223,8 +223,10 @@ _____________________________________________________________________
 <img src="https://i.imgur.com/tMEe1wy.png" alt="downloading" width="400">
 <img src="https://i.imgur.com/U6syLCl.png" alt="Draw" width="400">
 <img src="https://i.imgur.com/qQvxrdB.png" alt="HEX" width="400">
-<img src="https://i.imgur.com/2GMg2cx.png" alt="Theme" width="400">
-<img src="https://i.imgur.com/FQFhX81.png" alt="Modify" width="400">
+<img src="https://i.imgur.com/2im6aLx.png" alt="Theme" width="400">
+<img src="https://i.imgur.com/DXE4QFi.png" alt="Modify" width="400">
+<img src="https://i.imgur.com/2i7VYLF.png" alt="Search" width="400">
+<img src="https://i.imgur.com/kclvUGm.png" alt="Search" width="400">
 
 _____________________________________________________________________
   
