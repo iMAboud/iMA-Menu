@@ -10,7 +10,7 @@
 	
 
 
-item(type='namespace|back' title='Search' cmd='@app.dir\script\search.bat' image=\uE186)
+item(type='namespace|back' title='Search' cmd='@app.dir\script\search.pyw' image=\uE186)
 item(type='namespace|back' title='Draw' cmd='@app.dir\script\draw.pyw' image=\uE116)
 
 
