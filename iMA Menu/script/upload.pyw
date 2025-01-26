@@ -158,6 +158,8 @@ def handle_command_completion(success, status_label, progress_bar, window):
     status_label.setStyleSheet(f"color: {'green' if success else 'red'};")
     window.speed_label.setText("")
     progress_bar.setValue(0)
+    window.is_sending = False
+    window.process_pending_queue()
 
 
 class CircularButton(QPushButton):
@@ -218,16 +220,12 @@ class SettingsPopup(QDialog):
         self.main_window = main_window
         self.setWindowTitle("Set Code")
         self.setWindowFlag(Qt.FramelessWindowHint)
-        # Remove transparency attribute to ensure a solid background
-        # self.setAttribute(Qt.WA_TranslucentBackground)
 
-        # Set the solid grey background and rounded corners for the window
         self.setStyleSheet("""
             background-color: #333;
             border-radius: 10px;
         """)
 
-        # Make dialog modal
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -267,7 +265,7 @@ class SettingsPopup(QDialog):
         button_layout.addWidget(self.set_button)
 
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.close) # Directly connect to self.close for all situations
+        self.cancel_button.clicked.connect(self.close) 
         self.cancel_button.setStyleSheet("""
             QPushButton {
                 background-color: #444;
