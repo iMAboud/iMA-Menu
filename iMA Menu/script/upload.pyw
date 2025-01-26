@@ -310,7 +310,7 @@ class SettingsPopup(QDialog):
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("iMA Menu: Croc")
+        self.setWindowTitle("iMShare")
         self.setMinimumSize(800, 500)
         self.set_gradient_background()
 
