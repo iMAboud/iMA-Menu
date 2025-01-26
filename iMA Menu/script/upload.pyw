@@ -593,9 +593,19 @@ class MainWindow(QWidget):
 
     def open_file_dialog(self):
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)", options=options)
-        if file_path:
-            self.add_file_to_queue(file_path)
+        file_paths, _ = QFileDialog.getOpenFileNames(self, "Select File or Directory", "", "All Files (*)", options=options)
+        if file_paths:
+            for path in file_paths:
+                if os.path.isdir(path):
+                    self.add_folder_to_queue(path)
+                else:
+                     self.add_file_to_queue(path)
+
+    def add_folder_to_queue(self, folder_path):
+        for root, _, files in os.walk(folder_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    self.add_file_to_queue(file_path)
 
     def add_file_to_queue(self, file_path):
         unique_id = str(uuid.uuid4())
