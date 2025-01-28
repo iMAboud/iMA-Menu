@@ -82,10 +82,15 @@ _____________________________________________________________________
 
 ## YouTube & other sites downloader 
 ![Video Downloader](https://github.com/user-attachments/assets/7bec24e9-9ca1-4c6c-8786-2d1db99c97ae)
-- Copy the video's link
-- Right-Click an empty space (This is where your video will be saved in)
-- Hover over Youtube, and select either **Video** or **Audio**.
-- It will start installing instantly if everything is configured correctly.
+
+Shows only when you have a video link in clipboard. 
+
+Copy Youtube, you'll see youtube option in context menu (works for X, Twitch, Instagram, Tiktok and Reddit too).
+
+![reddit](https://github.com/user-attachments/assets/72dd09dd-d229-4bb3-b240-cb0b25628690) ![Youtube](https://github.com/user-attachments/assets/01b57ef0-ef2e-4b33-b0e5-d19cc9f66768) ![Twitch](https://github.com/user-attachments/assets/49db7fbd-ccdc-4cc9-afb2-bb593611c6d5)
+
+
+
 _____________________________________________________________________
 
 ## Video & Image editing
@@ -95,14 +100,11 @@ _____________________________________________________________________
 _____________________________________________________________________
 
 
-## Search & Draw & Clean Temp & Wallpaper Changer (Found under "File Manage"
-
-![](https://i.imgur.com/JrNBaGz.png)
-
 **Search**
-- Type the name of the file, search in all directory
-- Copy the path you want to look for, and paste it in the same window to open the path and highlight the file.
 
+![Search](https://github.com/user-attachments/assets/434fb61f-c15c-44fb-af05-7166a16004a0)
+
+- Search by file name 
 
 _____________________________________________________________________
 
@@ -110,7 +112,6 @@ _____________________________________________________________________
 - Right Click to Draw, Left Click to change color
 - Mousewheel to change opacity of canvas
 - ESC to stop and close
-
 
 _____________________________________________________________________
 
@@ -121,34 +122,7 @@ _____________________________________________________________________
 
 **Color Picking**
 - Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
-
-_____________________________________________________________________
-
-**Merge media**
-- Merge 2 media files to overlap. 
-
-
-_____________________________________________________________________
-
-**StremiM** Hidden by default
-
-<img src="https://i.imgur.com/wD3OsGX.png" alt="Modify" width="400">
-
-
-Stream anything from Stremio using peario with an automation to open peario + stremio + copy share link + send it to a friend, friend can type your code and it will automatically retrieves that link + opens peario and stremio and starts watching. 
-
-- You'll need Stremio for both devices.
-
-- Edit the "Stream.bat" file in `Script > stremiM folder, and scroll down to find "YOUR_CODE_HERE", replace it with your code "minimum 6". 
-
-- Then you just right-click "Stream" , search a movie / series and click "Copy link". 
-
-
-- The script will automatically detect that a link is copied and will send it using "Croc".
-
-- To watch, click "Watch", type your friend's code, it will retreve the link, pastes it in chrome and opens it as an app. 
-
-- The script will automatically resends the link multiple times if you have more than 1 friend you want to share the link to it will do it automatically after you copy the link just set and wait for all of them to connect, it will loop until you're done. 
+- scroll up  & down to change zoom
 _____________________________________________________________________
 
 **Settings**
@@ -179,13 +153,10 @@ _____________________________________________________________________
 <img src="https://i.imgur.com/U6syLCl.png" alt="Draw" width="400">
 <img src="https://i.imgur.com/qQvxrdB.png" alt="HEX" width="400">
 <img src="https://i.imgur.com/2im6aLx.png" alt="Theme" width="400">
-<img src="https://i.imgur.com/DXE4QFi.png" alt="Modify" width="400">
 <img src="https://i.imgur.com/2i7VYLF.png" alt="Search" width="400">
 <img src="https://i.imgur.com/kclvUGm.png" alt="Shell" width="400">
-<img src="https://i.imgur.com/sO6JntG.png" alt="Video Downloader" width="400">
-<img src="https://i.imgur.com/OGehNdS.png" alt="upload" width="400">
-<img src="https://i.imgur.com/tMEe1wy.png" alt="downloading" width="400">
 <img src="https://i.imgur.com/L40lJKt.png" alt="shortcut" width="400">
+<img src="https://github.com/user-attachments/assets/0c2763f1-fa41-4b86-b138-4d52ea44e596" alt="Search" width="400">
 
 _____________________________________________________________________
   
