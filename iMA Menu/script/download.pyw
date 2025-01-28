@@ -40,39 +40,41 @@ colors = {
     "path_entry_text": "white",
     "path_entry_border": "#008080",
     "clear_button_background": "#008080",
-     "clear_button_background_hover": "#555",
+    "clear_button_background_hover": "rgba(0, 102, 102, 0.3)",
     "send_button_color": "#008080",
-    "progress_bar_border": "#555",
-    "progress_bar_background": "#333",
+    "send_button_border": "#008080",
+    "send_button_background": "rgba(0, 102, 102, 0.3)",
+    "progress_bar_border": "rgba(0, 102, 102, 0.9)",
+    "progress_bar_background": "rgba(0, 102, 102, 0.3)",
     "progress_bar_text": "white",
-     "progress_bar_chunk": "#008080",
-     "time_speed_text": "#bbb",
-     "friends_scroll_background": "rgba(0, 102, 102, 0.05)",
-     "status_frame_background": "rgba(50, 50, 50, 0.3)",
-     "status_text": "white",
-     "status_shadow": "black",
-     "output_expand_background": "rgba(100, 100, 100, 0.1)",
-     "output_expand_hover": "rgba(100, 100, 100, 0.2)",
-     "output_text_background": "#333",
-     "output_text_color": "lightgray",
-     "output_text_border": "#008080",
-     "scroll_bar_handle": "rgba(0, 102, 102, 150)",
-     "add_friend_button": "rgba(0, 102, 102, 0.3)",
-     "add_friend_button_hover": "rgba(10, 66, 66, 0.5)",
-     "friend_image_border": "#008080",
-     "add_friend_popup_background": "#333",
-     "add_friend_popup_text": "white",
+    "progress_bar_chunk": "rgba(0, 102, 102, 0.9)",
+    "time_speed_text": "#bbb",
+    "friends_scroll_background": "rgba(0, 102, 102, 0.05)",
+    "status_frame_background": "rgba(0, 102, 102, 0.3)",
+    "status_text": "white",
+    "status_shadow": "black",
+    "output_expand_background": "rgba(100, 100, 100, 0.1)",
+    "output_expand_hover": "rgba(100, 100, 100, 0.2)",
+    "output_text_background": "rgba(100, 100, 100, 0.2)",
+    "output_text_color": "lightgray",
+    "output_text_border": "#008080",
+    "scroll_bar_handle": "rgba(0, 102, 102, 150)",
+    "add_friend_button": "rgba(0, 102, 102, 0.3)",
+    "add_friend_button_hover": "rgba(10, 66, 66, 0.5)",
+    "friend_image_border": "#008080",
+    "add_friend_popup_background": "#333",
+    "add_friend_popup_text": "white",
     "app_context_menu_background": "#333",
     "app_context_menu_text": "white",
     "app_context_menu_border": "#555",
     "app_context_menu_selected": "#555",
-     "title_bar_background": "#333",
+    "title_bar_background": "#333",
     "title_bar_button_hover": "#555",
     "title_bar_button_text": "white",
-    "title_bar_button_border": "#7e57c2",
-    "minimize_button_color": "cyan",  
-    "close_button_color": "red", 
-    "title_bar_button_hover_color": "rgba(80, 80, 80, 0.5)",  
+    "title_bar_button_border": "#008080",
+    "minimize_button_color": "#008080",  
+    "close_button_color": "#008080", 
+    "title_bar_button_hover_color": "rgba(80, 80, 80, 0.3)",  
     "title_bar_button_hover_border_size": 1, 
     "title_bar_button_font_size": "12px" 
 }
@@ -133,8 +135,13 @@ class SendFileThread(QThread):
             self.process.wait()
             
             if self.process.returncode != 0:
-                self.output_signal.emit(f"\nError: Command exited with code {self.process.returncode}\n")
-                self.finished_signal.emit(False, self.queue_id)
+                
+                if "not ready" in self.process.stdout.read():  # Check if "not ready" is in the output
+                    self.output_signal.emit(f"\nNot Ready\n")
+                    self.finished_signal.emit(False, self.queue_id)
+                else:
+                    self.output_signal.emit(f"\nError: Command exited with code {self.process.returncode}\n")
+                    self.finished_signal.emit(False, self.queue_id)
             else:
                 self.finished_signal.emit(True, self.queue_id)
                 self.status_update_signal.emit("Completed!", "white")
@@ -202,7 +209,7 @@ def update_output(output_widget, line):
     output_widget.verticalScrollBar().setValue(output_widget.verticalScrollBar().maximum())
 
 def handle_command_completion(success, status_label, progress_bar, window, queue_id):
-    status_label.setText("Complete!" if success else "Failed.")
+    status_label.setText("Complete!" if success else "Not Ready" if "not ready" in window.output_text.toPlainText() else "Failed.")
     status_label.setStyleSheet(f"color: {'green' if success else 'red'};")
     window.speed_label.setText("")
     progress_bar.setValue(0)
@@ -377,7 +384,7 @@ class MainWindow(QWidget):
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet(
-            f"color: {colors['status_text']}; font-size: 14px; text-shadow: -1px -1px 0 {colors['status_shadow']}, 1px -1px 0 {colors['status_shadow']}, -1px 1px 0 {colors['status_shadow']}, 1px 1px 0 {colors['status_shadow']};")
+            f"color: {colors['status_text']}; font-size: 14px;")
         self.status_layout.addWidget(self.status_label)
         main_content_layout.addWidget(self.status_frame)
 
@@ -557,14 +564,7 @@ class MainWindow(QWidget):
         shadow_style = f"text-shadow: -1px -1px 0 {shadow_color}, 1px -1px 0 {shadow_color}, -1px 1px 0 {shadow_color}, 1px 1px 0 {shadow_color};"
         self.status_label.setFont(QFont("Arial", 12, QFont.Normal))
 
-        if message == "Ready to Download":
-            self.status_label.setStyleSheet(
-                f"color: {color}; font-style: normal; {shadow_style}"
-            )
-        else:
-             self.status_label.setStyleSheet(
-                f"color: {color}; {shadow_style}"
-             )
+
         self.dot_count = 0
         self.update_dots()
         if "Loading..." in message or "Downloading..." in message:
@@ -582,9 +582,9 @@ class MainWindow(QWidget):
 
     def set_button_style(self, button, color, rounded=False):
         border_radius = "10px" if rounded else "0px"
-        button.setStyleSheet(f"""QPushButton {{background-color: #444;color: white;border: 2px solid #555;border-radius: {border_radius};padding: 10px 20px;font-size: 12px;min-width: 150px;}}
-            QPushButton:hover {{background-color: {color};}}
-            QPushButton:pressed {{background-color: #333;}}""")
+        button.setStyleSheet(f"""QPushButton {{background-color: {colors["send_button_background"]}; color: white; border: 2px solid {colors["send_button_border"]}; border-radius: {border_radius}; padding: 10px 20px; font-size: 12px; min-width: 150px;}}
+                                QPushButton:hover {{background-color: {color};}}
+                                QPushButton:pressed {{background-color: #333;}}""")
 
     def center_window(self):
         qr = self.frameGeometry()
@@ -768,7 +768,9 @@ class MainWindow(QWidget):
             if col > 5:
                 col = 0
                 row += 1
-        self.friends_container_layout.addWidget(self.add_friend_button, row, col)
+
+        self.friends_container_layout.addWidget(self.add_friend_button, row, col, alignment=Qt.AlignTop)
+
 
     def clear_friends_container(self):
         while self.friends_container_layout.count():
@@ -804,6 +806,11 @@ class MainWindow(QWidget):
         image_container_layout = QVBoxLayout(image_container)
         image_container_layout.setContentsMargins(0, 0, 0, 0)
         image_container.setStyleSheet(f"border: 1px solid black; border-radius: 36px; background: transparent;")
+        image_container.setStyleSheet(
+            "QWidget {border: 1px solid black; border-radius: 36px; background: transparent;}"
+            "QWidget:hover { border: 3px solid teal; }"
+        )
+
 
         image_label = QLabel(image_container)
         image_label.setFixedSize(70, 70)
@@ -835,7 +842,6 @@ class MainWindow(QWidget):
         container_layout.addWidget(name_label)
 
         return container
-
 
     def handle_container_click(self, event, container, friend_data):
         if event.button() == Qt.RightButton:
@@ -869,10 +875,28 @@ class MainWindow(QWidget):
         try:
             image = QImage(image_path)
             if image.isNull():
-              return QPixmap(resource_path(os.path.join("img", "default-profile.png")))
-            scaled_image = image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            pixmap = QPixmap.fromImage(scaled_image)
-            return pixmap
+                return QPixmap(resource_path(os.path.join("img", "default-profile.png")))
+
+            scaled_image = image.scaled(size, size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+
+
+            path = QPainterPath()
+            path.addEllipse(0, 0, size, size)
+
+            masked_pixmap = QPixmap(size, size)
+            masked_pixmap.fill(Qt.transparent)
+
+
+            x_offset = (size - scaled_image.width()) // 2
+            y_offset = (size - scaled_image.height()) // 2
+
+            painter = QPainter(masked_pixmap)
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.setClipPath(path)
+            painter.drawPixmap(x_offset, y_offset, QPixmap.fromImage(scaled_image))
+            painter.end()
+
+            return masked_pixmap
         except Exception:
             return QPixmap(resource_path(os.path.join("img", "default-profile.png")))
     
@@ -902,6 +926,8 @@ class AddFriendPopup(QDialog):
         self.setStyleSheet(f"background-color: {colors['add_friend_popup_background']}; color: {colors['add_friend_popup_text']};")
         self.new_friend_data = {}
         self.current_pixmap = None
+        self.error_label = None 
+    
 
         layout = QVBoxLayout(self)
 
@@ -950,15 +976,17 @@ class AddFriendPopup(QDialog):
             "QLineEdit {background-color: #444;color: white;border: 2px solid #008080;border-radius: 10px;padding: 5px;}"
         )
         layout.addWidget(self.code_entry)
-        set_drop_shadow(self.code_entry) 
-
+        set_drop_shadow(self.code_entry)
+        
         button_layout = QHBoxLayout()
-        save_button = QPushButton("Add")
-        save_button.clicked.connect(self.accept)
-        save_button.setStyleSheet(
+        self.save_button = QPushButton("Add")
+        self.save_button.clicked.connect(self.try_add)
+        self.save_button.setDefault(True) 
+        self.save_button.setStyleSheet(
             "QPushButton {background-color: #444;color: white;border: 2px solid #008080;border-radius: 10px;padding: 5px;}\n            QPushButton:hover {background-color: #555;}")
-        button_layout.addWidget(save_button)
-        set_drop_shadow(save_button)
+        button_layout.addWidget(self.save_button)
+        set_drop_shadow(self.save_button)
+        
         
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
@@ -968,6 +996,13 @@ class AddFriendPopup(QDialog):
         set_drop_shadow(cancel_button) 
         
         layout.addLayout(button_layout)
+        
+        self.error_label = QLabel()
+        self.error_label.setStyleSheet("color: red;")
+        layout.addWidget(self.error_label)
+
+    def add_button_click(self):
+       self.save_button.click() 
 
     def create_default_pixmap(self, size=64):
         default_image = QImage(resource_path(os.path.join("img", "default-profile.png")))
@@ -1000,16 +1035,27 @@ class AddFriendPopup(QDialog):
         name = self.name_entry.text().strip()
         code = self.code_entry.text().strip()
         
-        if not name or not code:
-            return None
+        if not code:
+           return None
         
         friend_data = {}
-        friend_data["name"] = name
+        if name:
+           friend_data["name"] = name
         friend_data["download_code"] = code
         if "image" in self.new_friend_data:
             friend_data["image"] = self.new_friend_data["image"]
         self.new_friend_data = {}
         return friend_data
+
+    def try_add(self):
+         code = self.code_entry.text().strip()
+         if not code:
+              self.error_label.setText("Code required")
+              return
+         else:
+              self.error_label.clear()
+
+         self.accept() 
 
 if __name__ == '__main__':
     if is_windows():
