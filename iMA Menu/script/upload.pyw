@@ -82,8 +82,7 @@ colors = {
     "title_bar_button_hover": "#555",
     "title_bar_button_text": "white",
     "title_bar_button_border": "#7e57c2",
-    "minimize_button_color": "yellow",  
-    "maximize_button_color": "cyan",  
+    "minimize_button_color": "cyan",  
     "close_button_color": "red", 
     "title_bar_button_hover_color": "rgba(80, 80, 80, 0.5)",  
     "title_bar_button_hover_border_size": 1, 
@@ -370,7 +369,7 @@ class MainWindow(QWidget):
          # Custom Title Bar
         self.title_bar = QWidget(self)
         self.title_bar.setFixedHeight(self.title_bar_height)
-        self.title_bar.setAttribute(Qt.WA_StyledBackground, True)  # This allows the stylesheet to fully style it
+        self.title_bar.setAttribute(Qt.WA_StyledBackground, True) 
         title_layout = QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(0)
@@ -382,22 +381,13 @@ class MainWindow(QWidget):
         self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         title_layout.setAlignment(self.title_label, Qt.AlignCenter)  
 
-        # Minimize button
-        self.minimize_button = QPushButton("–")
+        self.minimize_button = QPushButton("▬")
         self.minimize_button.setFixedSize(30,30)
         self.set_title_bar_button_style(self.minimize_button)
         self.minimize_button.clicked.connect(self.showMinimized)
         title_layout.addWidget(self.minimize_button)
 
-        # Maximize / Restore button
-        self.maximize_restore_button = QPushButton("■")
-        self.maximize_restore_button.setFixedSize(30,30)
-        self.set_title_bar_button_style(self.maximize_restore_button)
-        self.maximize_restore_button.clicked.connect(self.toggle_maximize_restore)
-        title_layout.addWidget(self.maximize_restore_button)
-
-        # Close button
-        self.close_button = QPushButton("x")
+        self.close_button = QPushButton("⬤")
         self.close_button.setFixedSize(30,30)
         self.set_title_bar_button_style(self.close_button)
         self.close_button.clicked.connect(self.close)
@@ -405,7 +395,7 @@ class MainWindow(QWidget):
         main_layout.addWidget(self.title_bar)
         
         content_layout = QHBoxLayout()
-        content_layout.setContentsMargins(20, 20, 20, 20)
+        content_layout.setContentsMargins(40, 20, 20, 20)
 
         queue_area_layout = QVBoxLayout()
         self.send_file_button = QPushButton("Send File")
@@ -596,8 +586,6 @@ class MainWindow(QWidget):
     def set_title_bar_button_style(self, button):
         if button == self.minimize_button:
            button_color = colors["minimize_button_color"]
-        elif button == self.maximize_restore_button:
-           button_color = colors["maximize_button_color"]
         else:
            button_color = colors["close_button_color"]
 
@@ -605,14 +593,6 @@ class MainWindow(QWidget):
             f"QPushButton {{background-color: transparent; color: {button_color}; border: none; border-radius: 15px;padding: 0px; font-size: {colors['title_bar_button_font_size']};}}"
             f"QPushButton:hover {{background-color: {colors['title_bar_button_hover_color']}; border: {colors['title_bar_button_hover_border_size']}px solid {colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
         
-        
-    def toggle_maximize_restore(self):
-        if self.isMaximized():
-            self.showNormal()
-            self.maximize_restore_button.setText("□")
-        else:
-            self.showMaximized()
-            self.maximize_restore_button.setText("▣")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and event.y() < self.title_bar_height:
@@ -634,15 +614,12 @@ class MainWindow(QWidget):
         path = QPainterPath()
         rect = self.rect()
         path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), 10, 10)
-    # Convert the path to a region
         polygons = path.toSubpathPolygons()
         if polygons:
-        # Convert QPointF points to QPoint
             qpolygon = QPolygon()
             for point in polygons[0]:
                 qpolygon.append(QPoint(int(point.x()), int(point.y())))
             region = QRegion(qpolygon)
-        # Set the window mask using this region
             self.setMask(region)
 
     def closeEvent(self, event):
@@ -656,13 +633,11 @@ class MainWindow(QWidget):
         gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
         gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
         
-        # Apply gradient color to the background of the MainWindow
         palette = self.palette()
         palette.setBrush(self.backgroundRole(), QBrush(gradient))
         self.setPalette(palette)
 
-         # Apply gradient color to the title bar, this will blend it
-        self.title_bar.setAutoFillBackground(True) # required to apply the background correctly
+        self.title_bar.setAutoFillBackground(True) 
         title_palette = self.title_bar.palette()
         title_palette.setBrush(self.title_bar.backgroundRole(), QBrush(gradient))
         self.title_bar.setPalette(title_palette)
