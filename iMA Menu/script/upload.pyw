@@ -16,7 +16,6 @@ from PyQt5.QtGui import QIcon, QFont, QColor, QPainter, QBrush, QLinearGradient,
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QTimer, QPoint
 import pyperclip
 
-
 def is_windows():
     return platform.system() == "Windows"
 
@@ -43,6 +42,8 @@ colors = {
     "background_gradient_start": "#373737",
     "background_gradient_end": "#261f2b",
     "send_button_color": "#7e57c2",
+    "send_button_border": "#7e57c2",  
+    "send_button_background": "rgba(126, 87, 194, 0.3)",  
     "queue_background": "rgba(126, 87, 194, 0.3)",
     "queue_text": "white",
     "queue_border": "#000",
@@ -50,17 +51,17 @@ colors = {
     "path_entry_text": "white",
     "path_entry_border": "#7e57c2",
     "clear_button_background": "#7e57c2",
-    "clear_button_hover": "#555",
-    "progress_bar_border": "#555",
-    "progress_bar_background": "#333",
+    "clear_button_hover": "rgba(126, 87, 194, 0.3)",
+    "progress_bar_border": "#7e57c2",
+    "progress_bar_background": "rgba(126, 87, 194, 0.3)",
     "progress_bar_text": "white",
     "progress_bar_chunk": "#7e57c2",
     "time_speed_text": "#bbb",
-    "output_text_background": "#333",
+    "output_text_background": "rgba(126, 87, 194, 0.1)",
     "output_text_color": "lightgray",
     "output_text_border": "#7e57c2",
     "scroll_bar_handle": "rgba(80, 80, 80, 150)",
-    "status_frame_background": "rgba(50, 50, 50, 0.6)",
+    "status_frame_background": "rgba(126, 87, 194, 0.1)",
     "status_text": "white",
     "status_shadow": "black",
     "circular_button_background": "#333",
@@ -82,14 +83,13 @@ colors = {
     "title_bar_button_hover": "#555",
     "title_bar_button_text": "white",
     "title_bar_button_border": "#7e57c2",
-    "minimize_button_color": "cyan",  
-    "close_button_color": "red", 
+    "minimize_button_color": "#7e57c2",  
+    "close_button_color": "#7e57c2", 
     "title_bar_button_hover_color": "rgba(80, 80, 80, 0.5)",  
     "title_bar_button_hover_border_size": 1, 
     "title_bar_button_font_size": "12px" 
 
 }
-
 
 def set_drop_shadow(widget, blur_radius=10, offset_x=4, offset_y=4, opacity=150):
     shadow = QGraphicsDropShadowEffect()
@@ -366,6 +366,11 @@ class MainWindow(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
+        shadow_blur_radius = 10
+        shadow_offset_x = 4
+        shadow_offset_y = 4
+        shadow_opacity = 150
+
          # Custom Title Bar
         self.title_bar = QWidget(self)
         self.title_bar.setFixedHeight(self.title_bar_height)
@@ -416,7 +421,7 @@ class MainWindow(QWidget):
         self.file_queue_list.setMaximumWidth(200)
         self.file_queue_list.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.queue_layout.addWidget(self.file_queue_list)
-        set_drop_shadow(self.file_queue_list, opacity=150)
+        set_drop_shadow(self.file_queue_list, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         queue_area_layout.addLayout(self.queue_layout)
         content_layout.addLayout(queue_area_layout)
@@ -431,13 +436,13 @@ class MainWindow(QWidget):
         self.file_name_label.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
         self.file_name_label.setAlignment(Qt.AlignCenter)
         self.file_info_layout.addWidget(self.file_name_label)
-        set_drop_shadow(self.file_name_label, opacity=150)
+        set_drop_shadow(self.file_name_label, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         self.file_size_label = QLabel("")
         self.file_size_label.setStyleSheet(f"color: {colors['time_speed_text']}; font-size: 10px; font-style: italic")
         self.file_size_label.setAlignment(Qt.AlignCenter)
         self.file_info_layout.addWidget(self.file_size_label)
-        set_drop_shadow(self.file_size_label, opacity=150)
+        set_drop_shadow(self.file_size_label, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         content_layout_inner.addLayout(self.file_info_layout)
 
@@ -452,7 +457,7 @@ class MainWindow(QWidget):
             f"QLineEdit {{background-color: {colors['path_entry_background']};color: {colors['path_entry_text']};border: 2px solid {colors['path_entry_border']};border-radius: 10px;padding: 5px;}}"
         )
         path_layout.addWidget(self.path_entry)
-        set_drop_shadow(self.path_entry, opacity=150)
+        set_drop_shadow(self.path_entry, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         self.clear_path_button = QPushButton("🗑")
         self.clear_path_button.clicked.connect(self.clear_all)
@@ -460,7 +465,7 @@ class MainWindow(QWidget):
         self.clear_path_button.setStyleSheet(
             f"QPushButton {{background-color: {colors['clear_button_background']};color: white;border: 2px solid {colors['path_entry_border']};border-radius: 10px;padding: 5px;}}\n            QPushButton:hover {{background-color: {colors['clear_button_hover']};}}")
         path_layout.addWidget(self.clear_path_button)
-        set_drop_shadow(self.clear_path_button, opacity=150)
+        set_drop_shadow(self.clear_path_button, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         content_layout_inner.addLayout(path_layout)
 
@@ -474,7 +479,7 @@ class MainWindow(QWidget):
             f"QProgressBar {{border: 2px solid {colors['progress_bar_border']};border-radius: 5px;background-color: {colors['progress_bar_background']};text-align: center;color: {colors['progress_bar_text']};font-size: 14px;}} QProgressBar::chunk {{background-color: {colors['progress_bar_chunk']};border-radius: 10px;}}")
         self.progress_bar.setValue(0)
         content_layout_inner.addWidget(self.progress_bar)
-        set_drop_shadow(self.progress_bar, opacity=150)
+        set_drop_shadow(self.progress_bar, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         self.progress_info_layout = QHBoxLayout()
         self.progress_info_layout.setAlignment(Qt.AlignCenter)
@@ -483,13 +488,13 @@ class MainWindow(QWidget):
         self.time_remaining_label.setStyleSheet(f"color: {colors['time_speed_text']}; font-size: 10px; font-style: italic")
         self.time_remaining_label.setAlignment(Qt.AlignCenter)
         self.progress_info_layout.addWidget(self.time_remaining_label)
-        set_drop_shadow(self.time_remaining_label, opacity=150)
+        set_drop_shadow(self.time_remaining_label, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         self.speed_label = QLabel("")
         self.speed_label.setStyleSheet(f"color: {colors['time_speed_text']}; font-size: 10px; font-style: italic")
         self.speed_label.setAlignment(Qt.AlignCenter)
         self.progress_info_layout.addWidget(self.speed_label)
-        set_drop_shadow(self.speed_label, opacity=150)
+        set_drop_shadow(self.speed_label, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         content_layout_inner.addLayout(self.progress_info_layout)
         
@@ -503,7 +508,7 @@ class MainWindow(QWidget):
         self.output_text.setFixedHeight(80)
         self.output_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         content_layout_inner.addWidget(self.output_text)
-        set_drop_shadow(self.output_text, opacity=150)
+        set_drop_shadow(self.output_text, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
 
         spacer = QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding)
         content_layout_inner.addItem(spacer)
@@ -519,10 +524,10 @@ class MainWindow(QWidget):
             f"color: {colors['status_text']}; font-size: 14px; text-shadow: -1px -1px 0 {colors['status_shadow']}, 1px -1px 0 {colors['status_shadow']}, -1px 1px 0 {colors['status_shadow']}, 1px 1px 0 {colors['status_shadow']};")
 
         self.status_layout.addWidget(self.status_label)
-        set_drop_shadow(self.status_label, opacity=150)
+        set_drop_shadow(self.status_label, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
         content_layout_inner.addWidget(self.status_frame)
-        set_drop_shadow(self.status_frame, opacity=150)
-        set_drop_shadow(self.status_label, opacity=150)
+        set_drop_shadow(self.status_frame, shadow_blur_radius, shadow_offset_x, shadow_offset_y, shadow_opacity)
+        
         
         content_layout.addLayout(content_layout_inner)
         
@@ -761,9 +766,9 @@ class MainWindow(QWidget):
 
     def set_button_style(self, button, color, rounded=False):
         border_radius = "10px" if rounded else "0px"
-        button.setStyleSheet(f"""QPushButton {{background-color: #444;color: white;border: 2px solid #555;border-radius: {border_radius};padding: 10px 20px;font-size: 12px;min-width: 150px;}}
-            QPushButton:hover {{background-color: {color};}}
-            QPushButton:pressed {{background-color: #333;}}""")
+        button.setStyleSheet(f"""QPushButton {{background-color: {colors["send_button_background"]}; color: white; border: 2px solid {colors["send_button_border"]}; border-radius: {border_radius}; padding: 10px 20px; font-size: 12px; min-width: 150px;}}
+                                QPushButton:hover {{background-color: {color};}}
+                                QPushButton:pressed {{background-color: #333;}}""")
 
     def open_file_dialog(self):
         options = QFileDialog.Options()
