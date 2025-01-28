@@ -13,7 +13,7 @@
 _____________________________________________________________________
 ## Download Installer
 
-- [iMA Menu installer (3.6MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.7/iMA.Menu.Installer.exe)
+- [iMA Menu installer (3.7MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.7/iMA.Menu.Installer.exe)
 
 _____________________________________________________________________
 - [iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.5/iMA.Menu.-.Light.exe)
@@ -71,49 +71,17 @@ _____________________________________________________________________
 
 _____________________________________________________________________
 
-## IMPORTANT STEP:
-- Navigate to C:\Program Files\iMA Menu and launch "iMA Code.exe", then type your 6+ password and save.
-  
-This will be used by other PC to receive a file from you.
-  
----- Or Manually ----
-- In \iMA Menu\script , right-click EDIT **croc.bat**
-- Change the line "SET_YOUR_CODE_HERE" to your password. **6+ character**
-e.g: `powershell -NoExit -Command "Croc send --code PASSWORD999 \"$(Get-Clipboard)\""`
-
-Removing "--code" will make croc generate a unique password for each file 
-
-_____________________________________________________________________
 
 ## Usage & Config
   
- **File Transfer**
+ **iMShare: File Transfer**
 
-
-**Upload** ![](https://i.imgur.com/81GPsUN.png)
-   - Right-click the file/folder you want to upload.
-   - Select **Upload**, give the receiver your password.
-
-**Download** ![](https://i.imgur.com/SZCXfZf.png)
-   - Right-click in any directory you want the files to be downloaded in.
-   - Select **Download**, and insert the password provided by the uploader.
-
-(Upload is active only when you select a file, and Download is active only when you right-click an empty space)
-
-
- **Configure Croc:**
-   Make Croc auto accepts once you insert a password without typing "Y" to confirm everytime.
-- From powershell run `Croc --yes --remember`
-- Insert any 6 characters.
-
-If you want to generate a unique code everytime you want to share a file simly remove the command `--code`& your code from **croc.bat**.
-
-**Most of the scripts below will be executed with a minimized window, DO NOT PANIC when you click and see nothing, it's minimized, just open the window to see the progress**
+**Upload and Download** ![](https://i.imgur.com/FS5swEd.jpeg)
 
 _____________________________________________________________________
 
 ## YouTube & other sites downloader 
-![](https://i.imgur.com/5slVepk.png)
+![Video Downloader](https://github.com/user-attachments/assets/7bec24e9-9ca1-4c6c-8786-2d1db99c97ae)
 - Copy the video's link
 - Right-Click an empty space (This is where your video will be saved in)
 - Hover over Youtube, and select either **Video** or **Audio**.
@@ -124,16 +92,6 @@ _____________________________________________________________________
 - Pretty much self explanatory, just Right-Click a video or an image, then > Tools > select your option.
 
 ![](https://i.imgur.com/eDjS8H1.png)
-
-**Pre-configuration commands, you don't need to do anything here unless you want to edit the output**
-- Background Remover runs the command `backgroundremover -i "file_path" -a -ae 15 -o "output_file"`
-- Resize image runs `ffmpeg -i "file_path" -s !dimensions! "output_image"`
-- Resize video runs `ffmpeg -i "file_path" -aspect !aspect! "output_video"`
-- MP4 to MP3 runs `ffmpeg -i "video_path" "output_audio"`
-- Video to Gif runs `ffmpeg -i "video_path" -vf "fps=15,scale=320:-1:flags=lanczos" -c:v gif -loop 0 "output_video"`
-- Convert runs `ffmpeg -i "video_path" -c:v copy -c:a copy "output_video"`
-- Reduce Size runs `ffmpeg -i "file_path" -vf scale=-1:720 -c:a copy "output_path"`
-
 _____________________________________________________________________
 
 
