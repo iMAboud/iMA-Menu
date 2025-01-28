@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QPushButt
                              QAbstractItemView, QSizePolicy, QSpacerItem, QDialog, QGridLayout,
                              QFileDialog, QScrollArea, QScrollBar, QGraphicsDropShadowEffect, QMenu,
                              QToolButton)
-from PyQt5.QtGui import QColor, QPainter, QBrush, QLinearGradient, QFont, QPixmap, QIcon, QRegion,QCursor, QPolygon, QPainterPath # Import QPainterPath
+from PyQt5.QtGui import QColor, QPainter, QBrush, QLinearGradient, QFont, QPixmap, QIcon, QRegion,QCursor, QPolygon, QPainterPath 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QPoint
 from PyQt5.QtGui import QDesktopServices, QImage
 
@@ -70,8 +70,7 @@ colors = {
     "title_bar_button_hover": "#555",
     "title_bar_button_text": "white",
     "title_bar_button_border": "#7e57c2",
-    "minimize_button_color": "yellow",  
-    "maximize_button_color": "cyan",  
+    "minimize_button_color": "cyan",  
     "close_button_color": "red", 
     "title_bar_button_hover_color": "rgba(80, 80, 80, 0.5)",  
     "title_bar_button_hover_border_size": 1, 
@@ -228,7 +227,7 @@ class MainWindow(QWidget):
         self.setMinimumSize(800, 500)
 
         self.window_position = None
-        self.start_move_position = None # Initialize here
+        self.start_move_position = None 
         self.title_bar_height = 30
         self.setWindowFlag(Qt.FramelessWindowHint)
 
@@ -240,14 +239,13 @@ class MainWindow(QWidget):
         self.title_bar.setFixedHeight(self.title_bar_height)
         self.title_bar.setAttribute(Qt.WA_StyledBackground, True)
         
-        # Initialize gradient for the title bar
         self.title_bar_gradient = QLinearGradient(0, 0, self.width(), self.title_bar_height)
         self.title_bar_gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
         self.title_bar_gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
         self.title_bar_palette = self.title_bar.palette()
         self.title_bar_palette.setBrush(self.title_bar.backgroundRole(), QBrush(self.title_bar_gradient))
         self.title_bar.setPalette(self.title_bar_palette)
-        self.title_bar.setAutoFillBackground(True) # Necessary for the palette to apply
+        self.title_bar.setAutoFillBackground(True) 
 
 
         title_layout = QHBoxLayout(self.title_bar)
@@ -262,22 +260,14 @@ class MainWindow(QWidget):
         self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         title_layout.setAlignment(self.title_label, Qt.AlignCenter)  
 
-        # Minimize button
-        self.minimize_button = QPushButton("–")
+        self.minimize_button = QPushButton("▬")
         self.minimize_button.setFixedSize(30,30)
         self.set_title_bar_button_style(self.minimize_button)
         self.minimize_button.clicked.connect(self.showMinimized)
         title_layout.addWidget(self.minimize_button)
 
-        # Maximize / Restore button
-        self.maximize_restore_button = QPushButton("■")
-        self.maximize_restore_button.setFixedSize(30,30)
-        self.set_title_bar_button_style(self.maximize_restore_button)
-        self.maximize_restore_button.clicked.connect(self.toggle_maximize_restore)
-        title_layout.addWidget(self.maximize_restore_button)
 
-        # Close button
-        self.close_button = QPushButton("x")
+        self.close_button = QPushButton("⬤")
         self.close_button.setFixedSize(30,30)
         self.set_title_bar_button_style(self.close_button)
         self.close_button.clicked.connect(self.close)
@@ -296,7 +286,7 @@ class MainWindow(QWidget):
             f"QListWidget {{background-color: {colors['queue_background']};color: {colors['queue_text']};border: {colors['queue_border']};border-radius: 10px;padding: 5px;outline: 0;}}")
         self.file_queue_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.file_queue_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.file_queue_list.setVerticalScrollBar(ModernScrollBar()) # Apply the custom scrollbar here
+        self.file_queue_list.setVerticalScrollBar(ModernScrollBar())
         self.file_queue_list.setMaximumWidth(200)
         self.file_queue_list.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.file_queue_list.itemClicked.connect(self.handle_queue_item_click)
@@ -370,7 +360,7 @@ class MainWindow(QWidget):
         self.friends_scroll_area.setWidgetResizable(True)
         self.friends_scroll_area.setFrameShape(QFrame.NoFrame)
         self.friends_scroll_area.setStyleSheet(f"background-color: {colors['friends_scroll_background']}; border-radius: 10px;")
-        self.friends_scroll_area.setVerticalScrollBar(ModernScrollBar()) # Apply the custom scrollbar here
+        self.friends_scroll_area.setVerticalScrollBar(ModernScrollBar()) 
         self.friends_container = QWidget()
         self.friends_container_layout = QGridLayout(self.friends_container)
         self.friends_container_layout.setAlignment(Qt.AlignTop)
@@ -454,8 +444,6 @@ class MainWindow(QWidget):
     def set_title_bar_button_style(self, button):
         if button == self.minimize_button:
            button_color = colors["minimize_button_color"]
-        elif button == self.maximize_restore_button:
-           button_color = colors["maximize_button_color"]
         else:
            button_color = colors["close_button_color"]
 
@@ -464,13 +452,6 @@ class MainWindow(QWidget):
             f"QPushButton:hover {{background-color: {colors['title_bar_button_hover_color']}; border: {colors['title_bar_button_hover_border_size']}px solid {colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
         
         
-    def toggle_maximize_restore(self):
-        if self.isMaximized():
-            self.showNormal()
-            self.maximize_restore_button.setText("□")
-        else:
-            self.showMaximized()
-            self.maximize_restore_button.setText("▣")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and event.y() < self.title_bar_height:
@@ -492,15 +473,12 @@ class MainWindow(QWidget):
         path = QPainterPath()
         rect = self.rect()
         path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), 10, 10)
-    # Convert the path to a region
         polygons = path.toSubpathPolygons()
         if polygons:
-        # Convert QPointF points to QPoint
             qpolygon = QPolygon()
             for point in polygons[0]:
                 qpolygon.append(QPoint(int(point.x()), int(point.y())))
             region = QRegion(qpolygon)
-        # Set the window mask using this region
             self.setMask(region)
 
     
@@ -515,13 +493,11 @@ class MainWindow(QWidget):
         gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
         gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
 
-        # Apply gradient color to the background of the MainWindow
         palette = self.palette()
         palette.setBrush(self.backgroundRole(), QBrush(gradient))
         self.setPalette(palette)
     
     def resizeEvent(self, event):
-        # Update the title bar gradient if window size changes
         self.title_bar_gradient = QLinearGradient(0, 0, self.width(), self.title_bar_height)
         self.title_bar_gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
         self.title_bar_gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
@@ -808,7 +784,7 @@ class MainWindow(QWidget):
 
        
     def save_friends_to_json(self):
-        self.settings["friends"] = self.friends #now it is saving the updated list
+        self.settings["friends"] = self.friends 
         try:
             with open(self.config_file, 'w') as file:
                 json.dump(self.settings, file, indent=4)
@@ -850,10 +826,8 @@ class MainWindow(QWidget):
 
         code_prefix = friend.get("download_code", "")
 
-        # Left-click event on image_label for command execution
         image_label.mousePressEvent = lambda event, code=code_prefix, current_friend=friend: self.handle_friend_image_click(event, code)
 
-        # Right-click event on container for context menu, only trigger if the container is right clicked (not its children)
         container.mousePressEvent = lambda event, code=code_prefix, current_friend=friend, current_container=container: self.handle_container_click(event, current_container, current_friend)
 
 
