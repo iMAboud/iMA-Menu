@@ -160,7 +160,6 @@ modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]
 
 modify(find='EDIT IN NOTEPAD' title='Edit Notepad' icon=\uE113)
 
-modify(find='7-ZIP' title='Zip' icon='C:/Users/iMA/Pictures/iCONS/Archive.ico')
 
 
 
