@@ -22,7 +22,11 @@ Includes only the menu and Send/Receieve feature
 _____________________________________________________________________
 
 
-
+## Uninstall ##
+- Go to program's path usually in C:\program files\iMA Menu
+( or right click taskbar > iMA Menu > Directory )
+- Open Nilesoft's Shell.exe > Unregister
+- Delete all folder now. 
 
 ## Features
 
