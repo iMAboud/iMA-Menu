@@ -25,7 +25,7 @@ item(type='namespace|back' title='Draw' cmd='@app.dir\script\draw.pyw' image=\uE
 
 	}
 	
-item(type='namespace|back' title='Clean' cmd='@app.dir\script\cleantemp.bat' image=\uE0CE)
+item(type='namespace|back' title='Clean' cmd='@app.dir\script\clean.pyw' image=\uE0CE)
 item(type='namespace|back' title='Color' cmd='@app.dir\script\hex.pyw' image=\uE0BF)
 
         
