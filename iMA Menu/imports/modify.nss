@@ -148,7 +148,6 @@ id.personalize
 
 
 
-modify(find='zip' vis=key.shift())
 modify(find='Edit With photo' menu='Tools' image=\uE150)
 
 modify(type="recyclebin" where=window.is_desktop and this.id==id.empty_recycle_bin pos=1 sep)
