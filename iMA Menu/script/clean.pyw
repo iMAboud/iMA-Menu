@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
-                             QTextEdit, QFrame, QSizePolicy, QHBoxLayout)
+                             QTextEdit, QFrame, QSizePolicy, QHBoxLayout, QDesktopWidget)
 from PyQt5.QtCore import Qt, QTimer, QSize
 from PyQt5.QtGui import QFont, QColor, QPalette, QCursor, QIcon
 import subprocess
@@ -36,9 +36,17 @@ class CleanGUI(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint)  
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setStyleSheet("background-color: rgba(50, 50, 50, 0.9); border-radius: 10px;")  # semi-transparent background and rounded corners
-
+        
+        self.center_window()
         self.total_deleted_files = 0
         self.init_ui()
+
+    def center_window(self):
+        screen = QDesktopWidget().screenGeometry()
+        window_size = self.geometry()
+        x = (screen.width() - window_size.width()) // 2
+        y = (screen.height() - window_size.height()) // 2
+        self.move(x, y)
 
     def init_ui(self):
         self.main_layout = QVBoxLayout()
