@@ -159,7 +159,9 @@ modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]
 
 
 modify(find='EDIT IN NOTEPAD' title='Edit Notepad' icon=\uE113)
-
+modify(find='7-ZIP' title='Zip' icon=\uE0D0)
+modify(find='edit with idle' title='Edit with IDLE' icon=\uE230)
+modify(find='Winrar' title='WinRAR' icon=\uE0CF)
 
 
 
