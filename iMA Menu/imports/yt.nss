@@ -1,5 +1,5 @@
 
-    item(title='Youtube'  image=\uE248 where = '@(str.contains(clipboard.get, "Youtube.com"))' cmd='@app.dir\script\yt.pyw')
+    item(title='Youtube'  image=\uE248 where = '@(str.contains(clipboard.get, "Youtu"))' cmd='@app.dir\script\yt.pyw')
 
     item(title='X'  image=\uE242 where = '@(str.contains(clipboard.get, "x.com"))' cmd='@app.dir\script\yt.pyw')
 
