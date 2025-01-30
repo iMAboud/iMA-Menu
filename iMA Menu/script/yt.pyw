@@ -102,9 +102,18 @@ class ThumbnailFetcher(QThread):
 
 
 def download_video(url, output_widget, status_label, window, thumbnail_label, progress_bar, progress_color, output_dir):
-    yt_dlp_command = ["yt-dlp", "--no-warnings", "--no-playlist", url, "-f", "best", "-o", os.path.join(output_dir, "%(title)s.%(ext)s")]
-    execute_download(yt_dlp_command,output_widget, status_label, window, progress_bar, progress_color,"Downloading...")
-
+    yt_dlp_command = [
+        "yt-dlp",
+        "--no-warnings",
+        "--no-playlist",
+        url,
+        "-f",
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",  
+        "-o",
+        os.path.join(output_dir, "%(title)s.%(ext)s"),
+    ]
+    execute_download(yt_dlp_command, output_widget, status_label, window, progress_bar, progress_color, "Downloading...")
+    
 def download_audio(url, output_widget, status_label, window, thumbnail_label, progress_bar, progress_color, output_dir):
     yt_dlp_command = ["yt-dlp", "--no-warnings", "--no-playlist", "-x", "--audio-format", "mp3",url, "-o", os.path.join(output_dir, "%(title)s.%(ext)s)")]
     execute_download(yt_dlp_command, output_widget, status_label, window, progress_bar, progress_color,"Downloading Audio...")
