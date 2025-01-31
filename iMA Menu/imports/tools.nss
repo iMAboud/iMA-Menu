@@ -1,7 +1,7 @@
 menu(find='.mkv|.mp4|.webm|.flv|.m4p|.mov|.png|.jpg|.jpeg|.svg|.webp|.bmp|.ico' title='Tools' image =\uE0F8)
 {
     item(find='.png|.jpg|.jpeg|.svg|.webp|.bmp' 
-    title='Upload to imgur' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "@app.dir\script\imgur.bat"' image=\uE14F)
+    title='Upload to imgur' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "@app.dir\script\imgur.pyw"' image=\uE14F)
 
     item(find='.png|.jpg|.jpeg|.svg|.webp|.bmp|.ico'
     title='Resize Image' cmd='cmd.exe' args='/c echo @sel.path | clip & start "" "@app.dir\script\resize_image.bat"' image=\uE150)
