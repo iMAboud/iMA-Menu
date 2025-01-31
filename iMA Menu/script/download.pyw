@@ -12,8 +12,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QPushButt
                              QDesktopWidget, QFrame, QListWidget, QListWidgetItem,
                              QAbstractItemView, QSizePolicy, QSpacerItem, QDialog, QGridLayout,
                              QFileDialog, QScrollArea, QScrollBar, QGraphicsDropShadowEffect, QMenu,
-                             QToolButton)
-from PyQt5.QtGui import QColor, QPainter, QBrush, QLinearGradient, QFont, QPixmap, QIcon, QRegion,QCursor, QPolygon, QPainterPath 
+                             QToolButton, QColorDialog, QComboBox, QTabWidget)
+from PyQt5.QtGui import QColor, QPainter, QBrush, QLinearGradient, QFont, QPixmap, QIcon, QRegion,QCursor, QPolygon, QPainterPath
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QPoint
 from PyQt5.QtGui import QDesktopServices, QImage
 
@@ -30,7 +30,7 @@ def resource_path(relative_path):
     else:
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
         
-colors = {
+default_colors = {
     "background_gradient_start": "#333d3d",
     "background_gradient_end": "#182e2e",
     "queue_background": "rgba(0, 102, 102, 0.3)",
@@ -136,7 +136,7 @@ class SendFileThread(QThread):
             
             if self.process.returncode != 0:
                 
-                if "not ready" in self.process.stdout.read():  # Check if "not ready" is in the output
+                if "not ready" in self.process.stdout.read():  
                     self.output_signal.emit(f"\nNot Ready\n")
                     self.finished_signal.emit(False, self.queue_id)
                 else:
@@ -222,7 +222,7 @@ class ModernScrollBar(QScrollBar):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(f"""QScrollBar:vertical {{background-color: transparent;width: 10px;margin: 0px 0px 0px 0px;}}
-            QScrollBar::handle:vertical {{background-color: {colors['scroll_bar_handle']};min-height: 20px;border-radius: 5px;}}
+            QScrollBar::handle:vertical {{background-color: {default_colors['scroll_bar_handle']};min-height: 20px;border-radius: 5px;}}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{background: none;}}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical{{background: none;}}""")
 
@@ -232,9 +232,11 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle("iMShare")
         self.setMinimumSize(800, 500)
+        self.current_colors = default_colors.copy()
+        self.original_default_colors = default_colors.copy()
 
         self.window_position = None
-        self.start_move_position = None 
+        self.start_move_position = None
         self.title_bar_height = 30
         self.setWindowFlag(Qt.FramelessWindowHint)
 
@@ -245,14 +247,14 @@ class MainWindow(QWidget):
         self.title_bar = QWidget(self)
         self.title_bar.setFixedHeight(self.title_bar_height)
         self.title_bar.setAttribute(Qt.WA_StyledBackground, True)
-        
+
         self.title_bar_gradient = QLinearGradient(0, 0, self.width(), self.title_bar_height)
-        self.title_bar_gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
-        self.title_bar_gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
+        self.title_bar_gradient.setColorAt(0, QColor(self.current_colors["background_gradient_start"]))
+        self.title_bar_gradient.setColorAt(1, QColor(self.current_colors["background_gradient_end"]))
         self.title_bar_palette = self.title_bar.palette()
         self.title_bar_palette.setBrush(self.title_bar.backgroundRole(), QBrush(self.title_bar_gradient))
         self.title_bar.setPalette(self.title_bar_palette)
-        self.title_bar.setAutoFillBackground(True) 
+        self.title_bar.setAutoFillBackground(True)
 
 
         title_layout = QHBoxLayout(self.title_bar)
@@ -262,10 +264,10 @@ class MainWindow(QWidget):
 
 
         self.title_label = QLabel("iMShare")
-        self.title_label.setStyleSheet(f"color: {colors['title_bar_button_text']}; font-size: 12px;")
+        self.title_label.setStyleSheet(f"color: {self.current_colors['title_bar_button_text']}; font-size: 12px;")
         title_layout.addWidget(self.title_label)
         self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        title_layout.setAlignment(self.title_label, Qt.AlignCenter)  
+        title_layout.setAlignment(Qt.AlignCenter)
 
         self.minimize_button = QPushButton("▬")
         self.minimize_button.setFixedSize(30,30)
@@ -280,7 +282,20 @@ class MainWindow(QWidget):
         self.close_button.clicked.connect(self.close)
         title_layout.addWidget(self.close_button)
 
-
+         # Settings Button
+        self.settings_button = QPushButton("⚙")
+        self.settings_button.setFixedSize(30, 30)
+        self.settings_button.setStyleSheet(
+        f"QPushButton {{background-color: transparent; color: {self.current_colors['title_bar_button_text']}; border: none; border-radius: 15px; padding: 0px; font-size: {self.current_colors['title_bar_button_font_size']};}}"
+        f"QPushButton:hover {{background-color: {self.current_colors['title_bar_button_hover_color']}; border: {self.current_colors['title_bar_button_hover_border_size']}px solid {self.current_colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
+        self.settings_button.clicked.connect(self.show_settings_popup)
+        
+        settings_button_layout = QHBoxLayout()
+        settings_button_layout.addStretch(1)
+        settings_button_layout.addWidget(self.settings_button, alignment = Qt.AlignRight | Qt.AlignBottom)
+        main_layout.addLayout(settings_button_layout)
+    
+        
         content_layout = QHBoxLayout()
         content_layout.setContentsMargins(20, 20, 20, 20)
 
@@ -290,7 +305,7 @@ class MainWindow(QWidget):
         self.queue_layout.setAlignment(Qt.AlignTop)
         self.file_queue_list = QListWidget()
         self.file_queue_list.setStyleSheet(
-            f"QListWidget {{background-color: {colors['queue_background']};color: {colors['queue_text']};border: {colors['queue_border']};border-radius: 10px;padding: 5px;outline: 0;}}")
+            f"QListWidget {{background-color: {self.current_colors['queue_background']};color: {self.current_colors['queue_text']};border: {self.current_colors['queue_border']};border-radius: 10px;padding: 5px;outline: 0;}}")
         self.file_queue_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.file_queue_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.file_queue_list.setVerticalScrollBar(ModernScrollBar())
@@ -312,7 +327,7 @@ class MainWindow(QWidget):
         self.file_name_label.setAlignment(Qt.AlignCenter)
         self.file_info_layout.addWidget(self.file_name_label)
         self.file_size_label = QLabel("")
-        self.file_size_label.setStyleSheet(f"color: {colors['time_speed_text']}; font-size: 10px; font-style: italic")
+        self.file_size_label.setStyleSheet(f"color: {self.current_colors['time_speed_text']}; font-size: 10px; font-style: italic")
         self.file_size_label.setAlignment(Qt.AlignCenter)
         self.file_info_layout.addWidget(self.file_size_label)
         main_content_layout.addLayout(self.file_info_layout)
@@ -323,7 +338,7 @@ class MainWindow(QWidget):
         path_layout.addWidget(path_label)
         self.path_entry = QLineEdit()
         self.path_entry.setStyleSheet(
-            f"QLineEdit {{background-color: {colors['path_entry_background']};color: {colors['path_entry_text']};border: 2px solid {colors['path_entry_border']};border-radius: 10px;padding: 5px;}}"
+            f"QLineEdit {{background-color: {self.current_colors['path_entry_background']};color: {self.current_colors['path_entry_text']};border: 2px solid {self.current_colors['path_entry_border']};border-radius: 10px;padding: 5px;}}"
         )
         self.path_entry.mousePressEvent = self.select_all_text
         path_layout.addWidget(self.path_entry)
@@ -331,14 +346,14 @@ class MainWindow(QWidget):
         self.clear_path_button.clicked.connect(self.clear_all)
         self.clear_path_button.setFixedWidth(30)
         self.clear_path_button.setStyleSheet(
-            f"QPushButton {{background-color: {colors['clear_button_background']};color: white;border: 2px solid {colors['path_entry_border']};border-radius: 10px;padding: 5px;}}\n            QPushButton:hover {{background-color: {colors['clear_button_background_hover']};}}")
+            f"QPushButton {{background-color: {self.current_colors['clear_button_background']};color: white;border: 2px solid {self.current_colors['path_entry_border']};border-radius: 10px;padding: 5px;}}\n            QPushButton:hover {{background-color: {self.current_colors['clear_button_background_hover']};}}")
         path_layout.addWidget(self.clear_path_button)
         main_content_layout.addLayout(path_layout)
         
         button_layout = QHBoxLayout()
         button_layout.setAlignment(Qt.AlignCenter)
         self.send_file_button = QPushButton("Download File")
-        self.send_file_color = colors["send_button_color"]
+        self.send_file_color = self.current_colors["send_button_color"]
         self.set_button_style(self.send_file_button, self.send_file_color, rounded=True)
         self.send_file_button.clicked.connect(self.start_command)
         button_layout.addWidget(self.send_file_button)
@@ -347,18 +362,18 @@ class MainWindow(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setFixedHeight(20)
         self.progress_bar.setStyleSheet(
-            f"QProgressBar {{border: 2px solid {colors['progress_bar_border']};border-radius: 5px;background-color: {colors['progress_bar_background']};text-align: center;color: {colors['progress_bar_text']};font-size: 14px;}} QProgressBar::chunk {{background-color: {colors['progress_bar_chunk']};border-radius: 10px;}}")
+            f"QProgressBar {{border: 2px solid {self.current_colors['progress_bar_border']};border-radius: 5px;background-color: {self.current_colors['progress_bar_background']};text-align: center;color: {self.current_colors['progress_bar_text']};font-size: 14px;}} QProgressBar::chunk {{background-color: {self.current_colors['progress_bar_chunk']};border-radius: 10px;}}")
         self.progress_bar.setValue(0)
         main_content_layout.addWidget(self.progress_bar)
 
         self.progress_info_layout = QHBoxLayout()
         self.progress_info_layout.setAlignment(Qt.AlignCenter)
         self.time_remaining_label = QLabel("")
-        self.time_remaining_label.setStyleSheet(f"color: {colors['time_speed_text']}; font-size: 10px; font-style: italic")
+        self.time_remaining_label.setStyleSheet(f"color: {self.current_colors['time_speed_text']}; font-size: 10px; font-style: italic")
         self.time_remaining_label.setAlignment(Qt.AlignCenter)
         self.progress_info_layout.addWidget(self.time_remaining_label)
         self.speed_label = QLabel("")
-        self.speed_label.setStyleSheet(f"color: {colors['time_speed_text']}; font-size: 10px; font-style: italic")
+        self.speed_label.setStyleSheet(f"color: {self.current_colors['time_speed_text']}; font-size: 10px; font-style: italic")
         self.speed_label.setAlignment(Qt.AlignCenter)
         self.progress_info_layout.addWidget(self.speed_label)
         main_content_layout.addLayout(self.progress_info_layout)
@@ -366,8 +381,8 @@ class MainWindow(QWidget):
         self.friends_scroll_area = QScrollArea()
         self.friends_scroll_area.setWidgetResizable(True)
         self.friends_scroll_area.setFrameShape(QFrame.NoFrame)
-        self.friends_scroll_area.setStyleSheet(f"background-color: {colors['friends_scroll_background']}; border-radius: 10px;")
-        self.friends_scroll_area.setVerticalScrollBar(ModernScrollBar()) 
+        self.friends_scroll_area.setStyleSheet(f"background-color: {self.current_colors['friends_scroll_background']}; border-radius: 10px;")
+        self.friends_scroll_area.setVerticalScrollBar(ModernScrollBar())
         self.friends_container = QWidget()
         self.friends_container_layout = QGridLayout(self.friends_container)
         self.friends_container_layout.setAlignment(Qt.AlignTop)
@@ -378,28 +393,28 @@ class MainWindow(QWidget):
         self.friends_container_layout.addWidget(self.add_friend_button, 0, 0)
 
         self.status_frame = QFrame()
-        self.status_frame.setStyleSheet(f"background-color: {colors['status_frame_background']}; border-radius: 10px;")
+        self.status_frame.setStyleSheet(f"background-color: {self.current_colors['status_frame_background']}; border-radius: 10px;")
         self.status_layout = QHBoxLayout(self.status_frame)
         self.status_layout.setAlignment(Qt.AlignCenter)
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet(
-            f"color: {colors['status_text']}; font-size: 14px;")
+            f"color: {self.current_colors['status_text']}; font-size: 14px;")
         self.status_layout.addWidget(self.status_label)
         main_content_layout.addWidget(self.status_frame)
 
         self.output_expand_button = QPushButton("v")
         self.output_expand_button.setFixedSize(30, 30)
         self.output_expand_button.setStyleSheet(
-            f"QPushButton {{background-color: {colors['output_expand_background']};color: white;border: 0px solid rgba(50, 50, 50, 0.1);border-radius: 15px;}}\n            QPushButton:hover {{background-color: {colors['output_expand_hover']};}}")
+            f"QPushButton {{background-color: {self.current_colors['output_expand_background']};color: white;border: 0px solid rgba(50, 50, 50, 0.1);border-radius: 15px;}}\n            QPushButton:hover {{background-color: {self.current_colors['output_expand_hover']};}}")
         self.output_expand_button.clicked.connect(self.toggle_output)
         output_layout = QHBoxLayout()
         output_layout.addWidget(self.output_expand_button, alignment=Qt.AlignLeft)
         main_content_layout.addLayout(output_layout)
-        
+
         self.output_text = QTextEdit()
         self.output_text.setStyleSheet(
-            f"QTextEdit {{background-color: {colors['output_text_background']};color: {colors['output_text_color']};border: 2px solid {colors['output_text_border']};border-radius: 10px;padding: 1px;}}"
+            f"QTextEdit {{background-color: {self.current_colors['output_text_background']};color: {self.current_colors['output_text_color']};border: 2px solid {self.current_colors['output_text_border']};border-radius: 10px;padding: 1px;}}"
         )
         self.output_text.setVerticalScrollBar(ModernScrollBar())
         self.output_text.setHorizontalScrollBar(ModernScrollBar())
@@ -408,7 +423,7 @@ class MainWindow(QWidget):
         main_content_layout.addWidget(self.output_text)
         
         content_layout.addLayout(main_content_layout)
-       
+
         main_layout.addLayout(content_layout)
 
         self.queue_layout.setStretch(0, 1)
@@ -426,9 +441,9 @@ class MainWindow(QWidget):
         self.clear_message_timer = QTimer(self)
         self.clear_message_timer.timeout.connect(self.clear_message_timeout)
         self.current_file = None
-        self.output_visible = False 
-        self.output_text.setVisible(self.output_visible) 
-        self.output_expand_button.setText("^") 
+        self.output_visible = False
+        self.output_text.setVisible(self.output_visible)
+        self.output_expand_button.setText("^")
         
         self.config_dir = os.path.join(resource_path("."), "config")
         os.makedirs(self.config_dir, exist_ok=True)
@@ -436,6 +451,13 @@ class MainWindow(QWidget):
         self.settings = self.load_settings()
         self.download_code = self.settings.get("download_code", None)
         self.path_entry.setText(self.download_code or "")
+        
+        # Load theme if available
+        loaded_theme = self.settings.get("theme_colors", None)
+        if loaded_theme:
+           self.current_colors = loaded_theme
+           self.update_theme(self.current_colors)
+        
 
         self.friends = self.settings.get("friends", [])
         self.load_friends()
@@ -447,18 +469,25 @@ class MainWindow(QWidget):
         set_drop_shadow(self.path_entry)
         set_drop_shadow(self.clear_path_button)
         set_drop_shadow(self.progress_bar)
+        
 
     def set_title_bar_button_style(self, button):
         if button == self.minimize_button:
-           button_color = colors["minimize_button_color"]
+           button_color = self.current_colors["minimize_button_color"]
         else:
-           button_color = colors["close_button_color"]
+           button_color = self.current_colors["close_button_color"]
 
         button.setStyleSheet(
-            f"QPushButton {{background-color: transparent; color: {button_color}; border: none; border-radius: 15px;padding: 0px; font-size: {colors['title_bar_button_font_size']};}}"
-            f"QPushButton:hover {{background-color: {colors['title_bar_button_hover_color']}; border: {colors['title_bar_button_hover_border_size']}px solid {colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
+            f"QPushButton {{background-color: transparent; color: {button_color}; border: none; border-radius: 15px;padding: 0px; font-size: {self.current_colors['title_bar_button_font_size']};}}"
+            f"QPushButton:hover {{background-color: {self.current_colors['title_bar_button_hover_color']}; border: {self.current_colors['title_bar_button_hover_border_size']}px solid {self.current_colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
         
-        
+    def save_theme_to_json(self, colors):
+        self.settings["theme_colors"] = colors
+        try:
+            with open(self.config_file, 'w') as file:
+                json.dump(self.settings, file, indent=4)
+        except Exception as e:
+            print(f"Failed to save theme settings: {e}")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and event.y() < self.title_bar_height:
@@ -497,8 +526,8 @@ class MainWindow(QWidget):
 
     def set_gradient_background(self):
         gradient = QLinearGradient(0, 0, self.width(), self.height())
-        gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
-        gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
+        gradient.setColorAt(0, QColor(self.current_colors["background_gradient_start"]))
+        gradient.setColorAt(1, QColor(self.current_colors["background_gradient_end"]))
 
         palette = self.palette()
         palette.setBrush(self.backgroundRole(), QBrush(gradient))
@@ -506,8 +535,8 @@ class MainWindow(QWidget):
     
     def resizeEvent(self, event):
         self.title_bar_gradient = QLinearGradient(0, 0, self.width(), self.title_bar_height)
-        self.title_bar_gradient.setColorAt(0, QColor(colors["background_gradient_start"]))
-        self.title_bar_gradient.setColorAt(1, QColor(colors["background_gradient_end"]))
+        self.title_bar_gradient.setColorAt(0, QColor(self.current_colors["background_gradient_start"]))
+        self.title_bar_gradient.setColorAt(1, QColor(self.current_colors["background_gradient_end"]))
         self.title_bar_palette.setBrush(self.title_bar.backgroundRole(), QBrush(self.title_bar_gradient))
         self.title_bar.setPalette(self.title_bar_palette)
 
@@ -517,7 +546,7 @@ class MainWindow(QWidget):
 
     def update_progress_bar(self, progress, color, is_hashing):
          self.progress_bar.setStyleSheet(
-            f"""QProgressBar {{border: 2px solid {colors['progress_bar_border']};border-radius: 5px;background-color: {colors['progress_bar_background']};text-align: center;color: {colors['progress_bar_text']};font-size: 14px;}}
+            f"""QProgressBar {{border: 2px solid {self.current_colors['progress_bar_border']};border-radius: 5px;background-color: {self.current_colors['progress_bar_background']};text-align: center;color: {self.current_colors['progress_bar_text']};font-size: 14px;}}
              QProgressBar::chunk {{background-color: {color};border-radius: 10px;}}""")
          self.progress_bar.setValue(progress)
 
@@ -560,7 +589,7 @@ class MainWindow(QWidget):
 
     def update_animated_status(self, message, color):
         self.current_status_message = message
-        shadow_color = colors["status_shadow"]
+        shadow_color = self.current_colors["status_shadow"]
         shadow_style = f"text-shadow: -1px -1px 0 {shadow_color}, 1px -1px 0 {shadow_color}, -1px 1px 0 {shadow_color}, 1px 1px 0 {shadow_color};"
         self.status_label.setFont(QFont("Arial", 12, QFont.Normal))
 
@@ -582,7 +611,7 @@ class MainWindow(QWidget):
 
     def set_button_style(self, button, color, rounded=False):
         border_radius = "10px" if rounded else "0px"
-        button.setStyleSheet(f"""QPushButton {{background-color: {colors["send_button_background"]}; color: white; border: 2px solid {colors["send_button_border"]}; border-radius: {border_radius}; padding: 10px 20px; font-size: 12px; min-width: 150px;}}
+        button.setStyleSheet(f"""QPushButton {{background-color: {self.current_colors["send_button_background"]}; color: white; border: 2px solid {self.current_colors["send_button_border"]}; border-radius: {border_radius}; padding: 10px 20px; font-size: 12px; min-width: 150px;}}
                                 QPushButton:hover {{background-color: {color};}}
                                 QPushButton:pressed {{background-color: #333;}}""")
 
@@ -735,14 +764,14 @@ class MainWindow(QWidget):
        button = QPushButton()
        button.setFixedSize(70, 70)
        button.setStyleSheet(f"""QPushButton {{
-         background-color: {colors['add_friend_button']};
+         background-color: {self.current_colors['add_friend_button']};
          border: 2px solid #008080;
          border-radius: 35px;
          color: white;
          font-size: 12px;
          }}
          QPushButton:hover {{
-             background-color: {colors['add_friend_button_hover']};
+             background-color: {self.current_colors['add_friend_button_hover']};
          }}""")
        button.clicked.connect(self.show_add_friend_popup)
        button.setText("Add")
@@ -786,7 +815,7 @@ class MainWindow(QWidget):
 
        
     def save_friends_to_json(self):
-        self.settings["friends"] = self.friends 
+        self.settings["friends"] = self.friends
         try:
             with open(self.config_file, 'w') as file:
                 json.dump(self.settings, file, indent=4)
@@ -864,7 +893,7 @@ class MainWindow(QWidget):
 
     def handle_friend_image_click(self, event, code):
       if event.button() == Qt.LeftButton:
-        self.execute_croc_command(code) 
+        self.execute_croc_command(code)
 
     def delete_friend(self, friend_to_delete):
         self.friends = [friend for friend in self.friends if friend != friend_to_delete]
@@ -915,15 +944,373 @@ class MainWindow(QWidget):
       
       self.path_entry.setText(code)
       self.start_command()
+    
+    def show_settings_popup(self):
+         settings_popup = SettingsPopup(self, self.current_colors)
+         settings_popup.show()
+       
+    def update_theme(self, colors):
+          self.current_colors = colors
+          self.title_label.setStyleSheet(f"color: {self.current_colors['title_bar_button_text']}; font-size: 12px;")
+          self.set_title_bar_button_style(self.minimize_button)
+          self.set_title_bar_button_style(self.close_button)
+          self.settings_button.setStyleSheet(
+            f"QPushButton {{background-color: transparent; color: {self.current_colors['title_bar_button_text']}; border: none; border-radius: 15px; padding: 0px; font-size: {self.current_colors['title_bar_button_font_size']};}}"
+            f"QPushButton:hover {{background-color: {self.current_colors['title_bar_button_hover_color']}; border: {self.current_colors['title_bar_button_hover_border_size']}px solid {self.current_colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
+
+          self.title_bar_gradient = QLinearGradient(0, 0, self.width(), self.title_bar_height)
+          self.title_bar_gradient.setColorAt(0, QColor(self.current_colors["background_gradient_start"]))
+          self.title_bar_gradient.setColorAt(1, QColor(self.current_colors["background_gradient_end"]))
+          self.title_bar_palette.setBrush(self.title_bar.backgroundRole(), QBrush(self.title_bar_gradient))
+          self.title_bar.setPalette(self.title_bar_palette)
+
+          self.file_queue_list.setStyleSheet(
+            f"QListWidget {{background-color: {self.current_colors['queue_background']};color: {self.current_colors['queue_text']};border: {self.current_colors['queue_border']};border-radius: 10px;padding: 5px;outline: 0;}}")
+
+          self.path_entry.setStyleSheet(
+            f"QLineEdit {{background-color: {self.current_colors['path_entry_background']};color: {self.current_colors['path_entry_text']};border: 2px solid {self.current_colors['path_entry_border']};border-radius: 10px;padding: 5px;}}"
+            )
+
+          self.clear_path_button.setStyleSheet(
+            f"QPushButton {{background-color: {self.current_colors['clear_button_background']};color: white;border: 2px solid {self.current_colors['path_entry_border']};border-radius: 10px;padding: 5px;}}\n            QPushButton:hover {{background-color: {self.current_colors['clear_button_background_hover']};}}")
+
+          self.send_file_color = self.current_colors["send_button_color"]
+          self.set_button_style(self.send_file_button, self.send_file_color, rounded=True)
+
+          self.progress_bar.setStyleSheet(
+            f"QProgressBar {{border: 2px solid {self.current_colors['progress_bar_border']};border-radius: 5px;background-color: {self.current_colors['progress_bar_background']};text-align: center;color: {self.current_colors['progress_bar_text']};font-size: 14px;}} QProgressBar::chunk {{background-color: {self.current_colors['progress_bar_chunk']};border-radius: 10px;}}")
+          
+          self.file_size_label.setStyleSheet(f"color: {self.current_colors['time_speed_text']}; font-size: 10px; font-style: italic")
+          self.time_remaining_label.setStyleSheet(f"color: {self.current_colors['time_speed_text']}; font-size: 10px; font-style: italic")
+          self.speed_label.setStyleSheet(f"color: {self.current_colors['time_speed_text']}; font-size: 10px; font-style: italic")
+          self.friends_scroll_area.setStyleSheet(f"background-color: {self.current_colors['friends_scroll_background']}; border-radius: 10px;")
+          self.status_frame.setStyleSheet(f"background-color: {self.current_colors['status_frame_background']}; border-radius: 10px;")
+          self.status_label.setStyleSheet(f"color: {self.current_colors['status_text']}; font-size: 14px;")
+          
+          self.output_expand_button.setStyleSheet(
+            f"QPushButton {{background-color: {self.current_colors['output_expand_background']};color: white;border: 0px solid rgba(50, 50, 50, 0.1);border-radius: 15px;}}\n            QPushButton:hover {{background-color: {self.current_colors['output_expand_hover']};}}")
+          
+          self.output_text.setStyleSheet(
+            f"QTextEdit {{background-color: {self.current_colors['output_text_background']};color: {self.current_colors['output_text_color']};border: 2px solid {self.current_colors['output_text_border']};border-radius: 10px;padding: 1px;}}"
+          )
+          self.set_gradient_background()
+
+          for i in range(self.friends_container_layout.count()):
+                item = self.friends_container_layout.itemAt(i)
+                if item and item.widget() != self.add_friend_button:
+                  widget = item.widget()
+                  if widget:
+                   for child in widget.findChildren(QWidget):
+                      if isinstance(child, QWidget) and child.parent() == widget:
+                           child.setStyleSheet(
+                            "QWidget {border: 1px solid black; border-radius: 36px; background: transparent;}"
+                             "QWidget:hover { border: 3px solid teal; }"
+                          )
+                   for name_label in widget.findChildren(QLabel):
+                        if name_label.parent() == widget:
+                            name_label.setStyleSheet("color: white; margin-top: 5px; border:none;")
+          self.add_friend_button.setStyleSheet(f"""QPushButton {{
+            background-color: {self.current_colors['add_friend_button']};
+            border: 2px solid #008080;
+            border-radius: 35px;
+            color: white;
+            font-size: 12px;
+             }}
+              QPushButton:hover {{
+                  background-color: {self.current_colors['add_friend_button_hover']};
+                  }}""")
+          for w in QApplication.topLevelWidgets():
+           if isinstance(w, AddFriendPopup):
+            w.setStyleSheet(f"background-color: {self.current_colors['add_friend_popup_background']}; color: {self.current_colors['add_friend_popup_text']};")
+           if isinstance(w, SettingsPopup):
+              w.setStyleSheet(f"background-color: {self.current_colors['add_friend_popup_background']}; color: {self.current_colors['add_friend_popup_text']};")
 
 
+display_names = {
+    "background_gradient_start": "Background Gradient Start",
+    "background_gradient_end": "Background Gradient End",
+    "queue_background": "Queue Background",
+    "queue_text": "Queue Text",
+    "queue_border": "Queue Border",
+    "path_entry_background": "Path Entry Background",
+    "path_entry_text": "Path Entry Text",
+    "path_entry_border": "Path Entry Border",
+    "clear_button_background": "Clear Button Background",
+    "clear_button_background_hover": "Clear Button Hover Background",
+    "send_button_color": "Send Button Color",
+    "send_button_border": "Send Button Border",
+    "send_button_background": "Send Button Background",
+    "progress_bar_border": "Progress Bar Border",
+    "progress_bar_background": "Progress Bar Background",
+    "progress_bar_text": "Progress Bar Text",
+    "progress_bar_chunk": "Progress Bar Chunk",
+    "time_speed_text": "Time/Speed Text",
+    "friends_scroll_background": "Friends Scroll Background",
+    "status_frame_background": "Status Frame Background",
+    "status_text": "Status Text",
+    "status_shadow": "Status Shadow",
+    "output_expand_background": "Output Expand Background",
+    "output_expand_hover": "Output Expand Hover",
+    "output_text_background": "Output Text Background",
+    "output_text_color": "Output Text Color",
+    "output_text_border": "Output Text Border",
+    "scroll_bar_handle": "Scroll Bar Handle",
+    "add_friend_button": "Add Friend Button",
+    "add_friend_button_hover": "Add Friend Button Hover",
+     "friend_image_border": "Friend Image Border",
+    "add_friend_popup_background": "Add Friend Popup Background",
+    "add_friend_popup_text": "Add Friend Popup Text",
+    "app_context_menu_background": "App Context Menu Background",
+    "app_context_menu_text": "App Context Menu Text",
+    "app_context_menu_border": "App Context Menu Border",
+    "app_context_menu_selected": "App Context Menu Selected",
+     "title_bar_background": "Title Bar Background",
+    "title_bar_button_hover": "Title Bar Button Hover",
+    "title_bar_button_text": "Title Bar Button Text",
+    "title_bar_button_border": "Title Bar Button Border",
+      "minimize_button_color": "Minimize Button Color",
+    "close_button_color": "Close Button Color",
+    "title_bar_button_hover_color": "Title Bar Button Hover Color",
+}
+
+class SettingsPopup(QDialog):
+    def __init__(self, parent, current_colors):
+        super().__init__(parent)
+        self.setWindowTitle("Theme Settings")
+        self.setModal(False)
+        self.setFixedSize(600, 400)
+        self.current_colors = current_colors.copy()
+        self.original_colors = parent.original_default_colors.copy()
+        self.color_pickers = {}
+        self.main_window = parent
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10,10,10,10)
+        self.tabs = QTabWidget()
+        
+        self.general_tab = QWidget()
+        self.background_tab = QWidget()
+        self.border_tab = QWidget()
+
+        self.tabs.addTab(self.general_tab, "General")
+        self.tabs.addTab(self.background_tab, "Background")
+        self.tabs.addTab(self.border_tab, "Border")
+
+        layout.addWidget(self.tabs)
+
+        self.setup_tab_layouts()
+
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(5)
+       
+        reset_button = QPushButton("Reset")
+        reset_button.clicked.connect(self.reset_theme)
+        reset_button.setStyleSheet(
+            "QPushButton {background-color: #444;color: white;border: 2px solid #555;border-radius: 8px;padding: 5px;}\n            QPushButton:hover {background-color: #555;}")
+        button_layout.addWidget(reset_button)
+        
+        save_button = QPushButton("Save")
+        save_button.clicked.connect(self.accept_changes)
+        save_button.setStyleSheet(
+            "QPushButton {background-color: #444;color: white;border: 2px solid #008080;border-radius: 8px;padding: 5px;}\n            QPushButton:hover {background-color: #555;}")
+        button_layout.addWidget(save_button)
+       
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject_changes)
+        cancel_button.setStyleSheet(
+            "QPushButton {background-color: #444;color: white;border: 2px solid #555;border-radius: 8px;padding: 5px;}\n            QPushButton:hover {background-color: #555;}")
+        button_layout.addWidget(cancel_button)
+        
+        layout.addLayout(button_layout)
+
+        for name, color_button in self.color_pickers.items():
+            self.color_pickers[name] = color_button
+        self.set_gradient_background()
+
+    def setup_tab_layouts(self):
+        self.setup_general_tab()
+        self.setup_background_tab()
+        self.setup_border_tab()
+
+    def setup_general_tab(self):
+       layout = QGridLayout(self.general_tab)
+       layout.setVerticalSpacing(10)  
+       layout.setHorizontalSpacing(10)
+       layout.setContentsMargins(5,5,5,5)
+       row = 0
+       col = 0
+       general_items = [
+            "queue_text",
+             "path_entry_text",
+            "send_button_color",
+            "progress_bar_text",
+            "time_speed_text",
+            "status_text",
+            "output_text_color",
+            "scroll_bar_handle",
+            "add_friend_button",
+            "add_friend_button_hover",
+            "title_bar_button_text",
+            "minimize_button_color",
+            "close_button_color",
+            "title_bar_button_hover_color"
+        ]
+
+       for name in general_items:
+          color = self.current_colors.get(name)
+          if color:
+            label = QLabel(display_names.get(name, name))
+            label.setStyleSheet("color: white;")
+            layout.addWidget(label, row, col * 2, alignment=Qt.AlignLeft)
+
+            color_button = QPushButton()
+            color_button.setFixedSize(30, 30)
+            color_button.setStyleSheet(f"background-color: {color};border-radius: 15px;")
+            color_button.clicked.connect(lambda _, n=name: self.open_color_picker(n))
+            layout.addWidget(color_button, row, col * 2 + 1, alignment=Qt.AlignRight)
+            self.color_pickers[name] = color_button
+
+            col += 1
+            if col > 2:
+               col = 0
+               row += 1
+       layout.setColumnStretch(0,1)
+       layout.setColumnStretch(2,1)
+       layout.setColumnStretch(4,1)
+
+    def setup_background_tab(self):
+        layout = QGridLayout(self.background_tab)
+        layout.setVerticalSpacing(10)
+        layout.setHorizontalSpacing(10)
+        layout.setContentsMargins(5,5,5,5)
+        row = 0
+        col = 0
+        background_items = [
+           "background_gradient_start",
+            "background_gradient_end",
+            "queue_background",
+            "path_entry_background",
+            "clear_button_background",
+            "clear_button_background_hover",
+             "send_button_background",
+            "progress_bar_background",
+            "friends_scroll_background",
+             "status_frame_background",
+             "output_expand_background",
+             "output_expand_hover",
+             "output_text_background",
+             "add_friend_popup_background",
+            "app_context_menu_background",
+             "title_bar_background",
+         ]
+
+        for name in background_items:
+            color = self.current_colors.get(name)
+            if color:
+                label = QLabel(display_names.get(name, name))
+                label.setStyleSheet("color: white;")
+                layout.addWidget(label, row, col * 2, alignment=Qt.AlignLeft)
+
+                color_button = QPushButton()
+                color_button.setFixedSize(30, 30)
+                color_button.setStyleSheet(f"background-color: {color};border-radius: 15px;")
+                color_button.clicked.connect(lambda _, n=name: self.open_color_picker(n))
+                layout.addWidget(color_button, row, col * 2 + 1, alignment=Qt.AlignRight)
+                self.color_pickers[name] = color_button
+
+                col += 1
+                if col > 2:
+                   col = 0
+                   row += 1
+        layout.setColumnStretch(0,1)
+        layout.setColumnStretch(2,1)
+        layout.setColumnStretch(4,1)
+
+
+    def setup_border_tab(self):
+        layout = QGridLayout(self.border_tab)
+        layout.setVerticalSpacing(10)
+        layout.setHorizontalSpacing(10)
+        layout.setContentsMargins(5,5,5,5)
+        row = 0
+        col = 0
+        border_items = [
+           "queue_border",
+            "path_entry_border",
+            "send_button_border",
+            "progress_bar_border",
+            "friend_image_border",
+            "app_context_menu_border",
+            "output_text_border",
+            "title_bar_button_border"
+        ]
+
+        for name in border_items:
+            color = self.current_colors.get(name)
+            if color:
+                label = QLabel(display_names.get(name, name))
+                label.setStyleSheet("color: white;")
+                layout.addWidget(label, row, col * 2, alignment=Qt.AlignLeft)
+
+                color_button = QPushButton()
+                color_button.setFixedSize(30, 30)
+                color_button.setStyleSheet(f"background-color: {color};border-radius: 15px;")
+                color_button.clicked.connect(lambda _, n=name: self.open_color_picker(n))
+                layout.addWidget(color_button, row, col * 2 + 1, alignment=Qt.AlignRight)
+                self.color_pickers[name] = color_button
+                
+                col += 1
+                if col > 2:
+                   col = 0
+                   row += 1
+        layout.setColumnStretch(0,1)
+        layout.setColumnStretch(2,1)
+        layout.setColumnStretch(4,1)
+
+    def open_color_picker(self, name):
+        color = QColorDialog.getColor(QColor(self.current_colors[name]), self)
+        if color.isValid():
+            self.current_colors[name] = color.name()
+            self.color_pickers[name].setStyleSheet(f"background-color: {color.name()};border-radius: 15px;")
+            self.main_window.update_theme(self.current_colors)
+
+    def reset_theme(self):
+       self.current_colors = self.original_colors.copy()
+       for name, color in self.current_colors.items():
+           if name in self.color_pickers:
+                self.color_pickers[name].setStyleSheet(f"background-color: {color};border-radius: 15px;")
+       self.main_window.update_theme(self.current_colors)
+    
+    def accept_changes(self):
+        self.main_window.update_theme(self.current_colors)
+        self.main_window.save_theme_to_json(self.current_colors)
+        self.accept()
+
+    def reject_changes(self):
+       self.main_window.update_theme(self.original_colors)
+       self.reject()
+    
+    def set_gradient_background(self):
+        gradient = QLinearGradient(0, 0, self.width(), self.height())
+        gradient.setColorAt(0, QColor(self.current_colors["background_gradient_start"]))
+        gradient.setColorAt(1, QColor(self.current_colors["background_gradient_end"]))
+
+        palette = self.palette()
+        palette.setBrush(self.backgroundRole(), QBrush(gradient))
+        self.setPalette(palette)
+
+
+    
+    def get_updated_colors(self):
+        return self.current_colors
+    
 class AddFriendPopup(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Friend")
         self.setModal(True)
         self.setFixedSize(350, 300)
-        self.setStyleSheet(f"background-color: {colors['add_friend_popup_background']}; color: {colors['add_friend_popup_text']};")
+        self.setStyleSheet(f"background-color: {default_colors['add_friend_popup_background']}; color: {default_colors['add_friend_popup_text']};")
         self.new_friend_data = {}
         self.current_pixmap = None
         self.error_label = None 
