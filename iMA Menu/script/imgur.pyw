@@ -42,7 +42,7 @@ class SplashScreen(QWidget):
         QTimer.singleShot(timeout + 10, self.release)
 
     def release(self):
-         self.deleteLater() # Clean up the splash screen after the timer.
+         self.deleteLater() 
 
 class ImgurUploader(QWidget):
     def __init__(self):
@@ -72,7 +72,7 @@ class ImgurUploader(QWidget):
         self.upload_worker.finished_signal.connect(self.handle_upload_complete)
 
         self.image_path = None
-        QTimer.singleShot(10, self.start_upload)  # Start upload logic after initial window display
+        QTimer.singleShot(10, self.start_upload)  
         self.center_window()
 
 
