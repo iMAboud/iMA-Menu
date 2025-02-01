@@ -19,76 +19,44 @@ import pyperclip
 def is_windows():
     return platform.system() == "Windows"
 
-
 def resource_path(relative_path):
-    base_path = sys._MEIPASS if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
-
 
 def quote_path(path):
     path = (path or "").strip()
-    return f'"{path}"' if path and not (path.startswith('"') and path.endswith('"')) else path
-
+    return f'"{path}"' if path and not path.startswith('"') else path
 
 def get_clipboard_path():
     try:
         content = pyperclip.paste().strip()
-        return content if content and os.path.exists(content) else ""
+        return content if os.path.exists(content) else ""
     except Exception:
         return ""
 
-
 colors = {
-    "background_gradient_start": "#373737",
-    "background_gradient_end": "#261f2b",
-    "send_button_color": "#7e57c2",
-    "send_button_border": "#7e57c2",  
-    "send_button_background": "rgba(126, 87, 194, 0.3)",  
-    "queue_background": "rgba(126, 87, 194, 0.3)",
-    "queue_text": "white",
-    "queue_border": "#000",
-    "path_entry_background": "#7e57c2",
-    "path_entry_text": "white",
-    "path_entry_border": "#7e57c2",
-    "clear_button_background": "#7e57c2",
-    "clear_button_hover": "rgba(126, 87, 194, 0.3)",
-    "progress_bar_border": "#7e57c2",
-    "progress_bar_background": "rgba(126, 87, 194, 0.3)",
-    "progress_bar_text": "white",
-    "progress_bar_chunk": "#7e57c2",
-    "time_speed_text": "#bbb",
-    "output_text_background": "rgba(126, 87, 194, 0.1)",
-    "output_text_color": "lightgray",
-    "output_text_border": "#7e57c2",
-    "scroll_bar_handle": "rgba(80, 80, 80, 150)",
-    "status_frame_background": "rgba(126, 87, 194, 0.1)",
-    "status_text": "white",
-    "status_shadow": "black",
-    "circular_button_background": "#333",
-    "circular_button_text": "white",
-    "queue_item_background": "#444",
-    "queue_item_border": "#7e57c2",
-    "queue_item_text": "white",
+    "background_gradient_start": "#373737", "background_gradient_end": "#261f2b",
+    "send_button_color": "#7e57c2", "send_button_border": "#7e57c2", "send_button_background": "rgba(126, 87, 194, 0.3)",
+    "queue_background": "rgba(126, 87, 194, 0.3)", "queue_text": "white", "queue_border": "#000",
+    "path_entry_background": "#7e57c2", "path_entry_text": "white", "path_entry_border": "#7e57c2",
+    "clear_button_background": "#7e57c2", "clear_button_hover": "rgba(126, 87, 194, 0.3)",
+    "progress_bar_border": "#7e57c2", "progress_bar_background": "rgba(126, 87, 194, 0.3)",
+    "progress_bar_text": "white", "progress_bar_chunk": "#7e57c2", "time_speed_text": "#bbb",
+    "output_text_background": "rgba(126, 87, 194, 0.1)", "output_text_color": "lightgray",
+    "output_text_border": "#7e57c2", "scroll_bar_handle": "rgba(80, 80, 80, 150)",
+    "status_frame_background": "rgba(126, 87, 194, 0.1)", "status_text": "white", "status_shadow": "black",
+    "circular_button_background": "#333", "circular_button_text": "white",
+    "queue_item_background": "#444", "queue_item_border": "#7e57c2", "queue_item_text": "white",
     "queue_item_label_background": "rgba(80, 80, 80, 0.5)",
-    "set_code_popup_background": "#333",
-    "set_code_popup_border": "#555",
-    "set_code_button_background": "#555",
-    "set_code_button_hover": "#7e57c2",
-    "set_code_button_text": "white",
-    "app_context_menu_background": "#333",
-    "app_context_menu_text": "white",
-    "app_context_menu_border": "#555",
-    "app_context_menu_selected": "#555",
-     "title_bar_background": "#333",
-    "title_bar_button_hover": "#555",
-    "title_bar_button_text": "white",
-    "title_bar_button_border": "#7e57c2",
-    "minimize_button_color": "#7e57c2",  
-    "close_button_color": "#7e57c2", 
-    "title_bar_button_hover_color": "rgba(80, 80, 80, 0.5)",  
-    "title_bar_button_hover_border_size": 1, 
-    "title_bar_button_font_size": "12px" 
-
+    "set_code_popup_background": "#333", "set_code_popup_border": "#555",
+    "set_code_button_background": "#555", "set_code_button_hover": "#7e57c2", "set_code_button_text": "white",
+    "app_context_menu_background": "#333", "app_context_menu_text": "white",
+    "app_context_menu_border": "#555", "app_context_menu_selected": "#555",
+    "title_bar_background": "#333", "title_bar_button_hover": "#555",
+    "title_bar_button_text": "white", "title_bar_button_border": "#7e57c2",
+    "minimize_button_color": "#7e57c2", "close_button_color": "#7e57c2",
+    "title_bar_button_hover_color": "rgba(80, 80, 80, 0.5)",
+    "title_bar_button_hover_border_size": 1, "title_bar_button_font_size": "12px"
 }
 
 def set_drop_shadow(widget, blur_radius=10, offset_x=4, offset_y=4, opacity=150):
@@ -97,7 +65,6 @@ def set_drop_shadow(widget, blur_radius=10, offset_x=4, offset_y=4, opacity=150)
     shadow.setColor(QColor(0, 0, 0, opacity))
     shadow.setOffset(offset_x, offset_y)
     widget.setGraphicsEffect(shadow)
-
 
 class SendFileThread(QThread):
     output_signal = pyqtSignal(str)
@@ -123,9 +90,7 @@ class SendFileThread(QThread):
         self.hashing_complete = False
         self.start_time = 0
         self.queue_id = queue_id
-        stripped_path = self.filepath.strip()
-        if stripped_path.startswith('"') and stripped_path.endswith('"'):
-            stripped_path = stripped_path[1:-1]
+        stripped_path = self.filepath.strip().strip('"')
         self.filename = os.path.basename(stripped_path)
         try:
             self.filesize = self.format_file_size(os.path.getsize(stripped_path))
@@ -135,13 +100,13 @@ class SendFileThread(QThread):
     def run(self):
         try:
             command = f'croc --ignore-stdin send --code {self.code_prefix} {quote_path(self.filepath)}'
-            full_command = ["powershell", "-NoExit", "-Command", command]
+            full_command = ["powershell", "-NoExit", "-Command", command] if is_windows() else command
             self.process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                            universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                                            universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW if is_windows() else 0,
+                                            shell=not is_windows())  # Use shell=True on non-Windows for command as string
             self.start_time = time.time()
             self.current_file_signal.emit(self.filename, self.filesize)
             self.queue_id_signal.emit(self.queue_id)
-
             while True:
                 line = self.process.stdout.readline()
                 if not line:
@@ -149,7 +114,6 @@ class SendFileThread(QThread):
                 self.output_signal.emit(line)
                 self.parse_output_line(line)
             self.process.wait()
-
             if self.process.returncode != 0:
                 self.output_signal.emit(f"\nError: Command exited with code {self.process.returncode}\n")
                 self.finished_signal.emit(False)
@@ -202,14 +166,12 @@ class SendFileThread(QThread):
         if self.process and self.process.poll() is None:
             kill_command = ['taskkill', '/F', '/T', '/PID', str(self.process.pid)] if is_windows() else ['kill', '-9',
                                                                                                       str(self.process.pid)]
-            subprocess.Popen(kill_command, creationflags=subprocess.CREATE_NO_WINDOW if is_windows() else 0)
-
+            subprocess.Popen(kill_command, creationflags=subprocess.CREATE_NO_WINDOW if is_windows() else 0, shell=not is_windows())
 
 def update_output(output_widget, line):
     output_widget.insertPlainText(line)
     scrollbar = output_widget.verticalScrollBar()
     scrollbar.setValue(scrollbar.maximum())
-
 
 def handle_command_completion(success, status_label, progress_bar, window):
     status_label.setText("Complete!" if success else "Failed.")
@@ -218,7 +180,6 @@ def handle_command_completion(success, status_label, progress_bar, window):
     progress_bar.setValue(0)
     window.is_sending = False
     window.process_pending_queue()
-
 
 class CircularButton(QPushButton):
     def __init__(self, parent=None):
@@ -232,7 +193,6 @@ class CircularButton(QPushButton):
         painter.drawEllipse(self.rect())
         super().paintEvent(event)
 
-
 class ModernScrollBar(QScrollBar):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -240,7 +200,6 @@ class ModernScrollBar(QScrollBar):
             QScrollBar::handle:vertical {{background-color: {colors['scroll_bar_handle']};min-height: 20px;border-radius: 5px;}}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{background: none;}}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical{{background: none;}}""")
-
 
 class QueueListItem(QWidget):
     def __init__(self, filename, filesize, queue_id, remove_callback, parent=None):
@@ -264,7 +223,6 @@ class QueueListItem(QWidget):
         self.label.setMaximumWidth(140) 
         layout.addWidget(self.label)
 
-
         self.setStyleSheet(f"QueueListItem {{background-color: {colors['queue_item_background']};border-radius: 10px;border: 2px solid {colors['queue_item_border']};}}")
         set_drop_shadow(self.label, opacity=150)
     
@@ -274,7 +232,6 @@ class QueueListItem(QWidget):
     def on_remove_clicked(self):
         if self.remove_callback:
             self.remove_callback(self.filename, self.queue_id)
-
 
 class SettingsPopup(QDialog):
     def __init__(self, main_window, initial_code, parent=None):
@@ -351,7 +308,6 @@ class SettingsPopup(QDialog):
         cp = QDesktopWidget().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
-
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -589,16 +545,12 @@ class MainWindow(QWidget):
         self.set_rounded_window()  # Apply window masking on initialization
 
     def set_title_bar_button_style(self, button):
-        if button == self.minimize_button:
-           button_color = colors["minimize_button_color"]
-        else:
-           button_color = colors["close_button_color"]
+        button_color = colors["minimize_button_color"] if button == self.minimize_button else colors["close_button_color"]
 
         button.setStyleSheet(
             f"QPushButton {{background-color: transparent; color: {button_color}; border: none; border-radius: 15px;padding: 0px; font-size: {colors['title_bar_button_font_size']};}}"
             f"QPushButton:hover {{background-color: {colors['title_bar_button_hover_color']}; border: {colors['title_bar_button_hover_border_size']}px solid {colors['title_bar_button_border']}; padding: 0px; min-width: 30px; min-height: 30px;}}")
         
-
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and event.y() < self.title_bar_height:
             self.start_move_position = event.globalPos()
@@ -707,7 +659,10 @@ class MainWindow(QWidget):
             if hasattr(thread, 'close_process'):
                 thread.close_process()
         for thread in self.active_threads:
-            thread.wait()
+            try:
+               thread.wait()
+            except RuntimeError:
+                pass
         self.active_threads = []
         self.output_text.clear()
         self.clear_path()
