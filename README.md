@@ -168,5 +168,10 @@ _____________________________________________________________________
 
 This project is licensed under the [MIT License](LICENSE).
 
+_____________________________________________________________________
+
+## Credit
+[Nilesoft Shell](https://github.com/moudey/Shell) - [Shollz.croc](https://github.com/schollz/croc)
+
 </div>
 
