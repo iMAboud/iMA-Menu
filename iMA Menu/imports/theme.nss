@@ -8,7 +8,7 @@ theme
   border.opacity = 29
   border.radius = 3
   image.enabled = true
-  image.color = [#ffffff, #ffffff]
+  image.color = [default, default]
   background.color = default
   background.opacity = 0
   background.effect = 3
