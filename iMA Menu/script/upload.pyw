@@ -358,9 +358,10 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle("iMShare")
         self.setMinimumSize(800, 500)
+        self.setWindowFlag(Qt.FramelessWindowHint)
         
         self.window_position = None
-       
+        self.start_move_position = None
         self.title_bar_height = 30
         
         main_layout = QVBoxLayout(self)
@@ -378,7 +379,6 @@ class MainWindow(QWidget):
         title_layout = QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(0)
-
 
         self.title_label = QLabel("iMShare")
         self.title_label.setStyleSheet(f"color: {colors['title_bar_button_text']}; font-size: 12px;")
@@ -571,8 +571,7 @@ class MainWindow(QWidget):
             }}
             QMenu::item {{
                 background-color: transparent;
-                padding: 5px 10px;
-                margin: 1px 0px;
+                padding: 5px 10px;                margin: 1px 0px;
                 border-radius: 10px;
                 text-align: center;
             }}
@@ -587,6 +586,7 @@ class MainWindow(QWidget):
             }}
         """
         app.setStyleSheet(self.app_context_menu_style)
+        self.set_rounded_window()  # Apply window masking on initialization
 
     def set_title_bar_button_style(self, button):
         if button == self.minimize_button:
