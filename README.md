@@ -63,7 +63,7 @@ Schollz Croc|In Powershell: `winget install schollz.croc`
 Python|In Powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check both add python to path and use admin.
 yt-dlp|In Powershell: `python -m pip install -U yt-dlp[default]`
 ffmpeg|In Powershell: `iex (irm ffmpeg.tc.ht)`
-Packages |In powershell: `pip install backgroundremover pyautogui pyperclip pynput colorama pillow PyQt5 requests`
+Packages |In powershell: `pip install pyautogui pyperclip pynput colorama pillow PyQt5 requests`
 
 _____________________________________________________________________
 
