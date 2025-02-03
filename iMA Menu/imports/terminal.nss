@@ -1,0 +1,1 @@
+item(where=package.exists("WindowsTerminal") vis=key.shift() title=title.Terminal admin=has_admin image='@package.path("WindowsTerminal")\WindowsTerminal.exe' cmd="wt.exe" arg=`-d "@sel.path\."`)
