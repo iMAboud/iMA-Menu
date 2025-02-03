@@ -3,7 +3,7 @@ theme
   name = "modern"
   view = view.medium
   border.enabled = false
-  border.size = 2
+  border.size = 5
   border.color = default
   border.opacity = 29
   border.radius = 3

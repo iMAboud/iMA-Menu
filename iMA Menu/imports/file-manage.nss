@@ -7,7 +7,7 @@
 
 	item(type='file|dir|back.dir|drive' title='Take Ownership' image=[\uE194,#f00] admin
 		cmd args='/K takeown /f "@sel.path" @if(sel.type==1,null,"/r /d y") && icacls "@sel.path" /grant *S-1-5-32-544:F @if(sel.type==1,"/c /l","/t /c /l /q")')
-	
+	 
 
 
 item(type='namespace|back' title='Search' cmd='@app.dir\script\search.pyw' image=\uE186)

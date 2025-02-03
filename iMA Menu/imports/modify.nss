@@ -81,7 +81,6 @@ id.share,
 id.share_with,
 id.shield,
 id.show_cortana_button,
-id.show_desktop_icons,
 id.show_libraries,
 id.show_network,
 id.show_pen_button,
@@ -102,6 +101,7 @@ id.turn_off_bitlocker,
 id.troubleshoot_compatibility,
 id.remove_properties,
 id.open,
+id.show_desktop_icons,
 id.view
 ) vis=vis.remove)
 
@@ -147,7 +147,6 @@ id.personalize
 ) vis=key.shift())
 
 
-
 modify(find='Edit With photo' menu='Tools' image=\uE150)
 
 modify(type="recyclebin" where=window.is_desktop and this.id==id.empty_recycle_bin pos=1 sep)
@@ -157,11 +156,7 @@ modify(where=this.id==id.copy_as_path title='Path' menu="Manage")
 modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]) || this.id==id.open_powershell_window_here
     pos="bottom" menu="Terminal")
 
-
 modify(find='EDIT IN NOTEPAD' title='Edit Notepad' icon=\uE113)
 modify(find='7-ZIP' title='Zip' icon=\uE0D0)
 modify(find='edit with idle' title='Edit with IDLE' icon=\uE230)
 modify(find='Winrar' title='WinRAR' icon=\uE0CF)
-
-
-
