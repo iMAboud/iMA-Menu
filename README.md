@@ -13,7 +13,6 @@
 _____________________________________________________________________
 ## Download
 
-- [iMA Menu installer (3.7MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.9/iMA.Menu.Installer.exe)
 - [iMA Menu Portable (69MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.9/iMA.Menu.Portable.exe)
   
 _____________________________________________________________________
