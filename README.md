@@ -13,20 +13,10 @@
 _____________________________________________________________________
 ## Download Installer
 
-- [iMA Menu installer (3.7MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.7/iMA.Menu.Installer.exe)
-
+- [iMA Menu installer (3.7MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.9/iMA.Menu.Installer.exe)
+- [iMA Menu Portable (69MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.9/iMA.Menu.Portable.exe)
+  
 _____________________________________________________________________
-- [iMA Menu - Light](https://github.com/iMAboud/iMA-Menu/releases/download/v0.5/iMA.Menu.-.Light.exe)
-
-Includes only the menu and Send/Receieve feature
-_____________________________________________________________________
-
-
-## Uninstall ##
-- Go to program's path usually in C:\program files\iMA Menu
-( or right click taskbar > iMA Menu > Directory )
-- Open Nilesoft's Shell.exe > Unregister
-- Delete all folder now. 
 
 ## Features
 
