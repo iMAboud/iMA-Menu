@@ -116,7 +116,7 @@ class SendFileThread(QThread):
 
     def run(self):
         try:
-            command = f'croc {self.code_prefix}'
+            command = f'croc --yes {self.code_prefix}'
             full_command = ["powershell", "-NoExit", "-Command", command] if is_windows() else ["croc", self.code_prefix]
             
             self.process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
