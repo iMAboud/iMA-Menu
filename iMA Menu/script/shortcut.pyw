@@ -266,6 +266,7 @@ class MainWindow(QWidget):
     def add_new_item(self, new_item):
         self.items.append(new_item)
         self.populate_cards()
+        self.save_items_to_file() 
     def delete_selected_card(self):
         if self.selected_card:
             index_to_remove = self.selected_card.item_index
@@ -280,10 +281,12 @@ class MainWindow(QWidget):
                 self.selected_card = None
                 self.delete_button.setEnabled(False)
                 self.populate_cards()
+                self.save_items_to_file()  
             else:
                 QMessageBox.warning(self, "Delete Error", "Unable to delete the item")
     def save_data(self):
         return {"filepath": filepath, "items": self.items}
+
     def create_cmd_file(self, command):
         file_path = os.path.join(os.path.dirname(filepath), 'temp_cmd.bat')
         try:
@@ -293,41 +296,58 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to create a cmd file: {str(e)}")
             return None
+
     def load_items_from_file(self):
-        if not os.path.exists(filepath):
-            open(filepath, "w").close()
-        try:
+       if not os.path.exists(filepath):
+            open(filepath, "w").close()  
+
+       try:
             content = read_file(filepath)
             items = []
             for line in content.strip().split('\n'):
-                if line.startswith("item("):
+                line = line.strip()  
+                if line.startswith("item(") and line.endswith(")"):  
                     item_data = self.parse_line(line)
                     items.append(item_data)
             return items
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error reading file: {str(e)}")
-            return []
+       except Exception as e:
+           QMessageBox.critical(self, "Error", f"Error reading file: {str(e)}")
+           return []
+
+
     def parse_line(self, line):
-        parts = line.split(" ")
+        line = line[5:-1].strip() 
+
         item = {"type": None, "shortcut_path": "", "cmd_input": "", "icon_path": "",
                 "key_selected": "none", "title": ""}
+
+        parts = line.split(" ")
+
         for part in parts:
-            if part.startswith("title="):
-                item["title"] = part.split("=", 1)[1].strip("'")
-            elif part.startswith("image="):
-                item["icon_path"] = part.split("=", 1)[1].strip("'")
-            elif part.startswith("cmd="):
-                cmd_value = part.split("=", 1)[1].strip("'")
-                if cmd_value.endswith((".bat", ".cmd")):
+            if "=" not in part:
+                continue  
+
+            key, value = part.split("=", 1)
+            value = value.strip("'")
+
+            if key == "title":
+                item["title"] = value
+            elif key == "image":
+                item["icon_path"] = value
+            elif key == "cmd":
+                if value.endswith((".bat", ".cmd")):
                     item["type"] = "cmd"
-                    item["cmd_input"] = self.read_cmd_file(cmd_value)
+                    item["cmd_input"] = self.read_cmd_file(value)
                 else:
                     item["type"] = "shortcut"
-                    item["shortcut_path"] = cmd_value
-            elif part.startswith("vis="):
-                key_part = part.split("=", 1)[1].strip("'").replace("key.", "").replace("()", "")
+                    item["shortcut_path"] = value
+            elif key == "vis":
+                key_part = value.replace("key.", "").replace("()", "")
                 item["key_selected"] = f"key.{key_part}" if key_part != "none" else "none"
+
         return item
+
+
     def read_cmd_file(self, file_path):
         if not os.path.exists(file_path):
             return None
@@ -340,6 +360,27 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error reading command file: {str(e)}")
             return None
+
+    def save_items_to_file(self):
+        content = ""
+        for item in self.items:
+            item_str = "item("
+            if item["title"]:
+                item_str += f"title='{item['title']}' "
+            if item["icon_path"]:
+                item_str += f"image='{item['icon_path']}' "
+            if item["type"] == "shortcut" and item["shortcut_path"]:
+                item_str += f"cmd='{item['shortcut_path']}' "
+            elif item["type"] == "cmd" and item["cmd_input"]:
+                cmd_path = self.create_cmd_file(item["cmd_input"])
+                if cmd_path:
+                    item_str += f"cmd='{cmd_path}' "
+            key_str = item["key_selected"].replace("key.", "") if item["key_selected"] != "none" else "none"
+            item_str += f"vis='key.{key_str}()'"
+            item_str += ")"  
+            content += item_str + "\n"
+        write_file(filepath, content)
+
 
 def read_file(filepath):
     try:
