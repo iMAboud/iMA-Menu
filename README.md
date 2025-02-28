@@ -1,6 +1,6 @@
 <div align="center">
 
-![](https://i.imgur.com/Nn5hli0.png)
+![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 <a href="https://www.buymeacoffee.com/imaboud" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
