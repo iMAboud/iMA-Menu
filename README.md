@@ -2,7 +2,6 @@
 
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
-<a href="https://www.buymeacoffee.com/imaboud" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 
 - iMA Menu adds a lot of useful features right on your context menu, and allows easy theming and editing without priour programming knowledge.
@@ -152,6 +151,8 @@ _____________________________________________________________________
 <img src="https://github.com/user-attachments/assets/0c2763f1-fa41-4b86-b138-4d52ea44e596" alt="Search" width="400">
 
 _____________________________________________________________________
+
+<a href="https://www.buymeacoffee.com/imaboud" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
   
 ## License
 
