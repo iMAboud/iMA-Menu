@@ -4,7 +4,7 @@
 	priority=1
 	showdelay = 0
 	modify.remove.duplicate=1
-	tip.enabled=false
+	tip.enabled=true
         
 }
 
