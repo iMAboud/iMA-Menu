@@ -102,7 +102,7 @@ id.troubleshoot_compatibility,
 id.remove_properties,
 id.open,
 id.show_desktop_icons,
-id.view
+id.new
 ) vis=vis.remove)
 
 // more
@@ -111,7 +111,6 @@ where=this.id(
 id.send_to,
 id.eject,
 id.copy_path,
-id.new,
 id.compressed,
 id.create_shortcut,
 id.cut,
@@ -143,9 +142,22 @@ id.open_windows_powershell,
 id.open_command_prompt,
 id.open_command_window_here,
 id.open_powershell_window_here,
-id.personalize
+id.personalize,
+id.view
 ) vis=key.shift())
 
+menu(mode="single" type='back' expanded=true menu=title.options)
+	{
+		item(title='New Folder' cmd=io.dir.create(sys.datetime("ymdHMSs")) image=\uE0E7)
+		menu(title='New File' image=icon.new_file)
+		{
+			$dt = sys.datetime("ymdHMSs")
+			item(title='TXT' cmd=io.file.create('@(dt).txt'))
+			item(title='HTML' cmd=io.file.create('@(dt).html'))
+			item(title='JS' cmd=io.file.create('@(dt).js'))
+			item(title='CSS' cmd=io.file.create('@(dt).css'))
+		}
+}
 
 modify(find='Edit With photo' menu='Tools' image=\uE150)
 
