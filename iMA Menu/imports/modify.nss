@@ -101,8 +101,7 @@ id.turn_off_bitlocker,
 id.troubleshoot_compatibility,
 id.remove_properties,
 id.open,
-id.show_desktop_icons,
-id.new
+id.show_desktop_icons
 ) vis=vis.remove)
 
 // more
