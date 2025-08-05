@@ -262,7 +262,7 @@ class UnifiedApp(QMainWindow):
         self.add_tab("Modify", ModifyWindow, os.path.join(ICONS_PATH, "modify.ico"))
         self.add_tab("Theme", ThemeEditor, os.path.join(ICONS_PATH, "theme.ico"))
         self.add_tab("Shell", ShellEditor, os.path.join(ICONS_PATH, "shell.ico"))
-        self.add_tab("Shortcut", ShortcutWindow, os.path.join(ICONS_PATH, "shortcut.ico"))
+        self.add_tab("Shortcuts", ShortcutWindow, os.path.join(ICONS_PATH, "shortcut.ico"))
     
         self.repo_url = "https://github.com/iMAboud/iMA-Menu/tree/main/iMA%20Menu" 
         self.install_folder = SCRIPT_DIR
@@ -461,3 +461,4 @@ if __name__ == '__main__':
     unified_app = UnifiedApp()
     unified_app.show()
     sys.exit(app.exec_())
+
