@@ -1,0 +1,125 @@
+/* General Styles */
+QWidget {
+    background-color: transparent;
+    color: #ffffff;
+    font-family: 'Montserrat', sans-serif;
+    outline: none;
+}
+
+QLineEdit {
+    selection-background-color: #8087a2;
+    selection-color: #ffffff;
+}
+
+/* Main Window Content Area */
+#contentArea {
+    background-color: #1e2030;
+    border-radius: 15px;
+}
+
+/* Title Bar */
+#titleBar {
+    background-color: #282a3e;
+    border-top-left-radius: 15px;
+    border-top-right-radius: 15px;
+}
+
+#titleLabel {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+#minimizeButton, #closeButton {
+    background-color: #5b6078;
+    border: none;
+    border-radius: 15px;
+    color: #ffffff;
+}
+
+#minimizeButton:hover, #closeButton:hover {
+    background-color: #8087a2;
+}
+
+#closeButton {
+    background-color: #f38ba8;
+}
+
+/* Main Content Widgets */
+#pathInput {
+    background-color: #494d64;
+    border: 1px solid #5b6078;
+    border-radius: 15px;
+    padding: 8px;
+    color: #ffffff;
+    font-family: 'Open Sans';
+    font-size: 10pt;
+}
+
+#browseButton {
+    background-color: #5b6078;
+    border: none;
+    border-radius: 15px;
+    color: #ffffff;
+    font-family: 'Open Sans';
+    font-size: 10pt;
+    font-weight: bold;
+}
+#browseButton:hover {
+    background-color: #8087a2;
+}
+
+
+#installButton {
+    background-color: #94e2d5;
+    border: none;
+    border-radius: 15px;
+    color: #1e2030;
+    font-family: 'Open Sans';
+    font-size: 12pt;
+    font-weight: bold;
+}
+#installButton:hover {
+    background-color: #8087a2;
+}
+#installButton:disabled {
+    background-color: #494d64;
+    color: #9a9a9a;
+}
+
+
+#cancelButton {
+    background-color: #f38ba8;
+    border: none;
+    border-radius: 15px;
+    color: #1e2030;
+    font-family: 'Open Sans';
+    font-size: 12pt;
+    font-weight: bold;
+}
+#cancelButton:hover {
+    background-color: #8087a2;
+}
+
+/* Custom CheckBox */
+CustomCheckBox {
+    color: #ffffff;
+    font-family: 'Open Sans';
+    font-size: 10pt;
+}
+
+/* Progress Bar */
+QProgressBar {
+    border: 1px solid #5b6078;
+    border-radius: 5px;
+    background-color: #494d64;
+    text-align: center;
+    color: #ffffff;
+    font-family: 'Open Sans';
+    font-weight: bold;
+}
+
+QProgressBar::chunk {
+    background-color: #94e2d5;
+    border-radius: 5px;
+}

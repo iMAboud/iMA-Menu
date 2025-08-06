@@ -8,7 +8,7 @@ theme
   border.opacity = 29
   border.radius = 3
   image.enabled = true
-  image.color = [default, default]
+  image.color = [#ffffff, #ffffff ]
   background.color = default
   background.opacity = 0
   background.effect = 3
@@ -39,4 +39,12 @@ theme
   symbol.select = #ffffff
   symbol.normal-disabled = #ffffff
   symbol.select-disabled = #ffffff
+  dark = true
+  item.text.normal.disabled = default
+  item.text.select.disabled = default
+  item.back.normal = default
+  item.back.normal.disabled = default
+  item.back.select.disabled = default
+  item.border.normal.disabled = default
+  item.border.select.disabled = default
 }

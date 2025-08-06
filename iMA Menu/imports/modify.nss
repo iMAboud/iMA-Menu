@@ -76,7 +76,6 @@ id.rotate_right,
 id.run,
 id.search,
 id.select_all,
-id.set_as_desktop_wallpaper,
 id.share,
 id.share_with,
 id.shield,
@@ -100,28 +99,21 @@ id.turn_on_bitlocker,
 id.turn_off_bitlocker,
 id.troubleshoot_compatibility,
 id.remove_properties,
-id.open,
-id.show_desktop_icons
-) vis=vis.remove)
+id.show_desktop_icons,
+id.copy_as_path,
+id.new) vis=vis.remove)
 
 // more
 modify(mode=mode.multiple
 where=this.id(
 id.send_to,
 id.eject,
-id.copy_path,
 id.compressed,
-id.create_shortcut,
-id.cut,
-id.rename,
-id.paste,
-id.copy
-) menu=title.options)
+id.create_shortcut) menu=title.options)
 
 // shift
 modify(mode=single
 where=this.id(
-id.open_with,
 id.options,
 id.install,
 id.display_settings,
@@ -130,33 +122,36 @@ id.pin_to_quick_access,
 id.pin_to_start,
 id.pin_to_taskbar,
 id.preview,
-id.remove_from_quick_access,
 id.run_as_another_user,
 id.settings,
-id.unpin_from_taskbar,
-id.unpin_from_start,
-id.unpin_from_quick_access,
 id.command_prompt,
 id.open_windows_powershell,
 id.open_command_prompt,
 id.open_command_window_here,
 id.open_powershell_window_here,
-id.personalize,
-id.view
-) vis=key.shift())
+id.personalize) vis=key.shift())
 
+	menu(mode="single" type='back' expanded=true menu=title.options)
+	{
 
+		item(title='New Folder' cmd=io.dir.create(sys.datetime("ymdHMSs")) image=\uE0E7)
+		
+		menu(title='New File' image=icon.new_file)
+		{
+			$dt = sys.datetime("ymdHMSs")
+			item(title='TXT' cmd=io.file.create('@(dt).txt'))
+			item(title='HTML' cmd=io.file.create('@(dt).html'))
+			item(title='JS' cmd=io.file.create('@(dt).js'))
+			item(title='CSS' cmd=io.file.create('@(dt).css'))
+		}
+	}
 
-modify(find='Edit With photo' menu='Tools' image=\uE150)
 
 modify(type="recyclebin" where=window.is_desktop and this.id==id.empty_recycle_bin pos=1 sep)
-
-modify(where=this.id==id.copy_as_path title='Path' menu="Manage")
-
 modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]) || this.id==id.open_powershell_window_here
     pos="bottom" menu="Terminal")
 
-modify(find='EDIT IN NOTEPAD' title='Edit Notepad' icon=\uE113)
-modify(find='7-ZIP' title='Zip' icon=\uE0D0)
-modify(find='edit with idle' title='Edit with IDLE' icon=\uE230)
-modify(find='Winrar' title='WinRAR' icon=\uE0CF)
+modify(find='Edit With photo' menu='Tools' image=\uE150)
+modify(find='winrar' title='WinRAR')
+
+remove(find="redo|undo")
