@@ -1,167 +1,90 @@
 <div align="center">
 
+# iMA Menu Remake ✨
+
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-repo/your-repo/actions)
+[![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/your-repo/your-repo/releases/tag/v1.0.0)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
+--- 
+<img width="134" height="162" alt="6M7DfigquF" src="https://github.com/user-attachments/assets/02ff0ac4-a7d0-42b6-9206-a023844fea29" /> <img width="138" height="166" alt="XuIrKy4aUX" src="https://github.com/user-attachments/assets/96aafafa-6e6b-4aea-8dfe-42ad7994a5a7" /> <img width="136" height="162" alt="wMbpzQQEJ1" src="https://github.com/user-attachments/assets/c7273f18-846e-419c-99d0-07b832cfe642" /> <img width="140" height="166" alt="DpooD6exN7" src="https://github.com/user-attachments/assets/3fa1573e-244d-4471-91c2-0b891795acbc" />
 
-- iMA Menu adds a lot of useful features right on your context menu, and allows easy theming and editing without priour programming knowledge.
+## Welcome to the Refactored iMA Menu! 🚀
 
-![](https://i.imgur.com/fO94CpQ.png)
+iMA Menu is a powerful, customizable desktop enhancement suite designed to streamline your workflow and personalize your Windows experience. Rebuilt for robustness and efficiency, it offers unparalleled control over your context menus, a modular plugin system, advanced theming options, and a suite of integrated productivity tools.
 
-
-_____________________________________________________________________
-## Download
-
-- [iMA Menu](https://github.com/iMAboud/iMA-Menu/releases/latest)
-  
-_____________________________________________________________________
-
-## Features
-
-- Transfer files super fast with no size limit to any PC with just a pass code.
-- Download a video or directly convert it to audio from Youtube or any site.
-- Color picking to hex over desktop and programs.
-- Draw over apps, scroll wheel to increase of decrease opacity of desktop.
-- An app to easily change the context menu (right click) theme
-- An app to remove or change the names and icon of any item in context menu
-- Customize items in cotext menu to make any item appear with holding shift, or inside a menu or hide it completly.
-- Merging 2 media files.
-- Resize dimensions of an image and aspect of a video.
-- MP4 to MP3
-- Video to GIF, no limit, gif can be up to 2 hours (it might go longer, I didn't test it).
-- Convert any video to any format.
-- Reduce file size of any image or video without losing too much quality. 
-- Change a wallpaper with commands, search a wallpaper, select from options and it'll save and set as background instantly.
-- Clean temp/cookies/cache..etc.
-- Custom theme and settings for Nilesoft for minimalism.
-- Fast search any file in all drives, copy the path, paste and you're redirected to that path.
-- Stream to any friend that has this installed, and watch any movie/series synced in a lobby using perio & stremio.
-- Lightweight, fast, easy, portable, no background apps, almost %100 pre-configured and ready to use.
-- Fully automated, with pre-configured scripts, automatically sets the location path where you click.
-- I'm always adding and fixing features, so I might've missed a few more features.
-
-_____________________________________________________________________
-
-## Setup manually
-
-Name|installation 
-:---|:---
-iMA Menu| Download the repo as zip.
-Schollz Croc|In Powershell: `winget install schollz.croc`
-Python|In Powershell: `winget install -e -i --id=Python.Python.3.12 --source=winget --scope=machine` Make sure to check both add python to path and use admin.
-yt-dlp|In Powershell: `python -m pip install -U yt-dlp[default]`
-ffmpeg|In Powershell: `iex (irm ffmpeg.tc.ht)`
-Packages |In powershell: `pip install pyautogui pyperclip pynput colorama pillow PyQt5 requests`
-
-_____________________________________________________________________
-
-## Manual Installation
-
-- Install all required from the table above "running the commands is recommended and easier".
-- Move the folder `iMA Menu` into C:\Program Files.
-- Go to "C:\Program Files\iMA Menu", and run "Shell.exe" As Admin, and click "Register".
-
-_____________________________________________________________________
-
-
-## Usage & Config
-  
- **iMShare: File Transfer**
-
-**Upload and Download** ![](https://i.imgur.com/FS5swEd.jpeg)
-
-_____________________________________________________________________
-
-## YouTube & other sites downloader 
-![Video Downloader](https://github.com/user-attachments/assets/7bec24e9-9ca1-4c6c-8786-2d1db99c97ae)
-
-Shows only when you have a video link in clipboard. 
-
-Copy Youtube, you'll see youtube option in context menu (works for X, Twitch, Instagram, Tiktok and Reddit too).
-
-![reddit](https://github.com/user-attachments/assets/72dd09dd-d229-4bb3-b240-cb0b25628690) ![Youtube](https://github.com/user-attachments/assets/01b57ef0-ef2e-4b33-b0e5-d19cc9f66768) ![Twitch](https://github.com/user-attachments/assets/49db7fbd-ccdc-4cc9-afb2-bb593611c6d5)
-
-
-
-_____________________________________________________________________
-
-## Video & Image editing
-- Pretty much self explanatory, just Right-Click a video or an image, then > Tools > select your option.
-
-![](https://i.imgur.com/eDjS8H1.png)
-_____________________________________________________________________
-
-
-**Search**
-
-![Search](https://github.com/user-attachments/assets/434fb61f-c15c-44fb-af05-7166a16004a0)
-
-- Search by file name 
-
-_____________________________________________________________________
-
-**Draw**
-- Right Click to Draw, Left Click to change color
-- Mousewheel to change opacity of canvas
-- ESC to stop and close
-
-_____________________________________________________________________
-
-**Clean Temp**
-- This will clean all of temp, cache, recent, cookies, and prefetch. 
-
-_____________________________________________________________________
-
-**Color Picking**
-- Shows the pixel color your cursor is pointing at, right click to copy it to clipboard
-- scroll up  & down to change zoom
-_____________________________________________________________________
-
-**Settings**
-
-![](https://i.imgur.com/Uk3TwEg.png)
-
-- Right-click Taskbar > iMA Mneu > Settings
-
-(Modify tab)
-- You can add any item to Hide box to hide it everywhere, or in More options menu or active with Shift button, just drag an id from the ids list and drop it in any of the boxes. 
-- You can edit any option in context menu's name and icon, write the old name, and the new name you want and if you don't want to add a custom icon you can leave the icon option blank, it will use the default icon. 
-- You can see and delete any custom display name to set it as the default name and icon.
-
-(Theme tab)
-- Change the conext menu's theme here (UI is very ugly I know, and missing a lot of features but I'm working on it).
-
-(Shell tab) 
-- Hide any thing from context menu in (remove items)
-- Add or remove a custom file containing commands or shortcuts in (import files)
-
-(Shortcut tab)
-- Add a shortcut or command in 1 file (import shortcut.nss from Shell tab if not imported).
-
-_____________________________________________________________________
-
-## Screenshots
-
-<img src="https://i.imgur.com/U6syLCl.png" alt="Draw" width="400">
-<img src="https://i.imgur.com/qQvxrdB.png" alt="HEX" width="400">
-<img src="https://i.imgur.com/2im6aLx.png" alt="Theme" width="400">
-<img src="https://i.imgur.com/2i7VYLF.png" alt="Search" width="400">
-<img src="https://i.imgur.com/kclvUGm.png" alt="Shell" width="400">
-<img src="https://i.imgur.com/L40lJKt.png" alt="shortcut" width="400">
-<img src="https://github.com/user-attachments/assets/0c2763f1-fa41-4b86-b138-4d52ea44e596" alt="Search" width="400">
-
-_____________________________________________________________________
-
-<a href="https://www.buymeacoffee.com/imaboud" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-  
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
-_____________________________________________________________________
-
-## Credit
-[Nilesoft Shell](https://github.com/moudey/Shell) - [Shollz.croc](https://github.com/schollz/croc)
-
+---
 </div>
 
+## Key Features 🌟
+
+<details>
+  <summary>✨ Enhanced Context Menu Customization</summary>
+  
+  Tailor your right-click context menu with options to modify, remove, or change icons for menu items.
+</details>
+
+<details>
+  <summary>🔌 Modular Plugin System & Manager</summary>
+  
+  Extend iMA Menu's capabilities with a growing library of plugins, easily managed through an integrated system.
+</details>
+
+<details>
+  <summary>🎨 Advanced Theming Options</summary>
+  
+  Personalize the look and feel of your iMA Menu with a flexible theming engine, offering presets and live editing.
+</details>
+
+<details>
+  <summary>🚀 Integrated Productivity Tools</summary>
+  
+  Access a suite of handy tools for file management, screen drawing, color picking, file transfer, quick file creation, and Windows Security exclusions.
+</details>
+
+---
+
+## Screenshots 📸
+
+<img width="400" height="300" alt="launcher_4qpz8M3bGe" src="https://github.com/user-attachments/assets/99bdcff0-b23d-44d0-8f4d-b2e4ffbad810" />
+<img width="400" height="300" alt="launcher_ZVx1yNg5HQ" src="https://github.com/user-attachments/assets/77f032c3-4b89-448b-aae6-0ba328145246" />
+<img width="400" height="300" alt="launcher_EkpwS8oc7C" src="https://github.com/user-attachments/assets/c3c59f78-0931-48e0-b7ca-afcf41475e71" />
+<img width="400" height="300" alt="launcher_6neDaVGNsR" src="https://github.com/user-attachments/assets/8412a834-65c0-40b0-92ba-949b65ff8272" />
+<img width="400" height="300" alt="launcher_JkNLETo1qj" src="https://github.com/user-attachments/assets/ccfc70e1-f5e0-453c-bbd1-ec9c5a58c913" />
+<img width="400" height="300" alt="iMA_Menu_Installer_dl4iWuKh6u" src="https://github.com/user-attachments/assets/e8410065-7f78-43cf-bd9f-e07b9c7fe862" />
+
+---
+
+## Installation 💻
+
+1.  **Download the latest release** from the [Releases page](https://github.com/iMAboud/iMA-Menu/releases/latest).
+2.  Install & done
+
+---
+
+## Usage 💡
+
+Right-click anywhere on your desktop or within Explorer to access the iMA Menu. Explore the various options and customize it to your workflow.
+
+---
+
+## Contributing 🤝
+
+We welcome contributions! If you have suggestions, bug reports, or want to contribute code, please open an issue or pull request on GitHub.
+
+For plugin contributions, please visit the [iMA Menu Plugins repository](https://github.com/iMAboud/iMA-Menu-Plugins).
+
+---
+
+## License 📄
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Credits 🙏
+
+*   [Nilesoft Shell](https://github.com/moudey/Shell)
+*   [Shollz . croc](https://github.com/schollz/croc)
