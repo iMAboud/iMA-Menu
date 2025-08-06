@@ -1,32 +1,32 @@
 theme
 {
-  name = "modern"
+  name = "black"
   view = view.medium
   dark = true
-  border.enabled = true
-  border.size = 3
-  border.color = #eba0ac
-  border.opacity = 20
+  border.enabled = false
+  border.size = 5
+  border.color = default
+  border.opacity = 29
   border.radius = 3
   image.enabled = true
-  image.color = [#b48ead, #b47684 ]
+  image.color = [default, default]
   background.color = default
   background.opacity = 0
   background.effect = 3
   item.opacity = 0
   item.radius = 3
-  item.text.normal = #978dad
+  item.text.normal = default
   item.text.select = default
   item.text.normal-disabled = default
   item.text.select-disabled = #242323
-  item.back.select = #764449
+  item.back.select = default
   item.back.select-disabled = #000f0f
   item.border.normal = default
   item.border.normal-disabled = default
   item.border.select = default
   item.border.select-disabled = default
   font.size = auto
-  font.name = "Comic Sans MS"
+  font.name = "Segoe UI Variable Text"
   font.weight = false
   font.italic = false
   shadow.enabled = false
@@ -40,12 +40,4 @@ theme
   symbol.select = #ffffff
   symbol.normal-disabled = #ffffff
   symbol.select-disabled = #ffffff
-  dark = default
-  item.text.normal.disabled = default
-  item.text.select.disabled = #ffffff
-  item.back.normal = default
-  item.back.normal.disabled = default
-  item.back.select.disabled = default
-  item.border.normal.disabled = default
-  item.border.select.disabled = default
 }
