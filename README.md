@@ -50,7 +50,7 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Screenshots 📸
 
-<img width="400" height="300" alt="launcher_4qpz8M3bGe" src="https://github.com/user-attachments/assets/99bdcff0-b23d-44d0-8f4d-b2e4ffbad810" />
+<img width="400" height="300" alt="launcher_56IKBIbnve" src="https://github.com/user-attachments/assets/1081cf05-c91f-483a-b4b7-8bef42a84a6e" />
 <img width="400" height="300" alt="launcher_ZVx1yNg5HQ" src="https://github.com/user-attachments/assets/77f032c3-4b89-448b-aae6-0ba328145246" />
 <img width="400" height="300" alt="launcher_EkpwS8oc7C" src="https://github.com/user-attachments/assets/c3c59f78-0931-48e0-b7ca-afcf41475e71" />
 <img width="400" height="300" alt="launcher_piRsFLBiq6" src="https://github.com/user-attachments/assets/ff54dc76-6a1e-41c5-b7c8-2b8317e50d2b" />
