@@ -1,0 +1,42 @@
+theme
+{
+  name = "white"
+  view = view.medium
+  border.enabled = false
+  border.size = 5
+  border.color = default
+  border.opacity = 29
+  border.radius = 3
+  image.enabled = true
+  image.color = [default, default]
+  background.color = default
+  background.opacity = 0
+  background.effect = 3
+  item.opacity = 0
+  item.radius = 3
+  item.text.normal = default
+  item.text.select = default
+  item.text.normal-disabled = default
+  item.text.select-disabled = #242323
+  item.back.select = default
+  item.back.select-disabled = #000f0f
+  item.border.normal = default
+  item.border.normal-disabled = default
+  item.border.select = default
+  item.border.select-disabled = default
+  font.size = auto
+  font.name = "Segoe UI Variable Text"
+  font.weight = false
+  font.italic = false
+  shadow.enabled = false
+  shadow.size = 0
+  shadow.opacity = 0
+  shadow.color = #fff
+  separator.size = 0
+  separator.color = #fff
+  separator.opacity = 0
+  symbol.normal = #ffffff
+  symbol.select = #ffffff
+  symbol.normal-disabled = #ffffff
+  symbol.select-disabled = #ffffff
+}
