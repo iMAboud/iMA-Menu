@@ -12,7 +12,7 @@
 _____________________________________________________________________
 ## Download
 
-- [iMA Menu Portable (69MB)](https://github.com/iMAboud/iMA-Menu/releases/download/v.0.9/iMA.Menu.Portable.exe)
+- [iMA Menu](https://github.com/iMAboud/iMA-Menu/releases/latest)
   
 _____________________________________________________________________
 
