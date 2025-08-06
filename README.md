@@ -6,7 +6,7 @@
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
 [![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/your-repo/your-repo/releases/tag/v1.0.0)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 --- 
 <img width="134" height="162" alt="6M7DfigquF" src="https://github.com/user-attachments/assets/02ff0ac4-a7d0-42b6-9206-a023844fea29" /> <img width="138" height="166" alt="XuIrKy4aUX" src="https://github.com/user-attachments/assets/96aafafa-6e6b-4aea-8dfe-42ad7994a5a7" /> <img width="136" height="162" alt="wMbpzQQEJ1" src="https://github.com/user-attachments/assets/c7273f18-846e-419c-99d0-07b832cfe642" /> <img width="140" height="166" alt="DpooD6exN7" src="https://github.com/user-attachments/assets/3fa1573e-244d-4471-91c2-0b891795acbc" />
