@@ -1,6 +1,6 @@
 theme
 {
-  name = "black"
+  name = "modern"
   view = view.medium
   dark = true
   border.enabled = false
@@ -9,10 +9,10 @@ theme
   border.opacity = 29
   border.radius = 3
   image.enabled = true
-  image.color = [default, default]
-  background.color = default
-  background.opacity = 0
-  background.effect = 3
+  image.color = [#ffffff, #ffffff ]
+  background.color = #000000
+  background.opacity = 100
+  background.effect = 0
   item.opacity = 0
   item.radius = 3
   item.text.normal = default
@@ -40,4 +40,11 @@ theme
   symbol.select = #ffffff
   symbol.normal-disabled = #ffffff
   symbol.select-disabled = #ffffff
+  item.text.normal.disabled = default
+  item.text.select.disabled = default
+  item.back.normal = default
+  item.back.normal.disabled = default
+  item.back.select.disabled = default
+  item.border.normal.disabled = #ffffff
+  item.border.select.disabled = #ffffff
 }
