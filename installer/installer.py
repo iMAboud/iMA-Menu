@@ -131,6 +131,20 @@ class InstallerThread(QThread):
                         shortcut.description = "iMA Menu Launcher"
                         shortcut.icon_location = (icon_path, 0)
 
+            self.progress.emit(90)
+            self.msleep(100)
+
+            try:
+                # Grant Administrators group full control over the installation directory
+                subprocess.run(f'icacls "{self.install_dir}" /grant *S-1-5-32-544:F /t /c /l /q', check=True, shell=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Permissions change failed: {e.cmd} stdout: {e.stdout} stderr: {e.stderr}")
+            except Exception as e:
+                print(f"Error during permissions change: {e}")
+
+            self.progress.emit(95)
+            self.msleep(100)
+
             subprocess.run('start /wait "" "shell.exe" -restart', check=True, shell=True, cwd=self.install_dir, capture_output=True, text=True)
             self.progress.emit(100)
             self.msleep(100)
