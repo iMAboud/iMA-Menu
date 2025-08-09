@@ -40,4 +40,11 @@ theme
   symbol.select = #ffffff
   symbol.normal-disabled = #ffffff
   symbol.select-disabled = #ffffff
+  item.text.normal.disabled = #444444
+  item.text.select.disabled = #000000
+  item.back.normal = #ffffff
+  item.back.normal.disabled = #ffffff
+  item.back.select.disabled = #ffffff
+  item.border.normal.disabled = #ffffff
+  item.border.select.disabled = #ffffff
 }
