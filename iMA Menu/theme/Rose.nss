@@ -48,4 +48,11 @@ theme
   item.back.select.disabled = default
   item.border.normal.disabled = default
   item.border.select.disabled = default
+  item.text.normal.disabled = #978dad
+  item.text.select.disabled = #242323
+  item.back.normal = default
+  item.back.normal.disabled = default
+  item.back.select.disabled = default
+  item.border.normal.disabled = default
+  item.border.select.disabled = default
 }

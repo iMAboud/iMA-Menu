@@ -47,4 +47,11 @@ theme
   item.back.select.disabled = #baccba
   item.border.normal.disabled = #baccba
   item.border.select.disabled = #ffffff
+  item.text.normal.disabled = #4e824e
+  item.text.select.disabled = #000000
+  item.back.normal = #baccba
+  item.back.normal.disabled = #baccba
+  item.back.select.disabled = #baccba
+  item.border.normal.disabled = #baccba
+  item.border.select.disabled = #baccba
 }
