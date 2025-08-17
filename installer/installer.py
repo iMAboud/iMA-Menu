@@ -79,6 +79,8 @@ class InstallerThread(QThread):
 
             os.makedirs(self.install_dir, exist_ok=True)
             shutil.copy2(os.path.join(sys._MEIPASS, 'ima.ico'), os.path.join(self.install_dir, 'ima.ico'))
+            shutil.copy2(os.path.join(sys._MEIPASS, 'uninstall.vbs'), os.path.join(self.install_dir, 'uninstall.vbs'))
+            shutil.copy2(os.path.join(sys._MEIPASS, 'worker.bat'), os.path.join(self.install_dir, 'worker.bat'))
 
             total_files = sum([len(files) for r, d, files in os.walk(actual_source_dir)])
             copied_files = 0
@@ -131,12 +133,14 @@ class InstallerThread(QThread):
                         shortcut.description = "iMA Menu Launcher"
                         shortcut.icon_location = (icon_path, 0)
 
+            self.create_uninstaller_registry()
+            
             self.progress.emit(90)
             self.msleep(100)
 
             try:
                 # Grant Administrators group full control over the installation directory
-                subprocess.run(f'icacls "{self.install_dir}" /grant *S-1-5-32-544:F /t /c /l /q', check=True, shell=True, capture_output=True, text=True)
+                subprocess.run(f'icacls "{self.install_dir}" /grant Users:F /t /c /l /q', check=True, shell=True, capture_output=True, text=True)
             except subprocess.CalledProcessError as e:
                 print(f"Permissions change failed: {e.cmd} stdout: {e.stdout} stderr: {e.stderr}")
             except Exception as e:
@@ -156,6 +160,48 @@ class InstallerThread(QThread):
             self.finished.emit(False, f"Installation failed: {e}")
         finally:
             pythoncom.CoUninitialize()
+
+    def create_uninstaller_registry(self):
+        version = "1.0.0"
+        uninstall_key_path = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\iMA Menu"
+
+        def reg_add(value_name, value_type, value_data):
+            command = [
+                'reg',
+                'add',
+                uninstall_key_path,
+                '/v',
+                value_name,
+                '/t',
+                value_type,
+                '/d',
+                str(value_data),
+                '/f'
+            ]
+            try:
+                subprocess.run(command, check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to execute reg command: {' '.join(command)}")
+                print(f"Stderr: {e.stderr}")
+                print(f"Stdout: {e.stdout}")
+                raise
+
+        try:
+            reg_add("DisplayName", "REG_SZ", "iMA Menu")
+            reg_add("DisplayVersion", "REG_SZ", version)
+            reg_add("Publisher", "REG_SZ", "iMA")
+            reg_add("InstallLocation", "REG_SZ", self.install_dir)
+            icon_path = os.path.join(self.install_dir, 'ima.ico')
+            reg_add("DisplayIcon", "REG_SZ", icon_path)
+            uninstall_command = f'wscript.exe "{os.path.join(self.install_dir, "uninstall.vbs")}"'
+            reg_add("UninstallString", "REG_SZ", uninstall_command)
+            reg_add("QuietUninstallString", "REG_SZ", uninstall_command)
+            reg_add("NoModify", "REG_DWORD", 1)
+            reg_add("NoRepair", "REG_DWORD", 1)
+            total_size = sum(os.path.getsize(os.path.join(dirpath, f)) for dirpath, _, filenames in os.walk(self.install_dir) for f in filenames if not os.path.islink(os.path.join(dirpath, f)))
+            reg_add("EstimatedSize", "REG_DWORD", total_size // 1024)
+        except Exception as e:
+            print(f"Failed to create uninstaller registry entry using reg.exe: {e}")
 
 class CustomCheckBox(QCheckBox):
     def __init__(self, text):

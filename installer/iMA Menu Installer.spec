@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['D:\\iMA Menu Remake\\iMA Menu Remake\\installer\\installer.py'],
+    ['D:\\iMA Menu Remake\\iMA Menu Remake\\installer - Uninstaller test\\installer.py'],
     pathex=[],
     binaries=[],
-    datas=[('D:\\iMA Menu Remake\\iMA Menu Remake\\iMA Menu', 'iMA Menu'), ('ima.ico', '.'), ('assets', 'assets'), ('style.css', '.')],
+    datas=[('D:\\iMA Menu Remake\\iMA Menu Remake\\iMA Menu', 'iMA Menu'), ('ima.ico', '.'), ('assets', 'assets'), ('style.css', '.'), ('uninstall.vbs', '.'), ('worker.bat', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -26,6 +26,8 @@ if __name__ == '__main__':
         f'--add-data={icon_path};.',
         '--add-data=assets;assets',
         '--add-data=style.css;.',
+        '--add-data=uninstall.vbs;.',
+        '--add-data=worker.bat;.',
         f'--workpath={workpath}',
         f'--distpath={distpath}',
         '--exclude-module=PyQt5.QtWebEngineWidgets',
