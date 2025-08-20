@@ -70,6 +70,10 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 Right-click anywhere on your desktop or within Explorer to access the iMA Menu. Explore the various options and customize it to your workflow.
 
+## Important
+
+Launcher and some features like iMShare might fail or crash due to the lack of permission, this is easily fixed by going into the iMA Menu installation folder (e.g: C:\Program Files\iMA Menu); Right-click on the folder > Manage > Take Ownership
+
 ---
 
 ## Contributing 🤝
