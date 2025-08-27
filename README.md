@@ -5,7 +5,7 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/your-repo/your-repo/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/your-repo/your-repo/releases/tag/v1.0.2)
 [![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 --- 
