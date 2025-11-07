@@ -61,6 +61,10 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Installation 💻
 
+> ### :exclamation: Caution
+>
+> This might not be easily uninstalled.
+
 1.  **Download the latest release** from the [Releases page](https://github.com/iMAboud/iMA-Menu/releases/latest).
 2.  Install & done
 
