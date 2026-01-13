@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=iMAboud&project=iMA-Menu&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 <div align="center">
 
 # iMA Menu Remake ✨
