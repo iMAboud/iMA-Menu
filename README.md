@@ -1,19 +1,16 @@
 <div align="center">
 
-# iMA Menu Remake ✨
+# iMA Menu ✨
 
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v1.0.2-blue)](https://github.com/iMAboud/iMA-Menu/releases/tag/V.1.0.2)
+[![Release](https://img.shields.io/badge/release-v2.0.0-blue)](https://github.com/iMAboud/iMA-Menu/releases/tag/V.2.0.0)
 [![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 --- 
 <img width="134" height="162" alt="6M7DfigquF" src="https://github.com/user-attachments/assets/02ff0ac4-a7d0-42b6-9206-a023844fea29" /> <img width="140" height="166" alt="DpooD6exN7" src="https://github.com/user-attachments/assets/3fa1573e-244d-4471-91c2-0b891795acbc" /> <img width="136" height="162" alt="wMbpzQQEJ1" src="https://github.com/user-attachments/assets/c7273f18-846e-419c-99d0-07b832cfe642" /> <img width="140" height="166" alt="dJs79Bi6bc" src="https://github.com/user-attachments/assets/335d25a1-0cb5-4ee9-b6d0-8ced1944515a" /> <img width="140" height="166" alt="6SvipXLQQW" src="https://github.com/user-attachments/assets/e449a46a-b349-4c41-942b-520f3c766d55" />
 
-
-
-## Welcome to the Refactored iMA Menu! 🚀
 
 iMA Menu is a powerful, customizable desktop enhancement suite designed to streamline your workflow and personalize your Windows experience. Rebuilt for robustness and efficiency, it offers unparalleled control over your context menus, a modular plugin system, advanced theming options, and a suite of integrated productivity tools.
 
@@ -50,20 +47,16 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Screenshots 📸
 
-<img width="400" height="300" alt="launcher_56IKBIbnve" src="https://github.com/user-attachments/assets/1081cf05-c91f-483a-b4b7-8bef42a84a6e" />
-<img width="400" height="300" alt="launcher_ZVx1yNg5HQ" src="https://github.com/user-attachments/assets/77f032c3-4b89-448b-aae6-0ba328145246" />
-<img width="400" height="300" alt="launcher_EkpwS8oc7C" src="https://github.com/user-attachments/assets/c3c59f78-0931-48e0-b7ca-afcf41475e71" />
-<img width="400" height="300" alt="launcher_piRsFLBiq6" src="https://github.com/user-attachments/assets/ff54dc76-6a1e-41c5-b7c8-2b8317e50d2b" />
-<img width="400" height="300" alt="launcher_JkNLETo1qj" src="https://github.com/user-attachments/assets/ccfc70e1-f5e0-453c-bbd1-ec9c5a58c913" />
-<img width="400" height="300" alt="iMA_Menu_Installer_dl4iWuKh6u" src="https://github.com/user-attachments/assets/e8410065-7f78-43cf-bd9f-e07b9c7fe862" />
+<img width="400" height="300" alt="chrome_Ee3XF70Guk" src="https://github.com/user-attachments/assets/164f14aa-4f27-4215-be41-0067b96be0c1" />
+<img width="400" height="300" alt="chrome_wheoV30yeR" src="https://github.com/user-attachments/assets/921363a2-fa78-45c8-8c4d-52b03cac4f31" />
+<img width="400" height="300" alt="chrome_R2cuLp6FSk" src="https://github.com/user-attachments/assets/47bc13f7-4956-433b-839b-af78aba9b6e0" />
+<img width="400" height="300" alt="chrome_y4gsMUrQR2" src="https://github.com/user-attachments/assets/31e77565-9c38-45c6-b716-01a18e5d21f7" />
+<img width="400" height="300" alt="chrome_w8fhFC5IQ1" src="https://github.com/user-attachments/assets/9d957483-ca36-49e9-b493-a8525a68aa34" />
+<img width="400" height="300" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/25fb365f-ea1a-48f5-a3c8-b1e27d4f6e00" />
 
 ---
 
 ## Installation 💻
-
-> ### :exclamation: Caution
->
-> This might not be easily uninstalled.
 
 1.  **Download the latest release** from the [Releases page](https://github.com/iMAboud/iMA-Menu/releases/latest).
 2.  Install & done
@@ -72,11 +65,9 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Usage 💡
 
-Right-click anywhere on your desktop or within Explorer to access the iMA Menu. Explore the various options and customize it to your workflow.
+Right-Click on Taskbar > iMA Menu > Settings
 
-## Important
-
-Launcher and some features like iMShare might fail or crash due to the lack of permission, this is easily fixed by going into the iMA Menu installation folder (e.g: C:\Program Files\iMA Menu); Right-click on the folder > Manage > Take Ownership
+<img width="365" height="206" alt="screenshot_20260513_012457" src="https://github.com/user-attachments/assets/45ba1904-40ba-49d7-8527-5c2b0120f65e" />
 
 ---
 
