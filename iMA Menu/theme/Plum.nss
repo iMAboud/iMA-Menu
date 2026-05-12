@@ -17,14 +17,14 @@ theme
   item.radius = 3
   item.text.normal = #bb93d6
   item.text.select = default
-  item.text.normal-disabled = #bb93d6
-  item.text.select-disabled = #240046
+  item.text.normal.disabled = #bb93d6
+  item.text.select.disabled = #7e589c
   item.back.select = #bb93d6
-  item.back.select-disabled = #6a4c93
+  item.back.select.disabled = #240046
   item.border.normal = default
-  item.border.normal-disabled = default
+  item.border.normal.disabled = #240046
   item.border.select = #8c52ff
-  item.border.select-disabled = default
+  item.border.select.disabled = #240046
   font.size = auto
   font.name = "Comic Sans MS"
   font.weight = true
@@ -38,13 +38,8 @@ theme
   separator.opacity = 0
   symbol.normal = #ffffff
   symbol.select = #ffffff
-  symbol.normal-disabled = #ffffff
-  symbol.select-disabled = #ffffff
-  item.text.normal.disabled = #bb93d6
-  item.text.select.disabled = #240046
+  symbol.normal.disabled = #ffffff
+  symbol.select.disabled = #ffffff
   item.back.normal = #240046
   item.back.normal.disabled = #240046
-  item.back.select.disabled = #240046
-  item.border.normal.disabled = #240046
-  item.border.select.disabled = #240046
 }

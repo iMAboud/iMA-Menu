@@ -2,7 +2,7 @@ theme
 {
   name = "modern"
   view = view.medium
-  dark = true
+  dark = default
   border.enabled = true
   border.size = 3
   border.color = #eba0ac
@@ -17,14 +17,14 @@ theme
   item.radius = 3
   item.text.normal = #978dad
   item.text.select = default
-  item.text.normal-disabled = default
-  item.text.select-disabled = #242323
+  item.text.normal.disabled = #978dad
+  item.text.select.disabled = #5a5467
   item.back.select = #764449
-  item.back.select-disabled = #000f0f
+  item.back.select.disabled = default
   item.border.normal = default
-  item.border.normal-disabled = default
+  item.border.normal.disabled = default
   item.border.select = default
-  item.border.select-disabled = default
+  item.border.select.disabled = default
   font.size = auto
   font.name = "Comic Sans MS"
   font.weight = false
@@ -38,21 +38,8 @@ theme
   separator.opacity = 0
   symbol.normal = #ffffff
   symbol.select = #ffffff
-  symbol.normal-disabled = #ffffff
-  symbol.select-disabled = #ffffff
-  dark = default
-  item.text.normal.disabled = default
-  item.text.select.disabled = #ffffff
+  symbol.normal.disabled = #ffffff
+  symbol.select.disabled = #ffffff
   item.back.normal = default
   item.back.normal.disabled = default
-  item.back.select.disabled = default
-  item.border.normal.disabled = default
-  item.border.select.disabled = default
-  item.text.normal.disabled = #978dad
-  item.text.select.disabled = #242323
-  item.back.normal = default
-  item.back.normal.disabled = default
-  item.back.select.disabled = default
-  item.border.normal.disabled = default
-  item.border.select.disabled = default
 }

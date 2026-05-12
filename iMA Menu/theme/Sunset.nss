@@ -17,14 +17,14 @@ theme
   item.radius = 3
   item.text.normal = #ffc371
   item.text.select = default
-  item.text.normal-disabled = #ffc371
-  item.text.select-disabled = #3a0000
+  item.text.normal.disabled = #ffc371
+  item.text.select.disabled = #b07543
   item.back.select = #ffc371
-  item.back.select-disabled = #ff8c42
+  item.back.select.disabled = #3a0000
   item.border.normal = default
-  item.border.normal-disabled = default
+  item.border.normal.disabled = #3a0000
   item.border.select = #ffc371
-  item.border.select-disabled = default
+  item.border.select.disabled = #3a0000
   font.size = auto
   font.name = "Segoe UI Variable Text"
   font.weight = true
@@ -38,13 +38,8 @@ theme
   separator.opacity = 0
   symbol.normal = #ffffff
   symbol.select = #ffffff
-  symbol.normal-disabled = #ffffff
-  symbol.select-disabled = #ffffff
-  item.text.normal.disabled = #ffc371
-  item.text.select.disabled = #3a0000
+  symbol.normal.disabled = #ffffff
+  symbol.select.disabled = #ffffff
   item.back.normal = #3a0000
   item.back.normal.disabled = #3a0000
-  item.back.select.disabled = #3a0000
-  item.border.normal.disabled = #3a0000
-  item.border.select.disabled = #3a0000
 }

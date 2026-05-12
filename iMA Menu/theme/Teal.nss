@@ -1,0 +1,45 @@
+theme
+{
+  name = "modern"
+  view = view.medium
+  dark = default
+  border.enabled = true
+  border.size = 3
+  border.color = #4babb4
+  border.opacity = 20
+  border.radius = 3
+  image.enabled = true
+  image.color = [#3b888f, #68eaf6 ]
+  background.color = #1e4447
+  background.opacity = 12
+  background.effect = 3
+  item.opacity = 0
+  item.radius = 3
+  item.text.normal = #41949c
+  item.text.select = default
+  item.text.normal.disabled = #25565a
+  item.text.select.disabled = #33747a
+  item.back.select = #1e4447
+  item.back.select.disabled = default
+  item.border.normal = default
+  item.border.normal.disabled = default
+  item.border.select = #3e8d94
+  item.border.select.disabled = default
+  font.size = auto
+  font.name = "Comic Sans MS"
+  font.weight = false
+  font.italic = false
+  shadow.enabled = false
+  shadow.size = 0
+  shadow.opacity = 0
+  shadow.color = #fff
+  separator.size = 0
+  separator.color = #fff
+  separator.opacity = 0
+  symbol.normal = #3b888f
+  symbol.select = #ffffff
+  symbol.normal.disabled = #ffffff
+  symbol.select.disabled = #ffffff
+  item.back.normal = default
+  item.back.normal.disabled = default
+}
