@@ -17,6 +17,13 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 ---
 </div>
 
+## Installation 💻
+
+1.  **Install the latest release** [Download](https://github.com/iMAboud/iMA-Menu/releases/latest).
+2.  Install & done
+
+---
+
 ## Key Features 🌟
 
 <details>
@@ -55,12 +62,6 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 <img width="400" height="300" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/25fb365f-ea1a-48f5-a3c8-b1e27d4f6e00" />
 
 <img src="https://i.imgur.com/TfwHI5q.gif" width="800" height="600">
----
-
-## Installation 💻
-
-1.  **Download the latest release** from the [Releases page](https://github.com/iMAboud/iMA-Menu/releases/latest).
-2.  Install & done
 
 ---
 
