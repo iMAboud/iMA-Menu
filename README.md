@@ -47,14 +47,14 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Screenshots 📸
 
-<img width="500" height="400" alt="chrome_Ee3XF70Guk" src="https://github.com/user-attachments/assets/164f14aa-4f27-4215-be41-0067b96be0c1" />
-<img width="500" height="400" alt="chrome_wheoV30yeR" src="https://github.com/user-attachments/assets/921363a2-fa78-45c8-8c4d-52b03cac4f31" />
-<img width="500" height="400" alt="chrome_R2cuLp6FSk" src="https://github.com/user-attachments/assets/47bc13f7-4956-433b-839b-af78aba9b6e0" />
-<img width="500" height="400" alt="chrome_y4gsMUrQR2" src="https://github.com/user-attachments/assets/31e77565-9c38-45c6-b716-01a18e5d21f7" />
-<img width="500" height="400" alt="chrome_w8fhFC5IQ1" src="https://github.com/user-attachments/assets/9d957483-ca36-49e9-b493-a8525a68aa34" />
-<img width="500" height="400" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/25fb365f-ea1a-48f5-a3c8-b1e27d4f6e00" />
+<img width="400" height="300" alt="chrome_Ee3XF70Guk" src="https://github.com/user-attachments/assets/164f14aa-4f27-4215-be41-0067b96be0c1" />
+<img width="400" height="300" alt="chrome_wheoV30yeR" src="https://github.com/user-attachments/assets/921363a2-fa78-45c8-8c4d-52b03cac4f31" />
+<img width="400" height="300" alt="chrome_R2cuLp6FSk" src="https://github.com/user-attachments/assets/47bc13f7-4956-433b-839b-af78aba9b6e0" />
+<img width="400" height="300" alt="chrome_y4gsMUrQR2" src="https://github.com/user-attachments/assets/31e77565-9c38-45c6-b716-01a18e5d21f7" />
+<img width="400" height="300" alt="chrome_w8fhFC5IQ1" src="https://github.com/user-attachments/assets/9d957483-ca36-49e9-b493-a8525a68aa34" />
+<img width="400" height="300" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/25fb365f-ea1a-48f5-a3c8-b1e27d4f6e00" />
 
-<img src="https://i.imgur.com/TfwHI5q.gif" width="1000" height="600">
+<img src="https://i.imgur.com/TfwHI5q.gif" width="800" height="600">
 ---
 
 ## Installation 💻
