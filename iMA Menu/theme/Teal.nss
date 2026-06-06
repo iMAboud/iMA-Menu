@@ -2,7 +2,7 @@ theme
 {
   name = "modern"
   view = view.medium
-  dark = default
+  dark = true
   border.enabled = true
   border.size = 3
   border.color = #4babb4

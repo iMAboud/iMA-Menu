@@ -4,9 +4,7 @@ def cleanup_file(path):
     if not os.path.exists(path): return
     with open(path, 'r', encoding='utf-8') as f: content = f.read()
     
-    # Remove _order metadata
     new_content = re.sub(r"\s*_order='\[.*?\]'", "", content)
-    # Remove empty properties
     new_content = re.sub(r"\bin=''\s*", "", new_content)
     new_content = re.sub(r"\btitle=''\s*", "", new_content)
     # Fix quoted glyphs: image='[[...]]' -> image=[[...]

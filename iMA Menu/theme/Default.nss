@@ -2,6 +2,7 @@ theme
 {
   name = "modern"
   view = view.medium
+  dark = true
   border.enabled = false
   border.size = 5
   border.color = default

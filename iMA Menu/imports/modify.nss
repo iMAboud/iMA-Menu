@@ -54,7 +54,6 @@ where=this.id(
     id.move_here,
     id.move_to,
     id.move_to_folder,
-    id.new,
     id.new_item,
     id.news_and_interests,
     id.next_desktop_background,
@@ -135,7 +134,6 @@ where=this.id(
     id.unpin_from_start,
     id.unpin_from_taskbar,
     id.view
-
 ) vis=key.shift())
 
 
@@ -143,7 +141,15 @@ modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]
     pos="bottom" menu="Terminal")
 
 // -- iMA Managed --
-    modify(find='Refresh' pos='top' vis='@if(key.shift() || key.control(), 'hidden', 'normal')')
+    modify(find='display settings' title='Display')
+    modify(find='Compressed' in='NEW' vis=vis.remove)
+    modify(find='Uninstall' image=["\uE288", #bf616a])
+    modify(find='repair' image=["\uE093"])
+    modify(find='explore background' vis=vis.remove)
+    modify(find='next background' vis=vis.remove)
+    modify(find='"Folder"' in='new' pos=top menu='options' image=["\uE019"])
+    modify(find='new' vis=vis.remove)
+    modify(find='Refresh' pos=top vis='@if(key.shift() || key.control(), 'hidden', 'normal')')
     modify(find='Delete' pos='-1' vis='@if(key.shift() || key.control(), "hidden", "normal")' image=[\uE0B4, #ba473f])
     modify(find='Edit' vis='@if(key.shift() || key.control(), "hidden", "normal")')
     modify(find='Open' vis=vis.remove)
@@ -176,7 +182,7 @@ modify(where=str.equals(this.name, ["open in terminal", "open linux shell here"]
     modify(find='open with' pos=top)
     modify(find='winrar' title='WinRAR' image=\uE0D0)
     modify(find='"add to archive"' in='winrar' pos=top title='Archive' icon=\uE0DF)
-    modify(find='"extract here"' in='winrar' pos='top' title='Extract Here' image=\uE0E0)
-    modify(find='"extract files"' in='winrar' pos='1' title='Extract File' icon=\uE0E0)
+    modify(find='"extract here"' in='winrar' pos=top title='Extract Here' image=\uE0E0)
+    modify(find='"extract files"' in='winrar' pos=1 title='Extract File' icon=\uE0E0)
 // -- End iMA Managed --
 

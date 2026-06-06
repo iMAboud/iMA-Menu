@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLay
                              QGraphicsDropShadowEffect, QTabWidget, QLayout, QListView,
                              QStyledItemDelegate, QStyle, QAbstractItemView)
 from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QIcon, QPixmap, QFontDatabase, QFontMetrics, QImage
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QPoint, QRect, QRectF, QTimer, QObject, QAbstractListModel, QModelIndex
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QPoint, QPointF, QRect, QRectF, QTimer, QObject, QAbstractListModel, QModelIndex
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
 from utils import resource_path, UnsavedChangesDialog, safe_file_write, get_font_icon, get_mdl2_icon, NILESOFT_FONT_FAMILY, _init_nilesoft_font
@@ -109,9 +109,9 @@ class KeyToggleButton(QPushButton):
         self.stateChanged.emit(2 if checked else 0)
     def _update_style(self):
         if self.isChecked():
-            self.setStyleSheet("QPushButton { background: rgba(148, 226, 213, 0.2); border: 1px solid rgba(148, 226, 213, 0.5); border-radius: 10px; color: #94e2d5; font-size: 10px; padding: 2px; } QPushButton:hover { background: rgba(148, 226, 213, 0.3); }")
+            self.setStyleSheet("QPushButton { background: rgba(220, 20, 60, 0.2); border: 1px solid rgba(220, 20, 60, 0.5); border-radius: 10px; color: #dc143c; font-size: 10px; padding: 2px; } QPushButton:hover { background: rgba(220, 20, 60, 0.3); }")
         else:
-            self.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #585b70; font-size: 10px; padding: 2px; } QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #a6adc8; }")
+            self.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #333333; font-size: 10px; padding: 2px; } QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #b0b0b0; }")
     def isChecked(self):
         return super().isChecked()
     def setChecked(self, val):
@@ -120,15 +120,15 @@ class KeyToggleButton(QPushButton):
     def setEnabled(self, val):
         super().setEnabled(val)
         if not val:
-            self.setStyleSheet("QPushButton { background: rgba(148, 226, 213, 0.15); border: 1px solid rgba(148, 226, 213, 0.3); border-radius: 10px; color: rgba(148, 226, 213, 0.6); font-size: 10px; padding: 2px; }")
+            self.setStyleSheet("QPushButton { background: rgba(220, 20, 60, 0.15); border: 1px solid rgba(220, 20, 60, 0.3); border-radius: 10px; color: rgba(220, 20, 60, 0.6); font-size: 10px; padding: 2px; }")
     def paintEvent(self, event):
         from PyQt5.QtGui import QPainter, QFont as QF
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         icon_code = KEY_TOGGLE_ICONS.get(self._label, (0xE73E, ''))[0]
         glyph = chr(icon_code)
-        c = QColor('#94e2d5') if self.isChecked() else QColor('#585b70')
-        if not self.isEnabled(): c = QColor(148, 226, 213, 153)
+        c = QColor('#dc143c') if self.isChecked() else QColor('#333333')
+        if not self.isEnabled(): c = QColor(220, 20, 60, 153)
         if self.underMouse() and self.isEnabled(): c = c.lighter(130)
         painter.setPen(c)
         icon_font = QF('Segoe MDL2 Assets', 14)
@@ -216,9 +216,9 @@ class NSSItemDelegate(QStyledItemDelegate):
     def paint(self, painter, opt, index):
         data = index.data(Qt.UserRole); painter.save(); painter.setRenderHint(QPainter.Antialiasing)
         rect = opt.rect.adjusted(12, 6, -12, -6); is_hover = (opt.state & QStyle.State_MouseOver)
-        painter.setPen(Qt.NoPen); bg = QColor("#313244") if is_hover else QColor("#1e1e2e")
+        painter.setPen(Qt.NoPen); bg = QColor("#2a2a30") if is_hover else QColor("#121212")
         bg.setAlpha(200 if is_hover else 140); painter.setBrush(bg); painter.drawRoundedRect(rect, 16, 16)
-        if is_hover: painter.setPen(QPen(QColor(148, 226, 213, 120), 1.5)); painter.drawRoundedRect(rect, 16, 16)
+        if is_hover: painter.setPen(QPen(QColor(220, 20, 60, 120), 1.5)); painter.drawRoundedRect(rect, 16, 16)
         
         ty, props = data.get('type', 'item'), data.get('props', {})
         val = props.get('image') or props.get('icon') or ''
@@ -303,68 +303,73 @@ class NSSItemDelegate(QStyledItemDelegate):
             
         if data.get('type') == 'modify':
             if props.get('find'):
-                draw_part("Modify: ", "#94e2d5", f_bold)
-                draw_part(props['find'].strip(chr(39)+chr(34)), "#cdd6f4", f_bold)
+                draw_part("Modify: ", "#dc143c", f_bold)
+                draw_part(props['find'].strip(chr(39)+chr(34)), "#ffffff", f_bold)
                 if props.get('title'):
-                    draw_part(" \u2192 ", "#585b70", f_small)
-                    draw_part(props['title'].strip(chr(39)+chr(34)), "#fab387", f_bold)
+                    draw_part(" \u2192 ", "#A0A0A0", f_small)
+                    draw_part(props['title'].strip(chr(39)+chr(34)), "#dc143c", f_bold)
             elif props.get('type'):
-                draw_part(f"All {props['type'].title()}s", "#94e2d5", f_bold)
+                draw_part(f"All {props['type'].title()}s", "#dc143c", f_bold)
                 if props.get('title'):
-                    draw_part(" \u2192 ", "#585b70", f_small)
-                    draw_part(props['title'].strip(chr(39)+chr(34)), "#fab387", f_bold)
+                    draw_part(" \u2192 ", "#A0A0A0", f_small)
+                    draw_part(props['title'].strip(chr(39)+chr(34)), "#dc143c", f_bold)
             else:
-                draw_part("Global Rule", "#94e2d5", f_bold)
+                draw_part("Global Rule", "#dc143c", f_bold)
         else:
             # item or menu - show title
             t_str = props.get('title', props.get('find', 'Unnamed')).strip(chr(39)+chr(34))
             file_name = os.path.basename(data.get('file', ''))
             label = f"{file_name}: " if file_name else ""
-            draw_part(label, "#94e2d5", f_bold)
-            draw_part(t_str, "#cdd6f4", f_bold)
+            draw_part(label, "#dc143c", f_bold)
+            draw_part(t_str, "#ffffff", f_bold)
             
         if props.get('in'):
-            draw_part(" in ", "#585b70", f_small)
-            draw_part(props['in'].strip(chr(39)+chr(34)), "#89b4fa", f_bold)
+            draw_part(" in ", "#A0A0A0", f_small)
+            draw_part(props['in'].strip(chr(39)+chr(34)), "#ff2a55", f_bold)
         
         # Badges / Summary
         bx = rect.x() + 85; by = rect.y() + 48; acts = []
-        if props.get('title'): acts.append(("Renamed", "#fab387"))
-        if props.get('icon') or props.get('image'): acts.append(("Icon", "#94e2d5"))
+        if props.get('title'): acts.append(("Renamed", "#808080"))
+        if props.get('icon') or props.get('image'): acts.append(("Icons", "#4A90E2"))
         v = props.get('vis', '').lower()
-        if v in ('vis.remove', 'vis.hidden', 'remove', 'hidden'): acts.append(("Hidden", "#f38ba8"))
-        elif v and v != 'normal': acts.append(("Part Hidden", "#cba6f7"))
-        elif v: acts.append((f"Vis: {v}", "#fab387"))
-        if props.get('menu'): acts.append(("Moved", "#b4befe"))
-        if props.get('pos'): acts.append((f"Pos: {props['pos']}", "#94e2d5"))
-        if props.get('sep'): acts.append(("Sep", "#585b70"))
+        if v in ('vis.remove', 'vis.hidden', 'remove', 'hidden'): acts.append(("Hidden", "#dc143c"))
+        elif v and v != 'normal': acts.append(("Part Hidden", "#9B59B6"))
+        elif v: acts.append((f"Vis: {v}", "#dc143c"))
+        if props.get('menu'): acts.append(("Moved", "#E29E4A"))
+        if props.get('pos'): acts.append((f"Pos: {props['pos']}", "#4AE290"))
+        if props.get('sep'): acts.append(("Separator", "#F1C40F"))
         
         painter.setFont(QFont("Inter", 8, QFont.Bold))
         for txt, clr in acts:
             tw = painter.fontMetrics().horizontalAdvance(txt) + 12
             painter.setBrush(QColor(clr)); painter.setPen(Qt.NoPen)
             br = QRect(bx, by, tw, 18); painter.drawRoundedRect(br, 9, 9)
-            painter.setPen(QColor("#11111b")); painter.drawText(br, Qt.AlignCenter, txt)
+            painter.setPen(QColor("#000000"))
+            painter.drawText(br.adjusted(-1, -1, -1, -1), Qt.AlignCenter, txt)
+            painter.drawText(br.adjusted(1, -1, 1, -1), Qt.AlignCenter, txt)
+            painter.drawText(br.adjusted(-1, 1, -1, 1), Qt.AlignCenter, txt)
+            painter.drawText(br.adjusted(1, 1, 1, 1), Qt.AlignCenter, txt)
+            painter.setPen(QColor("#ffffff")); painter.drawText(br, Qt.AlignCenter, txt)
             bx += tw + 6
             
         # Source / File
         fp = data.get('file', 'modify.nss'); src = os.path.basename(fp)
-        painter.setPen(QColor("#585b70")); painter.setFont(QFont("Inter", 9))
+        painter.setPen(QColor("#A0A0A0")); painter.setFont(QFont("Inter", 9))
         painter.drawText(rect.x() + 85, rect.y() + 82, f"Source: {src}")
         
         # Buttons Area (Right)
         if is_hover:
             is_local = src.lower() == 'modify.nss'
             btn_x = rect.right() - 45; btn_y = rect.y() + (rect.height() - 36) // 2
-            btns = [("\uE107", "#f38ba8")] if is_local else [] # Delete (only for local)
-            btns.append(("\uE104", "#94e2d5")) # Edit
+            btns = [("\uE107", "#dc143c")] if is_local else [] # Delete (only for local)
+            btns.append(("\uE104", "#dc143c")) # Edit
             
             for i, (icon, clr) in enumerate(btns):
                 br = QRect(btn_x, btn_y, 36, 36)
                 is_btn_hover = (self._hover_btn == (0 if is_local and i == 0 else 1))
                 painter.setBrush(QColor(clr) if is_btn_hover else QColor(255,255,255,10))
                 painter.setPen(Qt.NoPen); painter.drawEllipse(br)
-                painter.setPen(QColor("#11111b") if is_btn_hover else QColor(clr))
+                painter.setPen(QColor("#ffffff") if is_btn_hover else QColor(clr))
                 painter.setFont(QFont("Segoe MDL2 Assets", 14)); painter.drawText(br, Qt.AlignCenter, icon)
                 btn_x -= 42
         painter.restore()
@@ -404,7 +409,7 @@ class NonScrollComboBox(QComboBox):
 
 class CustomMessageBox(QDialog):
     def __init__(self, parent=None):
-        super().__init__(parent); self.setWindowTitle("Message"); self.setFixedSize(350, 180); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.layout = QVBoxLayout(self); self.frame = QFrame(); self.frame.setStyleSheet("QFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 15px; }"); self.layout.addWidget(self.frame); self.content_layout = QVBoxLayout(self.frame); self.title_label = QLabel("Title"); self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; border: none;"); self.msg_label = QLabel(""); self.msg_label.setWordWrap(True); self.msg_label.setStyleSheet("color: #a6adc8; border: none;"); self.ok_btn = QPushButton("OK"); self.ok_btn.setFixedSize(80, 32); self.ok_btn.setStyleSheet("QPushButton { background-color: #94e2d5; color: #11111b; border-radius: 8px; font-weight: bold; } QPushButton:hover { background-color: #b4befe; }"); self.ok_btn.clicked.connect(self.accept); self.content_layout.addWidget(self.title_label); self.content_layout.addWidget(self.msg_label); self.content_layout.addWidget(self.ok_btn, 0, Qt.AlignRight)
+        super().__init__(parent); self.setWindowTitle("Message"); self.setFixedSize(350, 180); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.layout = QVBoxLayout(self); self.frame = QFrame(); self.frame.setStyleSheet("QFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 15px; }"); self.layout.addWidget(self.frame); self.content_layout = QVBoxLayout(self.frame); self.title_label = QLabel("Title"); self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; border: none;"); self.msg_label = QLabel(""); self.msg_label.setWordWrap(True); self.msg_label.setStyleSheet("color: #b0b0b0; border: none;"); self.ok_btn = QPushButton("OK"); self.ok_btn.setFixedSize(80, 32); self.ok_btn.setStyleSheet("QPushButton { background-color: #dc143c; color: #ffffff; border-radius: 8px; font-weight: bold; } QPushButton:hover { background-color: #dc143c; }"); self.ok_btn.clicked.connect(self.accept); self.content_layout.addWidget(self.title_label); self.content_layout.addWidget(self.msg_label); self.content_layout.addWidget(self.ok_btn, 0, Qt.AlignRight)
     def setText(self, text): self.title_label.setText(text)
     def setInformativeText(self, text): self.msg_label.setText(text)
 
@@ -446,13 +451,13 @@ class IDPopupDialog(QDialog):
     def setup_ui(self):
         self.frame = QFrame(self); self.frame.setObjectName("popupFrame")
         self.frame.setStyleSheet("""
-            #popupFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 12px; } 
-            QLabel { color: #585b70; font-size: 10px; font-weight: bold; letter-spacing: 0.5px; border: none; background: transparent; padding-left: 2px; } 
-            QComboBox { background: #313244; border: 1px solid #45475a; border-radius: 8px; padding: 8px; color: #cdd6f4; font-size: 12px; }
-            QComboBox:hover { border: 1px solid #94e2d5; }
+            #popupFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 12px; } 
+            QLabel { color: #333333; font-size: 10px; font-weight: bold; letter-spacing: 0.5px; border: none; background: transparent; padding-left: 2px; } 
+            QComboBox { background: #2a2a30; border: 1px solid #45475a; border-radius: 8px; padding: 8px; color: #ffffff; font-size: 12px; }
+            QComboBox:hover { border: 1px solid #dc143c; }
             QComboBox::drop-down { border: none; width: 20px; }
-            QComboBox::down-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #a6adc8; }
-            QComboBox QAbstractItemView { background-color: #1e1e2e; border: 1px solid #313244; selection-background-color: #313244; selection-color: #94e2d5; color: #cdd6f4; outline: none; border-radius: 8px; padding: 4px; }
+            QComboBox::down-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #b0b0b0; }
+            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
         """)
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.addWidget(self.frame); cl = QVBoxLayout(self.frame); cl.setContentsMargins(15, 12, 15, 15); cl.setSpacing(10)
         h1 = QLabel("MENU LOCATION"); cl.addWidget(h1)
@@ -471,7 +476,7 @@ class IDPopupDialog(QDialog):
             if v_map[self.v_box.itemText(i)] == self.current_vis: self.v_box.setCurrentIndex(i); break
         cl.addWidget(self.v_box)
         self.save = QPushButton("Apply Changes"); self.save.setFixedHeight(34)
-        self.save.setStyleSheet("QPushButton { background: #94e2d5; color: #11111b; font-weight: bold; border-radius: 8px; border: none; margin-top: 5px; } QPushButton:hover { background: #b4befe; }")
+        self.save.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; font-weight: bold; border-radius: 8px; border: none; margin-top: 5px; } QPushButton:hover { background: #dc143c; }")
         self.save.clicked.connect(self.accept); cl.addWidget(self.save)
     def get_values(self):
         m_sel = self.m_box.currentText()
@@ -491,9 +496,22 @@ class RadioDot(QPushButton):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         rect = QRectF(4, 4, 12, 12)
         if self.isChecked():
-            p.setPen(Qt.NoPen); p.setBrush(QColor("#94e2d5")); p.drawEllipse(rect)
+            p.setPen(Qt.NoPen); p.setBrush(QColor("#dc143c")); p.drawEllipse(rect)
         else:
             p.setPen(QPen(QColor(255, 255, 255, 60), 1.5)); p.setBrush(Qt.NoBrush); p.drawEllipse(rect)
+
+class IconSyncButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent); self.setFixedSize(28, 28); self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); } QPushButton:hover { background: rgba(220, 20, 60, 0.15); border: 1px solid #dc143c; }")
+    def paintEvent(self, event):
+        super().paintEvent(event); p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
+        c = QColor("#dc143c") if self.underMouse() else QColor("#ffffff")
+        p.setPen(QPen(c, 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        # Draw a circular arrow (Sync/Reload icon)
+        rect = QRectF(7, 7, 14, 14); p.drawArc(rect, 40 * 16, 280 * 16)
+        # Draw arrow head
+        p.setBrush(c); p.drawPolygon(QPointF(17, 6), QPointF(21, 9), QPointF(17, 12))
 
 class ColorPellet(QPushButton):
     def __init__(self, color, parent=None):
@@ -506,14 +524,27 @@ class ColorPellet(QPushButton):
             p.setPen(QPen(Qt.white, 2)); p.setBrush(Qt.NoBrush); p.drawEllipse(1, 1, 20, 20)
 
 class FilterTag(QPushButton):
-    def __init__(self, text, color="#94e2d5", parent=None):
+    def __init__(self, text, color="#dc143c", parent=None):
         super().__init__(text, parent); self.setCheckable(True); self.setFixedHeight(28); self.setCursor(Qt.PointingHandCursor)
         c = QColor(color); r, g, b = c.red(), c.green(), c.blue()
         self.setStyleSheet(f"""
-            FilterTag {{ background: rgba({r},{g},{b},0.15); border: 1px solid rgba({r},{g},{b},0.3); border-radius: 14px; color: white; padding: 0 14px; font-size: 11px; font-weight: 600; }}
+            FilterTag {{ background: rgba({r},{g},{b},0.15); border: 1px solid rgba({r},{g},{b},0.3); border-radius: 14px; color: transparent; padding: 0 14px; font-size: 11px; font-weight: 600; }}
             FilterTag:hover {{ background: rgba({r},{g},{b},0.3); border: 1px solid rgba({r},{g},{b},0.5); }}
-            FilterTag:checked {{ background: rgb({r},{g},{b}); border: 1px solid rgb({r},{g},{b}); color: white; font-weight: bold; }}
+            FilterTag:checked {{ background: rgb({r},{g},{b}); border: 1px solid rgb({r},{g},{b}); color: transparent; font-weight: bold; }}
         """)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
+        p.setFont(self.font())
+        r = self.rect()
+        txt = self.text()
+        p.setPen(QColor("#000000"))
+        p.drawText(r.adjusted(-1, -1, -1, -1), Qt.AlignCenter, txt)
+        p.drawText(r.adjusted(1, -1, 1, -1), Qt.AlignCenter, txt)
+        p.drawText(r.adjusted(-1, 1, -1, 1), Qt.AlignCenter, txt)
+        p.drawText(r.adjusted(1, 1, 1, 1), Qt.AlignCenter, txt)
+        p.setPen(QColor("#ffffff")); p.drawText(r, Qt.AlignCenter, txt)
 
 class FilterBar(QWidget):
     filter_changed = pyqtSignal(str)
@@ -609,7 +640,7 @@ def _update_label_asset(lbl, val, nss_path=None):
     for c in lbl.findChildren(QWidget): c.deleteLater()
     lbl.setPixmap(QPixmap()); lbl.setText("")
     if not val:
-        lbl.setText("\u2726"); lbl.setStyleSheet("color: rgba(148, 226, 213, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
+        lbl.setText("\u2726"); lbl.setStyleSheet("color: rgba(220, 20, 60, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
         return
     codes = _extract_glyph_codes(val); colors = _extract_all_colors(val)
     if codes:
@@ -645,8 +676,19 @@ def _update_label_asset(lbl, val, nss_path=None):
                 else: pm = QPixmap()
             except: pm = QPixmap()
         else:
-            icon = QIcon(res_path); pm = icon.pixmap(128, 128)
-            if pm.isNull(): pm = QPixmap(res_path)
+            pm = QPixmap()
+            try:
+                with open(res_path, 'rb') as f: data = f.read()
+                if res_path.lower().endswith('.svg') and QtSvg:
+                    renderer = QtSvg.QSvgRenderer(data)
+                    if renderer.isValid():
+                        pm = QPixmap(256, 256); pm.fill(Qt.transparent)
+                        p_svg = QPainter(pm); renderer.render(p_svg); p_svg.end()
+                else:
+                    pm.loadFromData(data)
+            except:
+                icon = QIcon(res_path); pm = icon.pixmap(128, 128)
+                if pm.isNull(): pm = QPixmap(res_path)
         
         if not pm.isNull():
             if color:
@@ -658,7 +700,7 @@ def _update_label_asset(lbl, val, nss_path=None):
                 pm = QPixmap.fromImage(img)
             lbl.setPixmap(pm.scaled(lbl.width()-6, lbl.height()-6, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             return
-    lbl.setText("\uE12B"); lbl.setFont(QFont('Segoe MDL2 Assets', 18)); lbl.setStyleSheet("color: #94e2d5; background: transparent;")
+    lbl.setText("\uE12B"); lbl.setFont(QFont('Segoe MDL2 Assets', 18)); lbl.setStyleSheet("color: #dc143c; background: transparent;")
 def _build_glyph_val(codes, colors=None):
     if not codes: return ""
     colors = colors or []
@@ -677,10 +719,10 @@ def _build_glyph_val(codes, colors=None):
         return parts[0]
     return "[ " + ", ".join(parts) + " ]"
 
-def _get_new_asset_value(val, old_color, new_color):
+def _get_new_asset_value(val, old_color, new_color, idx=None):
     val = str(val).strip()
     if not val: return val
-    
+
     # 1. If it's a simple path or icon name without brackets/colors, just add bracketed color
     if not any(c in val for c in ('#', '[', '\\u', '0x')):
         return f"{val} [{new_color}]"
@@ -690,19 +732,23 @@ def _get_new_asset_value(val, old_color, new_color):
     if codes:
         colors = _extract_all_colors(val)
         while len(colors) < len(codes): colors.append(None)
-        
-        # If old_color matches one of the existing colors, replace it
-        replaced = False
-        for i in range(len(colors)):
-            if colors[i] and old_color and colors[i].lower() == old_color.lower():
-                colors[i] = new_color; replaced = True
-        
-        # If not replaced and we have space, set the first empty slot or just the first slot
-        if not replaced:
+
+        # If idx is provided, target that specific slot
+        if idx is not None and idx < len(colors):
+            colors[idx] = new_color
+        else:
+            # If old_color matches one of the existing colors, replace it
+            replaced = False
             for i in range(len(colors)):
-                if not colors[i]: colors[i] = new_color; replaced = True; break
-            if not replaced: colors[0] = new_color
-            
+                if colors[i] and old_color and colors[i].lower() == old_color.lower():
+                    colors[i] = new_color; replaced = True; break
+
+            # If not replaced and we have space, set the first empty slot or just the first slot
+            if not replaced:
+                for i in range(len(colors)):
+                    if not colors[i]: colors[i] = new_color; replaced = True; break
+                if not replaced: colors[0] = new_color
+
         return _build_glyph_val(codes, colors)
 
     # 3. Handle image paths - handled physically in UI, just return val if not a glyph
@@ -710,7 +756,7 @@ def _get_new_asset_value(val, old_color, new_color):
 
 class ImportedItemCard(QFrame):
     def __init__(self, data, parent=None):
-        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: rgba(255, 255, 255, 0.07); border: 1px solid rgba(148, 226, 213, 0.2); }")
+        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: rgba(255, 255, 255, 0.07); border: 1px solid rgba(220, 20, 60, 0.2); }")
         self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(15, 10, 15, 10); self.main_layout.setSpacing(15); self.main_layout.setAlignment(Qt.AlignVCenter)
         
         self.icon_label = QLabel(self); self.icon_label.setFixedSize(40, 40); self.icon_label.setAlignment(Qt.AlignCenter)
@@ -718,13 +764,13 @@ class ImportedItemCard(QFrame):
         
         self.sb = QPushButton("\uE117", self); self.sb.setFixedSize(24, 24); self.sb.setCursor(Qt.PointingHandCursor); self.sb.setToolTip("Sync with Global Theme")
         self.sb.setFont(QFont('Segoe MDL2 Assets', 10))
-        self.sb.setStyleSheet("QPushButton { background: transparent; border: none; color: #a6adc8; } QPushButton:hover { color: #94e2d5; }")
+        self.sb.setStyleSheet("QPushButton { background: transparent; border: none; color: #b0b0b0; } QPushButton:hover { color: #dc143c; }")
         self.sb.clicked.connect(self.sync_to_theme); self.main_layout.addWidget(self.sb)
 
         self.iw = QWidget(self); self.iw.setStyleSheet("background: transparent; border: none;")
         self.iwl = QVBoxLayout(self.iw); self.iwl.setContentsMargins(0, 0, 0, 0); self.iwl.setSpacing(4); self.iwl.setAlignment(Qt.AlignVCenter)
         self.title_label = QLabel(self.iw); self.title_label.setStyleSheet("font-size: 15px; font-weight: 500; color: white; background: transparent;")
-        self.desc_label = QLabel(self.iw); self.desc_label.setStyleSheet("font-size: 11px; color: #a6adc8; background: transparent;")
+        self.desc_label = QLabel(self.iw); self.desc_label.setStyleSheet("font-size: 11px; color: #b0b0b0; background: transparent;")
         self.c_lay = QHBoxLayout(); self.c_lay.setSpacing(6); self.c_lay.setAlignment(Qt.AlignLeft)
         self.iwl.addWidget(self.title_label); self.iwl.addWidget(self.desc_label); self.iwl.addLayout(self.c_lay)
         self.main_layout.addWidget(self.iw, 1)
@@ -742,9 +788,9 @@ class ImportedItemCard(QFrame):
         val = data.get('image') or data.get('icon') or ''
         _update_label_asset(self.icon_label, val, self.data.get('file'))
         title = data.get('title', 'No Title'); typ = self.data.get('type', 'item').title()
-        self.title_label.setText(f"{typ}: <span style='color: #94e2d5;'>{title}</span>")
+        self.title_label.setText(f"{typ}: <span style='color: #dc143c;'>{title}</span>")
         fname = os.path.basename(self.data.get('file', 'unknown'))
-        self.desc_label.setText(f"Source: <span style='color: #89b4fa;'>{fname}</span>" + (f" \u2022 Cmd: <span style='color: #a6adc8;'>{data['cmd'][:50]}...</span>" if 'cmd' in data else ""))
+        self.desc_label.setText(f"Source: <span style='color: #ff2a55;'>{fname}</span>" + (f" \u2022 Cmd: <span style='color: #b0b0b0;'>{data['cmd'][:50]}...</span>" if 'cmd' in data else ""))
         
         while self.c_lay.count():
             it = self.c_lay.takeAt(0); (it.widget().deleteLater() if it.widget() else None)
@@ -767,12 +813,12 @@ class ImportedItemCard(QFrame):
             sb = QPushButton("\uE72C")
             sb.setFixedSize(24, 24); sb.setCursor(Qt.PointingHandCursor)
             sb.setToolTip("Sync with Theme")
-            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #a6adc8; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(148, 226, 213, 0.1); color: #94e2d5; border-color: #94e2d5; }")
+            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(220, 20, 60, 0.1); color: #dc143c; border-color: #dc143c; }")
             sb.clicked.connect(self.sync_to_theme)
             self.c_lay.addWidget(sb)
 
-        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #cdd6f4; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #94e2d5; color: white; }"
-        self.ab.setFixedSize(38, 38); self.ab.setStyleSheet(btn_style.replace("#cdd6f4", "#fab387")); self.ab.setText("\uE72B")
+        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #ffffff; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #dc143c; color: white; }"
+        self.ab.setFixedSize(38, 38); self.ab.setStyleSheet(btn_style.replace("#ffffff", "#dc143c")); self.ab.setText("\uE72B")
         self.eb.setFixedSize(38, 38); self.eb.setStyleSheet(btn_style); self.eb.setText("\uE104")
         self.ab.show() if (colors or _extract_glyph_codes(val)) else self.ab.hide()
 
@@ -807,7 +853,7 @@ class ImportedItemCard(QFrame):
         dlg = MinimalColorPickerDialog(old_color or theme_cs[min(idx, 1)], f"imp_card_{idx}" if hasattr(self, "data") and "file" in self.data else f"rule_card_{idx}", self); dlg.default_checkbox.hide()
         def on_color(key, color):
             val = (self.data.get('props', {}).get('icon') or self.data.get('props', {}).get('image') or '').strip()
-            new_val = _get_new_asset_value(val, old_color, color.name())
+            new_val = _get_new_asset_value(val, old_color, color.name(), idx=idx)
             _update_label_asset(self.icon_label, new_val, self.data.get('file'))
             np = self.data['props'].copy()
             np['icon' if 'icon' in np else 'image'] = new_val
@@ -822,11 +868,11 @@ class ImportedItemCard(QFrame):
 class IDEntryWidget(QFrame):
     changed = pyqtSignal()
     def __init__(self, id_text, formatted_name, initial_menu=None, initial_vis=None, initial_hidden=False, parent=None):
-        super().__init__(parent); self.id_text = id_text; self.menu = initial_menu; self.vis = initial_vis; self.is_hidden = initial_hidden; self.setFixedSize(240, 60); self.setObjectName("idEntryWidget"); self.update_style(); layout = QHBoxLayout(self); layout.setContentsMargins(15, 0, 10, 0); self.label = QLabel(formatted_name); self.label.setStyleSheet("font-size: 13px; color: white; background: transparent;"); layout.addWidget(self.label, 1); btn_c = QFrame(); btn_c.setStyleSheet("background: rgba(0,0,0,0.15); border-radius: 12px; padding: 2px;"); bl = QHBoxLayout(btn_c); bl.setContentsMargins(2, 2, 2, 2); bl.setSpacing(2); self.h_btn = QPushButton("\uE708"); self.h_btn.setFixedSize(24, 24); self.h_btn.setCursor(Qt.PointingHandCursor); self.h_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #a6adc8; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #f38ba8; }"); self.h_btn.clicked.connect(self.toggle_hide); bl.addWidget(self.h_btn); self.e_btn = QPushButton("\uE104"); self.e_btn.setFixedSize(24, 24); self.e_btn.setCursor(Qt.PointingHandCursor); self.e_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #a6adc8; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #94e2d5; }"); self.e_btn.clicked.connect(self.show_popup); bl.addWidget(self.e_btn); layout.addWidget(btn_c); self.update_label_state()
-    def update_style(self): self.setStyleSheet(f"#idEntryWidget {{ background-color: rgba(255, 255, 255, 0.05); border-radius: 15px; border: 1px solid {'rgba(148, 226, 213, 0.4)' if (self.menu or self.vis) else 'rgba(255, 255, 255, 0.03)'}; }} #idEntryWidget:hover {{ background-color: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 226, 213, 0.2); }}")
+        super().__init__(parent); self.id_text = id_text; self.menu = initial_menu; self.vis = initial_vis; self.is_hidden = initial_hidden; self.setFixedSize(240, 60); self.setObjectName("idEntryWidget"); self.update_style(); layout = QHBoxLayout(self); layout.setContentsMargins(15, 0, 10, 0); self.label = QLabel(formatted_name); self.label.setStyleSheet("font-size: 13px; color: white; background: transparent;"); layout.addWidget(self.label, 1); btn_c = QFrame(); btn_c.setStyleSheet("background: rgba(0,0,0,0.15); border-radius: 12px; padding: 2px;"); bl = QHBoxLayout(btn_c); bl.setContentsMargins(2, 2, 2, 2); bl.setSpacing(2); self.h_btn = QPushButton("\uE708"); self.h_btn.setFixedSize(24, 24); self.h_btn.setCursor(Qt.PointingHandCursor); self.h_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #dc143c; }"); self.h_btn.clicked.connect(self.toggle_hide); bl.addWidget(self.h_btn); self.e_btn = QPushButton("\uE104"); self.e_btn.setFixedSize(24, 24); self.e_btn.setCursor(Qt.PointingHandCursor); self.e_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #dc143c; }"); self.e_btn.clicked.connect(self.show_popup); bl.addWidget(self.e_btn); layout.addWidget(btn_c); self.update_label_state()
+    def update_style(self): self.setStyleSheet(f"#idEntryWidget {{ background-color: rgba(255, 255, 255, 0.05); border-radius: 15px; border: 1px solid {'rgba(220, 20, 60, 0.4)' if (self.menu or self.vis) else 'rgba(255, 255, 255, 0.03)'}; }} #idEntryWidget:hover {{ background-color: rgba(255, 255, 255, 0.08); border: 1px solid rgba(220, 20, 60, 0.2); }}")
     def update_label_state(self):
-        self.label.setGraphicsEffect(None); self.label.setStyleSheet(f"font-size: 13px; color: {'#585b70' if self.is_hidden else 'white'}; background: transparent;")
-        self.h_btn.setStyleSheet(f"QPushButton {{ background: {'#f38ba8' if self.is_hidden else 'transparent'}; border: none; border-radius: 10px; color: {'#1e2030' if self.is_hidden else '#a6adc8'}; font-family: 'Segoe MDL2 Assets'; }}")
+        self.label.setGraphicsEffect(None); self.label.setStyleSheet(f"font-size: 13px; color: {'#333333' if self.is_hidden else 'white'}; background: transparent;")
+        self.h_btn.setStyleSheet(f"QPushButton {{ background: {'#dc143c' if self.is_hidden else 'transparent'}; border: none; border-radius: 10px; color: {'#1e2030' if self.is_hidden else '#b0b0b0'}; font-family: 'Segoe MDL2 Assets'; }}")
     def toggle_hide(self): self.is_hidden = not self.is_hidden; self.update_label_state(); self.changed.emit()
     def show_popup(self):
         d = IDPopupDialog(self, self.menu, self.vis); d.setFixedWidth(200); pos = self.e_btn.mapToGlobal(QPoint(-d.width() + self.e_btn.width(), self.e_btn.height() + 5)); d.move(pos)
@@ -834,7 +880,7 @@ class IDEntryWidget(QFrame):
 
 class ModificationRuleCard(QFrame):
     def __init__(self, data, parent=None):
-        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: rgba(255, 255, 255, 0.07); border: 1px solid rgba(148, 226, 213, 0.2); }")
+        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: rgba(255, 255, 255, 0.07); border: 1px solid rgba(220, 20, 60, 0.2); }")
         self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(15, 12, 15, 12); self.main_layout.setSpacing(15)
         
         self.il = QLabel(self); self.il.setFixedSize(40, 40); self.il.setAlignment(Qt.AlignCenter)
@@ -843,7 +889,7 @@ class ModificationRuleCard(QFrame):
         self.iw = QWidget(self); self.iw.setStyleSheet("background: transparent; border: none;")
         self.iwl = QVBoxLayout(self.iw); self.iwl.setContentsMargins(0, 0, 0, 0); self.iwl.setSpacing(2)
         self.tl = QLabel(self.iw); self.tl.setStyleSheet("font-size: 15px; font-weight: 500; color: white; background: transparent;")
-        self.dl = QLabel(self.iw); self.dl.setStyleSheet("font-size: 11px; color: #a6adc8; background: transparent;")
+        self.dl = QLabel(self.iw); self.dl.setStyleSheet("font-size: 11px; color: #b0b0b0; background: transparent;")
         self.c_lay = QHBoxLayout(); self.c_lay.setSpacing(6); self.c_lay.setAlignment(Qt.AlignLeft)
         self.iwl.addWidget(self.tl); self.iwl.addWidget(self.dl); self.iwl.addLayout(self.c_lay)
         self.main_layout.addWidget(self.iw, 1) # Give it stretch factor 1
@@ -851,11 +897,11 @@ class ModificationRuleCard(QFrame):
         self.bl_w = QWidget(self); self.bl_w.setStyleSheet("background: transparent; border: none;")
         self.bl = QHBoxLayout(self.bl_w); self.bl.setContentsMargins(0, 0, 0, 0); self.bl.setSpacing(8); self.bl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.eb = QPushButton(self.bl_w); self.db = QPushButton(self.bl_w)
-        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #cdd6f4; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #94e2d5; color: white; }"
+        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #ffffff; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #dc143c; color: white; }"
         for b in (self.eb, self.db): 
             b.setFixedSize(38, 38); b.setStyleSheet(btn_style); b.setCursor(Qt.PointingHandCursor); self.bl.addWidget(b)
         self.eb.setText("\uE104"); self.db.setText("\uE107")
-        self.db.setStyleSheet(self.db.styleSheet() + "QPushButton:hover { color: #f38ba8; border-color: #f38ba8; }")
+        self.db.setStyleSheet(self.db.styleSheet() + "QPushButton:hover { color: #dc143c; border-color: #dc143c; }")
         self.main_layout.addWidget(self.bl_w)
         self.update_ui()
         
@@ -865,27 +911,27 @@ class ModificationRuleCard(QFrame):
         
         # Build a friendly Target Title
         target = "Global Rule"
-        if data.get('find'): target = f"Modify: <span style='color: #94e2d5;'>{data['find'].strip(chr(39)+chr(34))}</span>"
-        elif data.get('type'): target = f"All <span style='color: #89b4fa;'>{data['type'].title()}s</span>"
-        if data.get('in'): target += f" <span style='color: #585b70;'>in</span> <span style='color: #a6adc8;'>{data['in'].strip(chr(39)+chr(34))}</span>"
+        if data.get('find'): target = f"Modify: <span style='color: #dc143c;'>{data['find'].strip(chr(39)+chr(34))}</span>"
+        elif data.get('type'): target = f"All <span style='color: #ff2a55;'>{data['type'].title()}s</span>"
+        if data.get('in'): target += f" <span style='color: #333333;'>in</span> <span style='color: #b0b0b0;'>{data['in'].strip(chr(39)+chr(34))}</span>"
         self.tl.setText(target)
         
         # Build a friendly Actions Summary
         acts = []
-        if data.get('title'): acts.append(f"Rename to <span style='color: #cdd6f4;'>'{data['title'].strip(chr(39)+chr(34))}'</span>")
+        if data.get('title'): acts.append(f"Rename to <span style='color: #ffffff;'>'{data['title'].strip(chr(39)+chr(34))}'</span>")
         
         v = data.get('vis', '').lower()
-        if 'remove' in v or 'hidden' in v: acts.append("<span style='color: #f38ba8;'>Hidden</span>")
-        elif v and v != 'normal': acts.append(f"Vis: <span style='color: #fab387;'>{v}</span>")
+        if 'remove' in v or 'hidden' in v: acts.append("<span style='color: #dc143c;'>Hidden</span>")
+        elif v and v != 'normal': acts.append(f"Vis: <span style='color: #dc143c;'>{v}</span>")
         
         m = data.get('menu', '').lower()
         if m: 
             m_name = m.split('.')[-1].title() if '.' in m else m.title()
-            acts.append(f"Move to <span style='color: #b4befe;'>{m_name}</span>")
+            acts.append(f"Move to <span style='color: #dc143c;'>{m_name}</span>")
             
-        if data.get('pos'): acts.append(f"Pos: <span style='color: #94e2d5;'>{data['pos']}</span>")
-        if any(k in data for k in ('icon', 'image')): acts.append("<span style='color: #94e2d5;'>New Icon</span>")
-        if data.get('sep'): acts.append("<span style='color: #585b70;'>Separator</span>")
+        if data.get('pos'): acts.append(f"Pos: <span style='color: #dc143c;'>{data['pos']}</span>")
+        if any(k in data for k in ('icon', 'image')): acts.append("<span style='color: #dc143c;'>New Icon</span>")
+        if data.get('sep'): acts.append("<span style='color: #333333;'>Separator</span>")
         
         self.dl.setText(" \u2022 ".join(acts) if acts else "No modifications defined")
         
@@ -910,7 +956,7 @@ class ModificationRuleCard(QFrame):
             sb = QPushButton("\uE117")
             sb.setFixedSize(24, 24); sb.setCursor(Qt.PointingHandCursor)
             sb.setToolTip("Sync with Theme")
-            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #a6adc8; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(148, 226, 213, 0.1); color: #94e2d5; border-color: #94e2d5; }")
+            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(220, 20, 60, 0.1); color: #dc143c; border-color: #dc143c; }")
             sb.clicked.connect(self.sync_to_theme)
             self.c_lay.addWidget(sb)
 
@@ -941,7 +987,7 @@ class ModificationRuleCard(QFrame):
         dlg = MinimalColorPickerDialog(old_color or theme_cs[min(idx, 1)], f"rule_card_{idx}", self); dlg.default_checkbox.hide()
         def on_color(key, color):
             val = (self.data.get('image') or self.data.get('icon') or '').strip()
-            new_val = _get_new_asset_value(val, old_color, color.name())
+            new_val = _get_new_asset_value(val, old_color, color.name(), idx=idx)
             _update_label_asset(self.il, new_val)
             self.data['image' if 'image' in self.data else 'icon'] = new_val
             p = self.parent()
@@ -1034,18 +1080,40 @@ def save_local_icon(source_path, tint_color, tint_enabled, subfolder=None):
                 with open(dest_path, 'w', encoding='utf-8') as f: f.write(new_svg)
             except: shutil.copy2(source_path, dest_path)
         else:
-            pm = QPixmap(source_path)
+            pm = QPixmap()
+            try:
+                with open(source_path, 'rb') as f: data = f.read()
+                pm.loadFromData(data)
+            except: pass
+
             if not pm.isNull():
                 img = pm.toImage().convertToFormat(QImage.Format_ARGB32); color = QColor(tint_color)
                 for y in range(img.height()):
                     for x in range(img.width()):
                         c = img.pixelColor(x, y)
                         if c.alpha() > 0: img.setPixelColor(x, y, QColor(color.red(), color.green(), color.blue(), c.alpha()))
-                img.save(dest_path, "PNG")
-            else: shutil.copy2(source_path, dest_path)
+                try:
+                    img.save(dest_path, "PNG")
+                except:
+                    # If save fails due to lock, we might try a temp name or just ignore if it's just a preview
+                    # but here it's meant to be permanent.
+                    import time
+                    for _ in range(3):
+                        try: 
+                            if os.path.exists(dest_path): os.remove(dest_path)
+                            img.save(dest_path, "PNG"); break
+                        except: time.sleep(0.1)
+            else: 
+                try: shutil.copy2(source_path, dest_path)
+                except: pass
     else: 
         if not os.path.exists(dest_path) or not os.path.samefile(source_path, dest_path):
-            shutil.copy2(source_path, dest_path)
+            try:
+                shutil.copy2(source_path, dest_path)
+            except Exception as e:
+                # If it fails with WinError 1224, the file is already there and in use
+                # Since we are not tinting, and the file exists, we can often safely ignore it
+                if not os.path.exists(dest_path): raise e
         
     rel_path = f"icons\\{subfolder}\\{dest_name}" if subfolder else f"icons\\{dest_name}"
     return f"@app.dir\\imports\\{rel_path}", dest_path
@@ -1108,7 +1176,7 @@ def _extract_all_colors(value):
 def _detect_font_from_value(value):
     return "Nilesoft Shell"
 
-_THEME_COLOR_CACHE = ['#94e2d5', '#89b4fa']
+_THEME_COLOR_CACHE = ['#dc143c', '#ff2a55']
 _LAST_THEME_MTIME = 0
 
 def _get_theme_glyph_colors():
@@ -1177,24 +1245,24 @@ class ManualSyncConflictDialog(QDialog):
     def __init__(self, manual_items, parent=None):
         super().__init__(parent); self.manual_items = manual_items; self.setMinimumWidth(500); self.setMinimumHeight(400); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.setup_ui()
     def setup_ui(self):
-        self.mf = QFrame(self); self.mf.setObjectName("mainFrame"); self.mf.setStyleSheet("#mainFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 20px; }")
+        self.mf = QFrame(self); self.mf.setObjectName("mainFrame"); self.mf.setStyleSheet("#mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.addWidget(self.mf); cl = QVBoxLayout(self.mf); cl.setContentsMargins(25, 25, 25, 25); cl.setSpacing(15)
         head = QLabel("Manual Color Conflicts Found"); head.setStyleSheet("font-size: 20px; font-weight: bold; color: white;"); cl.addWidget(head)
-        desc = QLabel("We found some items that you previously edited with custom colors.\nSelect which ones you want to overwrite and sync with the new global theme."); desc.setStyleSheet("color: #a6adc8; font-size: 12px;"); desc.setWordWrap(True); cl.addWidget(desc)
+        desc = QLabel("We found some items that you previously edited with custom colors.\nSelect which ones you want to overwrite and sync with the new global theme."); desc.setStyleSheet("color: #b0b0b0; font-size: 12px;"); desc.setWordWrap(True); cl.addWidget(desc)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self.scroll_widget = QWidget(); self.scroll_widget.setStyleSheet("background: transparent;"); self.scroll_layout = QVBoxLayout(self.scroll_widget); self.scroll_layout.setSpacing(10); self.scroll_layout.setAlignment(Qt.AlignTop)
         self.checkboxes = []
         for idx, item in enumerate(self.manual_items):
             card = QFrame(); card.setStyleSheet("background: rgba(255, 255, 255, 0.05); border-radius: 12px;"); card_lay = QHBoxLayout(card)
-            cb = QCheckBox(); cb.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #585b70; background: transparent; } QCheckBox::indicator:checked { background: #94e2d5; border: 2px solid #94e2d5; }"); cb.setChecked(False); cb.setProperty("item_idx", idx); self.checkboxes.append(cb); card_lay.addWidget(cb)
+            cb = QCheckBox(); cb.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #333333; background: transparent; } QCheckBox::indicator:checked { background: #dc143c; border: 2px solid #dc143c; }"); cb.setChecked(False); cb.setProperty("item_idx", idx); self.checkboxes.append(cb); card_lay.addWidget(cb)
             val = item['props'].get('image') or item['props'].get('icon') or ''; codes = _extract_glyph_codes(val); colors = _extract_all_colors(val)
             prev = GlyphPreviewLabel(codes, size=24, font_family=NILESOFT_FONT_FAMILY, colors=colors); prev.setFixedSize(36, 36); card_lay.addWidget(prev)
             title = QLabel(item['props'].get('title', 'Unknown Item')); title.setStyleSheet("color: white; font-weight: bold; font-size: 14px;"); card_lay.addWidget(title)
             card_lay.addStretch(); self.scroll_layout.addWidget(card)
         scroll.setWidget(self.scroll_widget); cl.addWidget(scroll)
         btns = QHBoxLayout(); btns.addStretch()
-        skip_all = QPushButton("Skip All"); skip_all.clicked.connect(self.reject); skip_all.setStyleSheet("background: #313244; color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
-        sync_btn = QPushButton("Sync Selected"); sync_btn.clicked.connect(self.accept); sync_btn.setStyleSheet("background: #94e2d5; color: #11111b; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
+        skip_all = QPushButton("Skip All"); skip_all.clicked.connect(self.reject); skip_all.setStyleSheet("background: #2a2a30; color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
+        sync_btn = QPushButton("Sync Selected"); sync_btn.clicked.connect(self.accept); sync_btn.setStyleSheet("background: #dc143c; color: #ffffff; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
         btns.addWidget(skip_all); btns.addWidget(sync_btn); cl.addLayout(btns)
     def get_selected_indices(self): return [cb.property("item_idx") for cb in self.checkboxes if cb.isChecked()]
 
@@ -1213,15 +1281,15 @@ class GlyphBrowserDialog(QDialog):
         while len(self.glyph_colors) < 2: self.glyph_colors.append(None)
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("glyphFrame")
-        self.mf.setStyleSheet("#glyphFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 20px; }")
+        self.mf.setStyleSheet("#glyphFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
         self.mf.setMinimumSize(620, 520)
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.addWidget(self.mf)
         cl = QVBoxLayout(self.mf); cl.setContentsMargins(20, 20, 20, 20); cl.setSpacing(12)
         h = QLabel("Glyph Browser"); h.setStyleSheet("font-size: 18px; font-weight: bold; color: white;"); cl.addWidget(h)
-        desc = QLabel("Select up to 2 glyphs. Single = image, Dual = layered icon."); desc.setStyleSheet("color: #6c7086; font-size: 12px;"); cl.addWidget(desc)
+        desc = QLabel("Select up to 2 glyphs. Single = image, Dual = layered icon."); desc.setStyleSheet("color: #888888; font-size: 12px;"); cl.addWidget(desc)
         top_row = QHBoxLayout()
         self.search_inp = QLineEdit(); self.search_inp.setPlaceholderText("Search by code e.g. E249")
-        self.search_inp.setStyleSheet("background-color: #313244; border: 1px solid #45475a; border-radius: 10px; padding: 8px; color: #cdd6f4; font-size: 13px;")
+        self.search_inp.setStyleSheet("background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 8px; color: #ffffff; font-size: 13px;")
         self.search_inp.textChanged.connect(self.filter_glyphs)
         top_row.addWidget(self.search_inp, 1)
         
@@ -1230,7 +1298,7 @@ class GlyphBrowserDialog(QDialog):
         self.preview_layout = QVBoxLayout(self.preview_frame); self.preview_layout.setContentsMargins(0, 0, 0, 0)
         self._update_preview()
         top_row.addWidget(self.preview_frame)
-        self.sel_label = QLabel(self._selection_text()); self.sel_label.setStyleSheet("color: #94e2d5; font-size: 12px; font-weight: bold;"); self.sel_label.setFixedWidth(120)
+        self.sel_label = QLabel(self._selection_text()); self.sel_label.setStyleSheet("color: #dc143c; font-size: 12px; font-weight: bold;"); self.sel_label.setFixedWidth(120)
         top_row.addWidget(self.sel_label)
         cl.addLayout(top_row)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setStyleSheet("background: transparent; border: none;")
@@ -1241,7 +1309,7 @@ class GlyphBrowserDialog(QDialog):
         self.glyph_list.setSpacing(4)
         self.glyph_list.setMovement(QListWidget.Static)
         self.glyph_list.setSelectionMode(QListWidget.MultiSelection)
-        self.glyph_list.setStyleSheet("QListWidget { background: transparent; border: none; outline: none; } QListWidget::item { background: rgba(255,255,255,0.04); border-radius: 8px; margin: 2px; } QListWidget::item:hover { background: rgba(255,255,255,0.1); } QListWidget::item:selected { background: rgba(148, 226, 213, 0.2); border: 1px solid #94e2d5; }")
+        self.glyph_list.setStyleSheet("QListWidget { background: transparent; border: none; outline: none; } QListWidget::item { background: rgba(255,255,255,0.04); border-radius: 8px; margin: 2px; } QListWidget::item:hover { background: rgba(255,255,255,0.1); } QListWidget::item:selected { background: rgba(220, 20, 60, 0.2); border: 1px solid #dc143c; }")
         self.glyph_list.itemClicked.connect(self.on_item_clicked)
         cl.addWidget(self.glyph_list, 1)
         self._populate_list(self.all_codes)
@@ -1258,7 +1326,7 @@ class GlyphBrowserDialog(QDialog):
         self.color1_btn.setEnabled(self.color1_enabled.isChecked())
         self.color1_enabled.stateChanged.connect(lambda s: (self.color1_btn.setEnabled(bool(s)), self._on_color_toggle(0, bool(s))))
         color_area.addWidget(self.color1_enabled); color_area.addWidget(self.color1_btn)
-        c1l = QLabel("G1"); c1l.setStyleSheet("color: #585b70; font-size: 10px;"); color_area.addWidget(c1l)
+        c1l = QLabel("G1"); c1l.setStyleSheet("color: #333333; font-size: 10px;"); color_area.addWidget(c1l)
         color_area.addSpacing(8)
         self.color2_enabled = QCheckBox(); self.color2_enabled.setFixedSize(16, 16)
         self.color2_enabled.setToolTip("Enable color for glyph 2")
@@ -1271,14 +1339,14 @@ class GlyphBrowserDialog(QDialog):
         self.color2_btn.setEnabled(self.color2_enabled.isChecked())
         self.color2_enabled.stateChanged.connect(lambda s: (self.color2_btn.setEnabled(bool(s)), self._on_color_toggle(1, bool(s))))
         color_area.addWidget(self.color2_enabled); color_area.addWidget(self.color2_btn)
-        c2l = QLabel("G2"); c2l.setStyleSheet("color: #585b70; font-size: 10px;"); color_area.addWidget(c2l)
+        c2l = QLabel("G2"); c2l.setStyleSheet("color: #333333; font-size: 10px;"); color_area.addWidget(c2l)
         btns.addLayout(color_area)
         btns.addStretch()
-        clear_btn = QPushButton("Clear"); clear_btn.setCursor(Qt.PointingHandCursor); clear_btn.setStyleSheet("QPushButton { background: #45475a; color: #cdd6f4; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #585b70; }")
+        clear_btn = QPushButton("Clear"); clear_btn.setCursor(Qt.PointingHandCursor); clear_btn.setStyleSheet("QPushButton { background: #45475a; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #333333; }")
         clear_btn.clicked.connect(self.clear_selection)
-        cancel_btn = QPushButton("Cancel"); cancel_btn.setCursor(Qt.PointingHandCursor); cancel_btn.setStyleSheet("QPushButton { background: #313244; color: #cdd6f4; border-radius: 10px; padding: 8px 16px; } QPushButton:hover { background: #45475a; }")
+        cancel_btn = QPushButton("Cancel"); cancel_btn.setCursor(Qt.PointingHandCursor); cancel_btn.setStyleSheet("QPushButton { background: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 16px; } QPushButton:hover { background: #45475a; }")
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = QPushButton("Apply"); ok_btn.setCursor(Qt.PointingHandCursor); ok_btn.setStyleSheet("QPushButton { background: #94e2d5; color: #11111b; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #a6e3a1; }")
+        ok_btn = QPushButton("Apply"); ok_btn.setCursor(Qt.PointingHandCursor); ok_btn.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
         ok_btn.clicked.connect(self.apply_selection)
         btns.addWidget(clear_btn); btns.addWidget(cancel_btn); btns.addWidget(ok_btn)
         cl.addLayout(btns)
@@ -1392,7 +1460,7 @@ class GlyphBrowserDialog(QDialog):
             pw = GlyphPreviewLabel(self.selected, size=44, font_family=NILESOFT_FONT_FAMILY, colors=[c1, c2]); pw.setFixedSize(50, 44)
             self.preview_layout.addWidget(pw); pw.show()
         else:
-            pl = QLabel("\u2726"); pl.setAlignment(Qt.AlignCenter); pl.setStyleSheet("color: #585b70; font-size: 24px; background: transparent;"); self.preview_layout.addWidget(pl); pl.show()
+            pl = QLabel("\u2726"); pl.setAlignment(Qt.AlignCenter); pl.setStyleSheet("color: #333333; font-size: 24px; background: transparent;"); self.preview_layout.addWidget(pl); pl.show()
     def paintEvent(self, event):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         from PyQt5.QtGui import QBrush
@@ -1413,7 +1481,7 @@ class LocalIconTintDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 15px; } QLabel { border: none; }")
+        frame.setStyleSheet("QFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 15px; } QLabel { border: none; }")
         layout.addWidget(frame)
         cl = QVBoxLayout(frame); cl.setContentsMargins(20, 20, 20, 20)
         title = QLabel("Configure Local Icon")
@@ -1426,7 +1494,7 @@ class LocalIconTintDialog(QDialog):
         preview_layout = QHBoxLayout(); preview_layout.addWidget(self.preview); cl.addLayout(preview_layout)
         opt_layout = QHBoxLayout()
         self.toggle = QCheckBox("Apply Tint Color")
-        self.toggle.setStyleSheet("QCheckBox { color: #cdd6f4; font-size: 13px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #45475a; background: #313244; } QCheckBox::indicator:checked { background: #94e2d5; border: 1px solid #94e2d5; }")
+        self.toggle.setStyleSheet("QCheckBox { color: #ffffff; font-size: 13px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #45475a; background: #2a2a30; } QCheckBox::indicator:checked { background: #dc143c; border: 1px solid #dc143c; }")
         self.toggle.toggled.connect(self.on_toggle)
         opt_layout.addWidget(self.toggle)
         self.color_btn = QPushButton()
@@ -1435,9 +1503,9 @@ class LocalIconTintDialog(QDialog):
         self.color_btn.clicked.connect(self.pick_color)
         opt_layout.addWidget(self.color_btn); opt_layout.addStretch(); cl.addLayout(opt_layout)
         btns = QHBoxLayout()
-        cancel = QPushButton("Cancel"); cancel.setStyleSheet("QPushButton { background: #313244; color: #cdd6f4; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #45475a; }")
+        cancel = QPushButton("Cancel"); cancel.setStyleSheet("QPushButton { background: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #45475a; }")
         cancel.clicked.connect(self.reject)
-        ok = QPushButton("Apply"); ok.setStyleSheet("QPushButton { background: #94e2d5; color: #11111b; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #a6e3a1; }")
+        ok = QPushButton("Apply"); ok.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
         ok.clicked.connect(self.accept_result)
         btns.addStretch(); btns.addWidget(cancel); btns.addWidget(ok); cl.addLayout(btns)
         self.update_ui()
@@ -1446,7 +1514,12 @@ class LocalIconTintDialog(QDialog):
         color_hex = self.tint_color if self.tint_enabled else "#45475a"
         self.color_btn.setStyleSheet(f"QPushButton {{ background-color: {color_hex}; border-radius: 14px; border: 2px solid rgba(255,255,255,0.2); }} QPushButton:hover {{ border: 2px solid white; }} QPushButton:disabled {{ opacity: 0.3; background-color: #45475a; }}")
         from PyQt5.QtGui import QPixmap, QImage, QColor
-        pm = QPixmap(self.image_path)
+        pm = QPixmap()
+        try:
+            with open(self.image_path, 'rb') as f: data = f.read()
+            pm.loadFromData(data)
+        except: pass
+
         if not pm.isNull():
             if self.tint_enabled:
                 img = pm.toImage().convertToFormat(QImage.Format_ARGB32)
@@ -1469,26 +1542,30 @@ class LocalIconTintDialog(QDialog):
             self.tint_color = color.name(); self.update_ui()
         dlg.colorSelected.connect(on_color); dlg.exec_()
     def accept_result(self):
-        self.result_value, self.saved_path = save_local_icon(self.image_path, self.tint_color, self.tint_enabled)
-        self.accept()
+        try:
+            self.result_value, self.saved_path = save_local_icon(self.image_path, self.tint_color, self.tint_enabled)
+            self.accept()
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Save Error", f"Failed to save icon. The file may be in use by another process.\n\nError: {str(e)}")
 
 class ImportEditorDialog(QDialog):
     def __init__(self, data=None, parent=None):
         super().__init__(parent); self.data = data or {}; self.props = data.get('props', {}).copy()
         self.setMinimumWidth(520); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #11111b; color: #cdd6f4; border: 1px solid rgba(148, 226, 213, 0.4); border-radius: 8px; padding: 8px 14px; font-family: 'Segoe UI Variable Display'; font-size: 12px; }")
+        self.setStyleSheet("QToolTip { background-color: #ffffff; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.4); border-radius: 8px; padding: 8px 14px; font-family: 'Segoe UI Variable Display'; font-size: 12px; }")
         self.setup_ui()
 
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
-            #mainFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 20px; } 
-            QLabel { color: #cdd6f4; font-size: 13px; } 
-            QLineEdit, QComboBox { background-color: #313244; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #cdd6f4; } 
-            QComboBox QAbstractItemView { background-color: #1e1e2e; border: 1px solid #313244; selection-background-color: #313244; selection-color: #94e2d5; color: #cdd6f4; outline: none; border-radius: 8px; padding: 4px; }
-            QPushButton#saveBtn { background-color: #94e2d5; color: #11111b; border-radius: 10px; padding: 10px 20px; font-weight: bold; } 
-            QPushButton#saveBtn:hover { background-color: #a6e3a1; }
-            QPushButton#cancelBtn { background-color: #313244; color: #cdd6f4; border-radius: 10px; padding: 10px 20px; }
+            #mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
+            QLabel { color: #ffffff; font-size: 13px; } 
+            QLineEdit, QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #ffffff; } 
+            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
+            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 10px 20px; font-weight: bold; } 
+            QPushButton#saveBtn:hover { background-color: #ff2a55; }
+            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 10px 20px; }
             QPushButton#cancelBtn:hover { background-color: #45475a; }
         """)
         layout = QVBoxLayout(self); layout.addWidget(self.mf)
@@ -1500,19 +1577,37 @@ class ImportEditorDialog(QDialog):
         
         self.t_inp = QLineEdit(self.props.get('title', '').strip('\'\"')); al.addWidget(QLabel("Title:"), 0, 0); al.addWidget(self.t_inp, 0, 1)
         
-        ic_row = QHBoxLayout(); btn_style = "QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #94e2d5; padding: 0; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #94e2d5; color: white; }"
+        ic_row = QHBoxLayout()
         self.c_lay = QHBoxLayout(); self.c_lay.setSpacing(5); self.c_lay.setAlignment(Qt.AlignLeft)
         ic_row.addLayout(self.c_lay)
         self.ic_prev_lbl = QLabel(); self.ic_prev_lbl.setFixedSize(38, 38); self.ic_prev_lbl.setAlignment(Qt.AlignCenter); self.ic_prev_lbl.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
         self.ic_inp = QLineEdit(self.props.get('icon') or self.props.get('image') or ''); self.ic_inp.textChanged.connect(self._update_colors_ui)
-        self.ic_browse = QPushButton("\uE8B7"); self.ic_browse.setFont(QFont('Segoe MDL2 Assets', 14)); self.ic_browse.setFixedSize(38, 38); self.ic_browse.clicked.connect(self._browse_icon); self.ic_browse.setStyleSheet(btn_style.replace("#94e2d5", "#fab387")); self.ic_browse.setCursor(Qt.PointingHandCursor)
-        self.ic_glyph = QPushButton("\uE7B5"); self.ic_glyph.setFont(QFont('Segoe MDL2 Assets', 14)); self.ic_glyph.setFixedSize(38, 38); self.ic_glyph.clicked.connect(self._open_glyph_browser); self.ic_glyph.setStyleSheet(btn_style); self.ic_glyph.setCursor(Qt.PointingHandCursor)
+        
+        self.ic_glyph = QPushButton("\uED58") # Glyphs icon
+        self.ic_glyph.setFont(QFont('Segoe MDL2 Assets', 14))
+        self.ic_glyph.setFixedSize(38, 38)
+        self.ic_glyph.setCursor(Qt.PointingHandCursor)
+        self.ic_glyph.setToolTip("Browse Glyphs")
+        self.ic_glyph.setStyleSheet("QPushButton { background: rgba(226, 158, 74, 0.1); border: 1px solid rgba(226, 158, 74, 0.3); border-radius: 10px; color: #E29E4A; } QPushButton:hover { background: #E29E4A; color: white; border: none; }")
+        self.ic_glyph.clicked.connect(self._open_glyph_browser)
+
+        self.ic_browse = QPushButton("\uE8E5") # Image icon
+        self.ic_browse.setFont(QFont('Segoe MDL2 Assets', 14))
+        self.ic_browse.setFixedSize(38, 38)
+        self.ic_browse.setCursor(Qt.PointingHandCursor)
+        self.ic_browse.setToolTip("Upload Local Image")
+        self.ic_browse.setStyleSheet("QPushButton { background: rgba(74, 144, 226, 0.1); border: 1px solid rgba(74, 144, 226, 0.3); border-radius: 10px; color: #4A90E2; } QPushButton:hover { background: #4A90E2; color: white; border: none; }")
+        self.ic_browse.clicked.connect(self._browse_icon)
+
         ic_row.addWidget(self.ic_prev_lbl); ic_row.addWidget(self.ic_inp, 1); ic_row.addWidget(self.ic_glyph); ic_row.addWidget(self.ic_browse)
         al.addWidget(QLabel("Icon/Image:"), 1, 0); al.addLayout(ic_row, 1, 1)
         self.ic_inp.textChanged.connect(lambda t: _update_label_asset(self.ic_prev_lbl, t))
         _update_label_asset(self.ic_prev_lbl, self.ic_inp.text()); self._update_colors_ui()
 
-        self.p_box = NonScrollComboBox(); self.p_box.addItems(ModifyRuleEditorDialog.POS_OPTIONS); self.p_box.setCurrentText(self.props.get('pos', '')); al.addWidget(QLabel("Position:"), 2, 0); al.addWidget(self.p_box, 2, 1)
+        self.p_box = NonScrollComboBox(); self.p_box.addItems(ModifyRuleEditorDialog.POS_OPTIONS)
+        p_val = str(self.props.get('pos', '')).strip('\'"')
+        (self.p_box.setCurrentText(p_val) if p_val in ModifyRuleEditorDialog.POS_OPTIONS else (self.p_box.addItem(p_val), self.p_box.setCurrentText(p_val)))
+        al.addWidget(QLabel("Position:"), 2, 0); al.addWidget(self.p_box, 2, 1)
         
         v_inv = {v: k for k, v in _get_vis_options().items()}
         self.v_box = NonScrollComboBox(); self.v_box.addItems(list(_get_vis_options().keys())); self.v_box.setCurrentText(v_inv.get(self.props.get('vis', ''), "Always Visible")); al.addWidget(QLabel("Visibility:"), 3, 0); al.addWidget(self.v_box, 3, 1)
@@ -1534,19 +1629,23 @@ class ImportEditorDialog(QDialog):
         m_opts = ["None", "Main", "Options"]
         self.m_box = NonScrollComboBox(); self.m_box.addItems(m_opts)
         
-        curr_m = self.props.get('menu')
-        if curr_m is None: self.m_box.setCurrentText("None")
-        elif curr_m == "" or curr_m == "main": self.m_box.setCurrentText("Main")
-        elif str(curr_m).lower() == "options" or str(curr_m).lower() == "title.options": self.m_box.setCurrentText("Options")
-        else: self.m_box.setCurrentText("None")
+        curr_m = str(self.props.get('menu', '')).strip('\'"')
+        curr_m_low = curr_m.lower()
+        if 'menu' not in self.props: self.m_box.setCurrentText("None")
+        elif not curr_m or curr_m_low in ("main", "menu.main"): self.m_box.setCurrentText("Main")
+        elif curr_m_low in ("options", "title.options"): self.m_box.setCurrentText("Options")
+        else:
+            if curr_m not in [self.m_box.itemText(i) for i in range(self.m_box.count())]:
+                self.m_box.addItem(curr_m)
+            self.m_box.setCurrentText(curr_m)
         
         al.addWidget(QLabel("Move to:"), 5, 0); al.addWidget(self.m_box, 5, 1)
         
         self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"]); al.addWidget(QLabel("Separator:"), 6, 0); al.addWidget(self.sep_box, 6, 1)
-        curr_sep = self.props.get('sep')
+        curr_sep = str(self.props.get('sep', '')).strip('\'"')
         if curr_sep:
-            if curr_sep is True or curr_sep == 'true': self.sep_box.setCurrentText("Before")
-            else: self.sep_box.setCurrentText(str(curr_sep).title())
+            if curr_sep.lower() in ('true', '1'): self.sep_box.setCurrentText("Before")
+            else: self.sep_box.setCurrentText(curr_sep.title())
 
         btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Changes"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
         self.ic_inp.textChanged.connect(lambda: self.reload_requested.emit())
@@ -1568,7 +1667,11 @@ class ImportEditorDialog(QDialog):
             c = colors[i] if i < len(colors) else None
             btn = ColorPellet(c or theme_cs[min(i, 1)]); btn.clicked.connect(lambda checked, idx=i, oc=c: self._pick_color(idx, oc)); self.c_lay.addWidget(btn)
         if codes and any(colors):
-            sb = QPushButton("\uE117"); sb.setFixedSize(22, 22); sb.setFont(QFont('Segoe MDL2 Assets', 10)); sb.setStyleSheet("QPushButton { background: transparent; border: none; color: #a6adc8; } QPushButton:hover { color: #94e2d5; }"); sb.clicked.connect(self._reset_glyph_colors); self.c_lay.addWidget(sb)
+            sync_btn = IconSyncButton(self)
+            sync_btn.setToolTip("Sync with Theme (Remove custom colors)")
+            sync_btn.clicked.connect(self._reset_glyph_colors)
+            self.c_lay.insertWidget(0, sync_btn)
+
     def _reset_glyph_colors(self):
         codes = _extract_glyph_codes(self.ic_inp.text())
         if codes: self.ic_inp.setText(_build_glyph_val(codes, []))
@@ -1576,19 +1679,18 @@ class ImportEditorDialog(QDialog):
         theme_cs = _get_theme_glyph_colors()
         dlg = MinimalColorPickerDialog(old_color or theme_cs[min(idx, 1)], f"svg_c_{idx}", self); dlg.default_checkbox.hide()
         
-        def on_color(key, new_c_obj):
-            new_color = new_c_obj.name()
+        def on_color(key, hex_color):
             val = self.ic_inp.text().strip()
             codes = _extract_glyph_codes(val)
             if codes:
                 # Standard glyph color replacement
-                self.ic_inp.setText(_get_new_asset_value(val, old_color, new_color))
+                self.ic_inp.setText(_get_new_asset_value(val, old_color, hex_color, idx=idx))
             else:
                 # Physical image tinting
                 path, _ = _extract_img_path_and_color(val)
                 resolved = _resolve_app_dir_path(path)
                 if resolved and os.path.exists(resolved):
-                    new_asset_path, _ = save_local_icon(resolved, new_color, True)
+                    new_asset_path, _ = save_local_icon(resolved, hex_color, True)
                     self.ic_inp.setText(f"'{new_asset_path}'")
         
         dlg.colorSelected.connect(on_color); dlg.exec_()
@@ -1628,10 +1730,10 @@ class ImportsWidget(QWidget):
     def setup_ui(self):
         self.side = QFrame(); self.side.setFixedWidth(210); self.side.setStyleSheet("background: rgba(0,0,0,0.2); border-radius: 15px;")
         self.sl = QVBoxLayout(self.side); self.sl.setAlignment(Qt.AlignTop); self.sl.setContentsMargins(5, 15, 5, 15); self.sl.setSpacing(8)
-        lbl = QLabel("FILES"); lbl.setStyleSheet("color: #585b70; font-size: 10px; font-weight: bold; margin: 10px 0 5px 10px; background: transparent;")
+        lbl = QLabel("FILES"); lbl.setStyleSheet("color: #333333; font-size: 10px; font-weight: bold; margin: 10px 0 5px 10px; background: transparent;")
         self.sl.addWidget(lbl)
         self.all_btn = QPushButton("All Files"); self.all_btn.setFixedHeight(36); self.all_btn.clicked.connect(lambda: self.set_file_filter(None))
-        self.all_btn.setStyleSheet("QPushButton { background: rgba(49, 50, 68, 0.6); color: #94e2d5; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid rgba(148, 226, 213, 0.1); } QPushButton:hover { background: #313244; }")
+        self.all_btn.setStyleSheet("QPushButton { background: rgba(49, 50, 68, 0.6); color: #dc143c; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid rgba(220, 20, 60, 0.1); } QPushButton:hover { background: #2a2a30; }")
         self.sl.addWidget(self.all_btn)
         self.f_scroll = QScrollArea(); self.f_scroll.setWidgetResizable(True); self.f_scroll.setStyleSheet("background: transparent; border: none;")
         self.file_cont = QWidget(); self.file_cont.setStyleSheet("background: transparent;")
@@ -1641,7 +1743,7 @@ class ImportsWidget(QWidget):
         
         cr = QWidget(); crl = QVBoxLayout(cr); crl.setContentsMargins(0, 0, 0, 0); self.main_layout.addWidget(cr)
         head = QHBoxLayout(); self.search = QLineEdit(); self.search.setPlaceholderText("Search items/menus..."); self.search.textChanged.connect(self.filter_items)
-        self.search.setStyleSheet("QLineEdit { background: rgba(255,255,255,0.05); border: 1px solid #313244; border-radius: 15px; padding: 10px 15px; color: white; }")
+        self.search.setStyleSheet("QLineEdit { background: rgba(255,255,255,0.05); border: 1px solid #2a2a30; border-radius: 15px; padding: 10px 15px; color: white; }")
         head.addWidget(self.search); crl.addLayout(head)
         
         self.type_tags = FilterBar([("All", "#45475a"), ("Item", "#45475a"), ("Menu", "#45475a")])
@@ -1649,9 +1751,9 @@ class ImportsWidget(QWidget):
         crl.addWidget(self.type_tags)
 
         self.action_tags = FilterBar([
-            ("All", "#313244"), ("Renamed", "#fab387"), ("Icons", "#94e2d5"), 
-            ("Hidden", "#f38ba8"), ("Part Hidden", "#cba6f7"), ("Moved", "#b4befe"), 
-            ("Position", "#94e2d5"), ("Separator", "#585b70")
+            ("All", "#2a2a30"), ("Renamed", "#808080"), ("Icons", "#4A90E2"), 
+            ("Hidden", "#dc143c"), ("Part Hidden", "#9B59B6"), ("Moved", "#E29E4A"), 
+            ("Position", "#4AE290"), ("Separator", "#F1C40F")
         ])
         self.action_tags.filter_changed.connect(lambda _: self.filter_items())
         crl.addWidget(self.action_tags)
@@ -1709,7 +1811,7 @@ class ImportsWidget(QWidget):
             # Edit button
             eb = QPushButton("\uE104"); eb.setFixedSize(28, 28); eb.setFont(QFont('Segoe MDL2 Assets', 10))
             eb.setToolTip("Open in Editor"); eb.setCursor(Qt.PointingHandCursor)
-            eb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #fab387; } QPushButton:hover { background: rgba(255,255,255,0.1); }")
+            eb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #dc143c; } QPushButton:hover { background: rgba(255,255,255,0.1); }")
             eb.clicked.connect(lambda _, x=fp: os.startfile(x))
             fl.addWidget(eb)
 
@@ -1718,26 +1820,16 @@ class ImportsWidget(QWidget):
             btn.clicked.connect(lambda _, f=fp: self.set_file_filter(f))
             
             is_active = (self.curr_filter == fp)
-            bg = "rgba(148, 226, 213, 0.15)" if is_active else "transparent"
-            fg = "#94e2d5" if is_active else "#a6adc8"
-            border = "1px solid rgba(148, 226, 213, 0.3)" if is_active else "none"
+            bg = "rgba(220, 20, 60, 0.15)" if is_active else "transparent"
+            fg = "#dc143c" if is_active else "#b0b0b0"
+            border = "1px solid rgba(220, 20, 60, 0.3)" if is_active else "none"
             btn.setStyleSheet(f"QPushButton {{ background: {bg}; color: {fg}; border-radius: 10px; text-align: left; padding-left: 10px; border: {border}; font-weight: {'bold' if is_active else 'normal'}; }} QPushButton:hover {{ background: rgba(255,255,255,0.05); }}")
             fl.addWidget(btn, 1)
-
-            # Sync button
-            file_items = [i for i in items if i['file'] == fp]
-            has_images = any((i.get('props',{}).get('image') or i.get('props',{}).get('icon')) for i in file_items)
-            if has_images:
-                sb = QPushButton("\uE117"); sb.setFixedSize(28, 28); sb.setFont(QFont('Segoe MDL2 Assets', 10))
-                sb.setToolTip("Sync with Theme"); sb.setCursor(Qt.PointingHandCursor)
-                sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #94e2d5; } QPushButton:hover { background: rgba(255,255,255,0.1); }")
-                sb.clicked.connect(lambda _, x=fp: self.mass_tint(x))
-                fl.addWidget(sb)
 
             self.file_l.addWidget(fw)
 
     def refresh_sidebar_highlights(self):
-        self.all_btn.setStyleSheet(f"QPushButton {{ background: {'rgba(148, 226, 213, 0.1)' if not self.curr_filter else 'rgba(49, 50, 68, 0.6)'}; color: {'#94e2d5' if not self.curr_filter else '#a6adc8'}; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid {'rgba(148, 226, 213, 0.4)' if not self.curr_filter else 'rgba(148, 226, 213, 0.1)'}; }}")
+        self.all_btn.setStyleSheet(f"QPushButton {{ background: {'rgba(220, 20, 60, 0.1)' if not self.curr_filter else 'rgba(49, 50, 68, 0.6)'}; color: {'#dc143c' if not self.curr_filter else '#b0b0b0'}; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid {'rgba(220, 20, 60, 0.4)' if not self.curr_filter else 'rgba(220, 20, 60, 0.1)'}; }}")
         self.update_file_filters(self.model._items)
     def edit_item(self, data):
         d = ImportEditorDialog(data, self)
@@ -1775,51 +1867,6 @@ class ImportsWidget(QWidget):
             save_imported_item(data, np); self.refresh(); self.reload_requested.emit()
         dlg.colorSelected.connect(on_color); dlg.exec_()
 
-
-    def tint_item(self, data):
-        p = data['props']; val = (p.get('image') or p.get('icon') or '').strip('\'" ')
-        codes = _extract_glyph_codes(val); theme_cs = _get_theme_glyph_colors(); np = p.copy()
-        if codes:
-            g_val = _build_glyph_val(codes, theme_cs)
-            (np.__setitem__('image', g_val) if 'image' in np or 'icon' not in np else np.__setitem__('icon', g_val))
-        else:
-            path = _resolve_app_dir_path(val); is_icon_kw = val.startswith('icon.')
-            if path and os.path.exists(path):
-                nv, _ = save_local_icon(path, theme_cs[0], True)
-                (np.__setitem__('image', nv) if 'image' in np or 'icon' not in np else np.__setitem__('icon', nv))
-            elif is_icon_kw:
-                nv = f"[{val}, {theme_cs[0]}]"
-                (np.__setitem__('image', nv) if 'image' in np or 'icon' not in np else np.__setitem__('icon', nv))
-        save_imported_item(data, np); self.refresh(); self.reload_requested.emit()
-    def mass_tint(self, fp):
-        items = scan_nss_items(self.root, self.shell_nss_path); file_items = [i for i in items if i['file'] == fp]
-        theme_c = _get_theme_glyph_colors()[0]; ops = []
-        for i in file_items:
-            p = i['props']; val = (p.get('image') or p.get('icon') or '').strip()
-            if not val: continue
-            
-            codes = _extract_glyph_codes(val); new_val = None
-            if codes:
-                new_val = _build_glyph_val(codes, [])
-            else:
-                path, _ = _extract_img_path_and_color(val)
-                resolved = _resolve_app_dir_path(path)
-                if resolved and os.path.exists(resolved):
-                    new_val, _ = save_local_icon(resolved, theme_c, True)
-                    new_val = f"'{new_val}'"
-            
-            if new_val and new_val != val:
-                new_props = p.copy()
-                target_key = 'icon' if 'icon' in new_props or 'image' not in new_props else 'image'
-                new_props[target_key] = new_val
-                ops.append((i, new_props))
-                
-        if not ops: return
-        ops.sort(key=lambda x: x[0]['start'], reverse=True); content = read_file(fp)
-        for i, props in ops:
-            new_raw = mass_save_op(i, props)
-            content = content[:i['start']] + new_raw + content[i['end']:]
-        write_file(fp, content); self.refresh(); self.reload_requested.emit()
 
 def scan_nss_items(root, shell_nss_path=None):
     items = []
@@ -1946,6 +1993,7 @@ def find_items_and_menus(content, types=('modify', 'item', 'menu')):
             # Peek for optional body { ... }
             block_end = header_end
             has_children = False
+            raw_inner = ""
             temp_i = i
             while temp_i < len(tokens) and tokens[temp_i][0] == 'COMMENT': temp_i += 1
             if temp_i < len(tokens) and tokens[temp_i][1] == '{':
@@ -1959,6 +2007,7 @@ def find_items_and_menus(content, types=('modify', 'item', 'menu')):
                         has_children = True
                     temp_i += 1
                 block_end = tokens[temp_i-1][2] + 1
+                raw_inner = content[tokens[body_start_idx][2]:block_end]
             
             results.append({
                 'type': t_val, 
@@ -1967,6 +2016,7 @@ def find_items_and_menus(content, types=('modify', 'item', 'menu')):
                 'cmd_end': header_end, 
                 'props': props,
                 'has_children': has_children,
+                'raw_inner': raw_inner,
                 'file': getattr(find_items_and_menus, 'current_file', ''),
                 'indent': content[:start_pos].split('\n')[-1] if '\n' in content[:start_pos] else ''
             })
@@ -1979,10 +2029,31 @@ def format_nss_value(k, v):
     if v.lower() in ('true', 'false', 'none'): v = v.lower()
     if v == '': return f"{k}=''"
     v = v.strip()
-    is_wrapped = v.startswith('[') and v.endswith(']')
+    
+    # Normalize: strip existing quotes to prevent nesting
+    while (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
+        # Only strip if it's a simple wrap, don't strip if quotes are part of an expression (e.g. ['A', 'B'])
+        if v.startswith('[') or (v.count("'") + v.count('"')) > 2:
+            # If it's a complex string like 'val', 'val2' it has more than 2 quotes
+            # But if it's ''val'' it also has more than 2.
+            # Check for double single quotes specifically
+            if v.startswith("''") and v.endswith("''"):
+                v = v[2:-2]
+                continue
+            break
+        v = v[1:-1]
+    
+    v = v.strip()
+    
+    # Check if ALREADY quoted (after normalization, this would be False unless complex)
     is_quoted = (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"'))
+    if is_quoted:
+        return f"{k}={v}"
+
+    is_wrapped = v.startswith('[') and v.endswith(']')
     is_expression = '(' in v and ')' in v
     is_complex = '@if' in v or '@sel' in v or 'key.' in v or is_expression
+    
     nilesoft_prefixes = (
         'vis.', 'key.', 'clr.', 'sys.', 'app.', 'this.', 'id.', 'menu.', 'tip.', 'sel.', 'title.',
         'command.', 'io.', 'str.', 'reg.', 'path.', 'theme.', 'icon.', 'image.', 'window.', 
@@ -1991,6 +2062,7 @@ def format_nss_value(k, v):
     )
     is_nilesoft_obj = any(v.lower().startswith(p) for p in nilesoft_prefixes)
     is_glyph = v.startswith('\\u') or v.startswith('0x') or (len(v) == 1 and ord(v) > 0xE000)
+    
     keywords = (
         'true', 'false', 'none', 'inherit', 'parent', 'all', 'auto', 'before', 'after', 
         'both', 'top', 'bottom', 'middle', 'left', 'right', 'contains', 'starts', 'ends', 
@@ -1999,17 +2071,33 @@ def format_nss_value(k, v):
     has_space = ' ' in v
     has_dot = '.' in v
     
-    # Force quotes for find and title strings
-    if k in ('find', 'title') and not (is_quoted or is_wrapped or is_complex or is_nilesoft_obj or is_glyph):
+    # Force quotes for find, title, menu and in strings
+    if k in ('find', 'title', 'menu', 'in') and not (is_wrapped or is_complex or is_nilesoft_obj or is_glyph):
         return f"{k}='{v}'"
 
-    should_not_quote = is_wrapped or is_quoted or is_complex or is_nilesoft_obj or is_glyph or \
-                       v.isdigit() or v.lower() in keywords or (not has_space and not has_dot)
+    # A valid path should not start with a stray slash followed by a quote
+    is_path = ('\\' in v or '/' in v) and not (is_complex or is_wrapped or is_glyph)
+    if is_path and (v.startswith('/') or v.startswith('\\')):
+        # Botched syntax check: if it looks like /'val', it's NOT a path
+        if len(v) > 1 and v[1] in ("'", '"'):
+            is_path = False
+
+    has_pipe = '|' in v
+    
+    should_not_quote = is_wrapped or is_complex or is_nilesoft_obj or is_glyph or \
+                       (v.isdigit() and not has_dot) or v.lower() in keywords
+    
+    if has_pipe:
+        should_not_quote = False
+    
+    if is_path:
+        should_not_quote = False
 
     if should_not_quote:
-        if has_space and not (is_quoted or is_wrapped or is_expression):
+        if has_space and not (is_wrapped or is_expression):
             return f"{k}='{v}'"
         return f"{k}={v}"
+    
     return f"{k}='{v}'"
 
 def save_imported_item(data, new_props):
@@ -2099,6 +2187,27 @@ def mass_save_op(item_data, new_props):
         return header + body
     return header
 
+def _get_custom_menus_from_nss():
+    root = PROJECT_ROOT or (os.path.dirname(os.path.dirname(sys.executable)) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    titles = []
+    paths = [os.path.join(root, 'imports'), os.path.join(root, 'plugins')]
+    for p in paths:
+        if not os.path.exists(p): continue
+        for r, _, files in os.walk(p):
+            for f in files:
+                if f.endswith('.nss') and f not in ('theme.nss', 'modify.nss'):
+                    fp = os.path.join(r, f)
+                    try:
+                        content = read_file(fp)
+                        for item in find_items_and_menus(content, types=('menu',)):
+                            title = item['props'].get('title', '').strip().strip("'\"")
+                            if title and title.lower() not in ('main', 'options', 'menu.main', 'title.options', ''):
+                                if title not in titles:
+                                    titles.append(title)
+                    except: pass
+    return titles
+
+
 def _get_vis_options():
     return {
         "Always Visible": "", 
@@ -2137,19 +2246,20 @@ class ModifyRuleEditorDialog(QDialog):
     live_update = pyqtSignal(dict)
     def __init__(self, data=None, parent=None):
         super().__init__(parent); self.data = data or {}; self.setMinimumWidth(500); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #11111b; color: #cdd6f4; border: 1px solid rgba(148, 226, 213, 0.4); border-radius: 8px; padding: 8px 14px; font-family: 'Segoe UI Variable Display'; font-size: 12px; }")
+        self.setStyleSheet("QToolTip { background-color: #ffffff; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.4); border-radius: 8px; padding: 8px 14px; font-family: 'Segoe UI Variable Display'; font-size: 12px; }")
         self.created_temp_icons = []
+        self._custom_menus = _get_custom_menus_from_nss()
         self.setup_ui(); self.load_data(data) if data else None
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
-            #mainFrame { background-color: #1e1e2e; border: 1px solid #313244; border-radius: 20px; } 
-            QLabel { color: #cdd6f4; font-size: 13px; } 
-            QLineEdit, QComboBox { background-color: #313244; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #cdd6f4; } 
-            QComboBox QAbstractItemView { background-color: #1e1e2e; border: 1px solid #313244; selection-background-color: #313244; selection-color: #94e2d5; color: #cdd6f4; outline: none; border-radius: 8px; padding: 4px; }
-            QPushButton#saveBtn { background-color: #94e2d5; color: #11111b; border-radius: 10px; padding: 10px 20px; font-weight: bold; } 
-            QPushButton#saveBtn:hover { background-color: #a6e3a1; }
-            QPushButton#cancelBtn { background-color: #313244; color: #cdd6f4; border-radius: 10px; padding: 10px 20px; }
+            #mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
+            QLabel { color: #ffffff; font-size: 13px; } 
+            QLineEdit, QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #ffffff; } 
+            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
+            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 10px 20px; font-weight: bold; } 
+            QPushButton#saveBtn:hover { background-color: #ff2a55; }
+            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 10px 20px; }
             QPushButton#cancelBtn:hover { background-color: #45475a; }
         """)
         layout = QVBoxLayout(self); layout.addWidget(self.mf); cl = QVBoxLayout(self.mf); cl.setContentsMargins(25, 25, 25, 25); cl.setSpacing(15); h = QLabel("Modify Rule Configuration"); h.setStyleSheet("font-size: 18px; font-weight: bold; color: white;"); cl.addWidget(h); tg = QFrame(); tg.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); tl = QGridLayout(tg); cl.addWidget(QLabel("Target Criteria")); cl.addWidget(tg)
@@ -2159,7 +2269,7 @@ class ModifyRuleEditorDialog(QDialog):
             v_box = QVBoxLayout(); v_box.setSpacing(0); v_box.setAlignment(Qt.AlignCenter)
             rb = RadioDot(); rb.setProperty("mode", mode)
             rb.setCursor(Qt.PointingHandCursor)
-            rl = QLabel(text); rl.setStyleSheet("font-size: 10px; color: #a6adc8; background: transparent; border: none;"); rl.setAlignment(Qt.AlignCenter)
+            rl = QLabel(text); rl.setStyleSheet("font-size: 10px; color: #b0b0b0; background: transparent; border: none;"); rl.setAlignment(Qt.AlignCenter)
             v_box.addWidget(rb, 0, Qt.AlignCenter); v_box.addWidget(rl, 0, Qt.AlignCenter); sw_row.addLayout(v_box); self.find_mode_group.addButton(rb, i); (rb.setChecked(True) if i == 0 else None)
         sw_row.addStretch()
         self.i_inp = QLineEdit(); self.i_inp.setPlaceholderText("e.g. open with"); tl.addWidget(QLabel("In Menu:"), 2, 0); tl.addWidget(self.i_inp, 2, 1)
@@ -2169,7 +2279,7 @@ class ModifyRuleEditorDialog(QDialog):
         self.m_inp = NonScrollComboBox(); self.m_inp.setEditable(False)
         self.m_inp.addItems(["None", "Main", "Options"])
         al.addWidget(QLabel("Move to:"), 1, 0); al.addWidget(self.m_inp, 1, 1)
-        ic_row = QHBoxLayout(); btn_style = "QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #94e2d5; padding: 0; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #94e2d5; color: white; }"
+        ic_row = QHBoxLayout(); btn_style = "QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #dc143c; padding: 0; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #dc143c; color: white; }"
         self.c_lay = QHBoxLayout(); self.c_lay.setSpacing(5); self.c_lay.setAlignment(Qt.AlignLeft)
         ic_row.addLayout(self.c_lay)
         self.ic_inp = QLineEdit(); self.ic_inp.setPlaceholderText("e.g. \\uE102 or path"); self.ic_inp.textChanged.connect(self._update_colors_ui)
@@ -2177,7 +2287,7 @@ class ModifyRuleEditorDialog(QDialog):
         self.ic_preview = QPushButton("\uE7B5"); self.ic_preview.setFixedSize(38, 38); self.ic_preview.setFont(QFont('Segoe MDL2 Assets', 14))
         self.ic_preview.setToolTip("Browse Glyphs"); self.ic_preview.clicked.connect(self._open_glyph_browser); self.ic_preview.setStyleSheet(btn_style); self.ic_preview.setCursor(Qt.PointingHandCursor)
         self.ic_browse = QPushButton("\uE8B7"); self.ic_browse.setFont(QFont('Segoe MDL2 Assets', 14)); self.ic_browse.setFixedSize(38, 38)
-        self.ic_browse.setToolTip("Browse Local Icon"); self.ic_browse.clicked.connect(self._browse_icon); self.ic_browse.setStyleSheet(btn_style.replace("#94e2d5", "#fab387")); self.ic_browse.setCursor(Qt.PointingHandCursor)
+        self.ic_browse.setToolTip("Browse Local Icon"); self.ic_browse.clicked.connect(self._browse_icon); self.ic_browse.setStyleSheet(btn_style.replace("#dc143c", "#dc143c")); self.ic_browse.setCursor(Qt.PointingHandCursor)
         self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"]); al.addWidget(QLabel("Separator:"), 3, 0); al.addWidget(self.sep_box, 3, 1)
         ic_row.addWidget(self.ic_prev_lbl); ic_row.addWidget(self.ic_inp, 1); ic_row.addWidget(self.ic_preview); ic_row.addWidget(self.ic_browse)
         al.addWidget(QLabel("Icon/Image:"), 2, 0); al.addLayout(ic_row, 2, 1)
@@ -2196,10 +2306,34 @@ class ModifyRuleEditorDialog(QDialog):
         self.cond_w.hide()
         self.v_inp.currentTextChanged.connect(lambda t: self.cond_w.setVisible(t == "Visible In..."))
 
+        self.i_inp.textChanged.connect(self._update_move_to_options)
+        self._update_move_to_options(self.i_inp.text())
+
         # Connect signals for live preview after widgets are created
         for w in [self.f_inp, self.i_inp, self.ti_inp, self.ic_inp]: w.textChanged.connect(lambda: self.live_update.emit(self.get_data()))
         for w in [self.m_inp, self.p_inp, self.v_inp, self.sep_box]: (w.currentTextChanged.connect(lambda: self.live_update.emit(self.get_data())) if hasattr(w, 'currentTextChanged') else w.currentIndexChanged.connect(lambda: self.live_update.emit(self.get_data())))
         btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Rule"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
+    def _update_move_to_options(self, text=None):
+        if text is None: text = self.i_inp.text()
+        prev = self.m_inp.currentText()
+        self.m_inp.blockSignals(True)
+        self.m_inp.clear()
+        base = ["None", "Main", "Options"]
+        if text.strip():
+            self.m_inp.addItems(base)
+        else:
+            self.m_inp.addItems(base)
+            for cm in self._custom_menus:
+                self.m_inp.addItem(cm)
+        idx = self.m_inp.findText(prev)
+        if idx >= 0:
+            self.m_inp.setCurrentIndex(idx)
+        elif prev and prev not in base and not text.strip():
+            self.m_inp.addItem(prev)
+            self.m_inp.setCurrentText(prev)
+        else:
+            self.m_inp.setCurrentIndex(0)
+        self.m_inp.blockSignals(False)
     def is_dirty(self):
         d1 = self.get_data(); d2 = self.data
         for k in ['find', 'in', 'title', 'menu', 'pos', 'vis', 'sep']:
@@ -2305,13 +2439,10 @@ class ModifyRuleEditorDialog(QDialog):
 
         val = self.ic_inp.text()
         if codes and any(colors):
-            sync_btn = QPushButton("\uE117")
-            sync_btn.setFixedSize(22, 22)
-            sync_btn.setFont(QFont('Segoe MDL2 Assets', 10))
-            sync_btn.setStyleSheet("QPushButton { background: transparent; border: none; color: #a6adc8; } QPushButton:hover { color: #94e2d5; }")
+            sync_btn = IconSyncButton(self)
             sync_btn.setToolTip("Sync with Theme (Remove custom colors)")
             sync_btn.clicked.connect(self._reset_glyph_colors)
-            self.c_lay.addWidget(sync_btn)
+            self.c_lay.insertWidget(0, sync_btn)
 
     def _reset_glyph_colors(self):
         codes = _extract_glyph_codes(self.ic_inp.text())
@@ -2320,15 +2451,15 @@ class ModifyRuleEditorDialog(QDialog):
     def _pick_color(self, idx, old_color):
         theme_cs = _get_theme_glyph_colors()
         dlg = MinimalColorPickerDialog(old_color or theme_cs[min(idx, 1)], f"svg_c_{idx}", self); dlg.default_checkbox.hide()
-        def on_color(key, color):
-            new_val = _get_new_asset_value(self.ic_inp.text(), old_color, color.name())
+        def on_color(key, hex_color):
+            new_val = _get_new_asset_value(self.ic_inp.text(), old_color, hex_color, idx=idx)
             self.ic_inp.setText(new_val)
             self.live_update.emit(self.get_data())
         dlg.colorSelected.connect(on_color); dlg.exec_()
     def _update_icon_preview(self, text):
         _update_label_asset(self.ic_prev_lbl, text)
         if not text:
-             self.ic_prev_lbl.setText("\u2726"); self.ic_prev_lbl.setStyleSheet("color: rgba(148, 226, 213, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
+             self.ic_prev_lbl.setText("\u2726"); self.ic_prev_lbl.setStyleSheet("color: rgba(220, 20, 60, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
     def load_data(self, d):
         v = d.get('vis', '')
         v_low = v.lower()
@@ -2359,15 +2490,22 @@ class ModifyRuleEditorDialog(QDialog):
         
         self.i_inp.setText(d.get('in', '').strip('\'"')); self.ti_inp.setText(str(d.get('title', '')).strip('\'"'))
         
-        m = d.get('menu')
-        if m is None: self.m_inp.setCurrentText("None")
-        elif m == "" or str(m).lower() == "main": self.m_inp.setCurrentText("Main")
-        elif str(m).lower() in ("options", "title.options"): self.m_inp.setCurrentText("Options")
-        else: self.m_inp.setCurrentText("None")
+        m = str(d.get('menu', '')).strip('\'"')
+        m_low = m.lower()
+        if 'menu' not in d: self.m_inp.setCurrentText("None")
+        elif not m or m_low in ("main", "menu.main"): self.m_inp.setCurrentText("Main")
+        elif m_low in ("options", "title.options"): self.m_inp.setCurrentText("Options")
+        else:
+            if m not in [self.m_inp.itemText(i) for i in range(self.m_inp.count())]:
+                self.m_inp.addItem(m)
+            self.m_inp.setCurrentText(m)
+
         self.ic_inp.setText(str(d.get('icon') or d.get('image') or '')); self._update_icon_preview(self.ic_inp.text())
-        p = str(d.get('pos', '')); (self.p_inp.setCurrentText(p) if p in self.POS_OPTIONS else (self.p_inp.addItem(p), self.p_inp.setCurrentText(p)))
+        p = str(d.get('pos', '')).strip('\'"')
+        (self.p_inp.setCurrentText(p) if p in self.POS_OPTIONS else (self.p_inp.addItem(p), self.p_inp.setCurrentText(p)))
         # Visibility handled at start of method
-        s = d.get('sep'); (self.sep_box.setCurrentText("None") if not s else self.sep_box.setCurrentText("Before") if (s is True or s == 'true') else self.sep_box.setCurrentText(str(s).title()))
+        s = str(d.get('sep', '')).strip('\'"')
+        (self.sep_box.setCurrentText("None") if not s else self.sep_box.setCurrentText("Before") if (s.lower() in ('true', '1')) else self.sep_box.setCurrentText(s.title()))
     def get_data(self):
         res = self.data.copy()
         f = self.f_inp.text().strip()
@@ -2441,6 +2579,7 @@ def is_rule_complete(props):
 
 class ModifyWidget(QWidget):
     reload_requested = pyqtSignal()
+    rules_saved = pyqtSignal()
     def filter_rules(self, t=None): 
         action_tag = self.rules_tags.group.checkedButton().text()
         self.model.filter(self.search.text(), action_tag=action_tag)
@@ -2450,12 +2589,19 @@ class ModifyWidget(QWidget):
         self.id_cont_l.invalidate()
     def set_dirty(self): 
         if not self.is_dirty: self.original_content = read_file(self.filepath)
-        self.is_dirty = True; self.status_label.setText("Unsaved changes (Previewing)..."); self.status_label.setStyleSheet("color: #fab387;")
-        self.save_ids(preview=True); self.reload_requested.emit()
+        self.is_dirty = True; self.status_label.setText("Unsaved changes (Previewing)..."); self.status_label.setStyleSheet("color: #dc143c;")
+        self.save_ids(preview=True)
 
     def __init__(self, modify_nss_path, shell_nss_path, project_root):
         super().__init__(); _init_nilesoft_font(); self.filepath = modify_nss_path; self.shell_nss_path = shell_nss_path; self.project_root = project_root; self.main_layout = QVBoxLayout(self); self.main_layout.setContentsMargins(15, 15, 15, 15); self.is_dirty = False; self.auto_save = False; self.original_content = read_file(self.filepath); self.load_and_init_ui()
     def load_and_init_ui(self):
+        old_idx = -1
+        for i in range(self.main_layout.count()):
+            w = self.main_layout.itemAt(i).widget()
+            if isinstance(w, QTabWidget):
+                old_idx = w.currentIndex()
+                break
+
         while self.main_layout.count():
             it = self.main_layout.takeAt(0)
             w = it.widget()
@@ -2465,14 +2611,15 @@ class ModifyWidget(QWidget):
         content = read_file(self.filepath); self.custom_rules = extract_custom_rules(content)
         tab = QTabWidget()
         tab.setObjectName("modernTabWidget")
-        rules_pg = QWidget(); rl = QVBoxLayout(rules_pg); head = QHBoxLayout(); self.search = QLineEdit(); self.search.setPlaceholderText("Search rules..."); self.search.textChanged.connect(self.filter_rules); self.search.setStyleSheet("QLineEdit { background: rgba(255,255,255,0.05); border: 1px solid #313244; border-radius: 15px; padding: 10px 15px; color: white; } QLineEdit:focus { border: 1px solid #94e2d5; }")
+        tab.setIconSize(QSize(28, 28))
+        rules_pg = QWidget(); rl = QVBoxLayout(rules_pg); head = QHBoxLayout(); self.search = QLineEdit(); self.search.setPlaceholderText("Search rules..."); self.search.textChanged.connect(self.filter_rules); self.search.setStyleSheet("QLineEdit { background: rgba(255,255,255,0.05); border: 1px solid #2a2a30; border-radius: 15px; padding: 10px 15px; color: white; } QLineEdit:focus { border: 1px solid #dc143c; }")
         add = QPushButton("+ New Rule"); add.setObjectName("saveButton"); add.setCursor(Qt.PointingHandCursor); add.clicked.connect(self.add_new_rule_dialog)
         head.addWidget(self.search); head.addWidget(add); rl.addLayout(head)
         
         self.rules_tags = FilterBar([
-            ("All", "#313244"), ("Renamed", "#fab387"), ("Icons", "#94e2d5"), 
-            ("Hidden", "#f38ba8"), ("Part Hidden", "#cba6f7"), ("Moved", "#b4befe"), 
-            ("Position", "#94e2d5"), ("Separator", "#585b70")
+            ("All", "#2a2a30"), ("Renamed", "#808080"), ("Icons", "#4A90E2"), 
+            ("Hidden", "#dc143c"), ("Part Hidden", "#9B59B6"), ("Moved", "#E29E4A"), 
+            ("Position", "#4AE290"), ("Separator", "#F1C40F")
         ])
         self.rules_tags.filter_changed.connect(lambda _: self.filter_rules())
         rl.addWidget(self.rules_tags)
@@ -2484,19 +2631,20 @@ class ModifyWidget(QWidget):
         rl.addWidget(self.view)
         
         ids_pg = QWidget(); idl = QVBoxLayout(ids_pg); ihead = QHBoxLayout(); self.id_search = QLineEdit(); self.id_search.setPlaceholderText("Search system IDs..."); self.id_search.textChanged.connect(self.filter_ids); self.id_search.setStyleSheet(self.search.styleSheet()); ihead.addWidget(self.id_search)
-        save_ids = QPushButton("Save IDS"); save_ids.setObjectName("modifyButton"); save_ids.setCursor(Qt.PointingHandCursor); save_ids.clicked.connect(self.save_ids); ihead.addWidget(save_ids); idl.addLayout(ihead); iscroll = QScrollArea(); iscroll.setWidgetResizable(True); iscroll.setStyleSheet("background: transparent; border: none;"); self.id_cont = QWidget(); self.id_cont_l = FlowLayout(self.id_cont, margin=10, spacing=10); iscroll.setWidget(self.id_cont); idl.addWidget(iscroll); self.imports_pg = ImportsWidget(self.project_root, self.shell_nss_path)
+        idl.addLayout(ihead); iscroll = QScrollArea(); iscroll.setWidgetResizable(True); iscroll.setStyleSheet("background: transparent; border: none;"); self.id_cont = QWidget(); self.id_cont_l = FlowLayout(self.id_cont, margin=10, spacing=10); iscroll.setWidget(self.id_cont); idl.addWidget(iscroll); self.imports_pg = ImportsWidget(self.project_root, self.shell_nss_path)
         self.imports_pg.reload_requested.connect(self.reload_requested.emit)
         
         tab.addTab(rules_pg, get_mdl2_icon(0xE15E, 40), "Rules")
         tab.addTab(self.imports_pg, get_mdl2_icon(0xE8B5, 40), "Imports")
         tab.addTab(ids_pg, get_mdl2_icon(0xE71B, 40), "IDS")
-        self.main_layout.addWidget(tab); self.status_label = QLabel(""); self.status_label.setStyleSheet("color: #94e2d5; font-weight: 500;"); self.main_layout.addWidget(self.status_label)
+        if old_idx != -1: tab.setCurrentIndex(old_idx)
+        self.main_layout.addWidget(tab); self.status_label = QLabel(""); self.status_label.setStyleSheet("color: #dc143c; font-weight: 500;"); self.main_layout.addWidget(self.status_label)
         
         all_ids = sorted(list(set(DEFAULT_IDS + extract_ids_from_section(content, "hide") + extract_ids_from_section(content, "more") + extract_ids_from_section(content, "shift"))))
         h, m, s = extract_ids_from_section(content, "hide"), extract_ids_from_section(content, "more"), extract_ids_from_section(content, "shift"); self.id_widgets = []
         for i in all_ids:
             v = 'key.shift()' if i in s else None; mn = 'title.options' if i in m else None; hid = (i in h)
-            w = IDEntryWidget(i, i.replace("id.", "").replace("_", " ").title(), mn, v, hid); w.changed.connect(self.set_dirty); self.id_widgets.append(w); self.id_cont_l.addWidget(w)
+            w = IDEntryWidget(i, i.replace("id.", "").replace("_", " ").title(), mn, v, hid); w.changed.connect(lambda *args: self.save_ids(False)); self.id_widgets.append(w); self.id_cont_l.addWidget(w)
         
         self.refresh_rules_model()
 
@@ -2511,8 +2659,8 @@ class ModifyWidget(QWidget):
     def refresh_ui(self): self.refresh_rules_model()
     def revert_changes(self):
         if self.is_dirty:
-            write_file(self.filepath, self.original_content)
-            self.is_dirty = False; self.status_label.setText("Changes Reverted"); self.status_label.setStyleSheet("color: #94e2d5;")
+            safe_file_write(self.filepath, self.original_content)
+            self.is_dirty = False; self.status_label.setText("Changes Reverted"); self.status_label.setStyleSheet("color: #dc143c;")
             self.refresh_rules_model(); self.reload_requested.emit()
 
 
@@ -2520,10 +2668,15 @@ class ModifyWidget(QWidget):
     def save_ids(self, preview=False):
         try:
             content = read_file(self.filepath); h = [w.id_text for w in self.id_widgets if w.is_hidden]; m = [w.id_text for w in self.id_widgets if w.menu == 'title.options']; s = [w.id_text for w in self.id_widgets if w.vis == 'key.shift()']
-            content = update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", h); content = update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", m); content = update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", s); write_file(self.filepath, content)
-            if not preview:
-                self.is_dirty = False; self.status_label.setText("IDS Saved"); self.status_label.setStyleSheet("color: #94e2d5;")
-        except Exception as e: self.status_label.setText(f"Error: {str(e)}"); self.status_label.setStyleSheet("color: #f38ba8;")
+            content = update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", h); content = update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", m); content = update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", s)
+            
+            def on_done(fp):
+                self.reload_requested.emit()
+                if not preview:
+                    self.is_dirty = False; self.status_label.setText("IDS Saved"); self.status_label.setStyleSheet("color: #dc143c;")
+            
+            write_file(self.filepath, content, on_success=on_done)
+        except Exception as e: self.status_label.setText(f"Error: {str(e)}"); self.status_label.setStyleSheet("color: #dc143c;")
 
     def on_item_clicked(self, index):
         item = index.data(Qt.UserRole)
@@ -2541,11 +2694,11 @@ class ModifyWidget(QWidget):
             if is_rule_complete(nd):
                 self.live_timer.start(500)
                 self.status_label.setText("Previewing changes...")
-                self.status_label.setStyleSheet("color: #fab387;")
+                self.status_label.setStyleSheet("color: #dc143c;")
             else:
                 self.live_timer.stop()
                 self.status_label.setText("Incomplete rule - Auto-save paused")
-                self.status_label.setStyleSheet("color: #f38ba8;")
+                self.status_label.setStyleSheet("color: #dc143c;")
         d.live_update.connect(handle_preview)
         if d.exec_():
             self.live_timer.stop()
@@ -2578,7 +2731,7 @@ class ModifyWidget(QWidget):
             self.custom_rules.insert(0, temp_item)
             self.model.layoutChanged.emit()
             self.status_label.setText("Drafting new rule...")
-            self.status_label.setStyleSheet("color: #a6adc8;")
+            self.status_label.setStyleSheet("color: #b0b0b0;")
         d.live_update.connect(handle_new_preview)
         if d.exec_():
             self.live_timer.stop()
@@ -2650,6 +2803,7 @@ class ModifyWidget(QWidget):
                     del NSSCacheManager._cache[self.filepath]
                 self.show_status("Rules Saved")
                 self.refresh_rules_model()
+                self.rules_saved.emit()
                 self.reload_requested.emit()
                 
             def on_error(fp, err):
@@ -2663,14 +2817,14 @@ class ModifyWidget(QWidget):
             
         except Exception as e: self.show_error(f"Save setup failed: {str(e)}")
         
-    def show_status(self, t): self.status_label.setText(t); self.status_label.setStyleSheet("color: #94e2d5;"); QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+    def show_status(self, t): self.status_label.setText(t); self.status_label.setStyleSheet("color: #dc143c;"); QTimer.singleShot(3000, lambda: self.status_label.setText(""))
     def show_error(self, t): m = CustomMessageBox(self); m.setText("Error"); m.setInformativeText(t); m.exec_()
 
 def read_file(path): return open(path, 'r', encoding='utf-8').read() if os.path.exists(path) else ""
-def write_file(path, content): 
+def write_file(path, content, on_success=None, on_error=None): 
     from utils import global_undo_stack, FileChangeCommand
     old_content = read_file(path)
-    cmd = FileChangeCommand(path, old_content, content)
+    cmd = FileChangeCommand(path, old_content, content, on_success, on_error)
     global_undo_stack.push(cmd)
     
 def extract_ids_from_section(content, name):

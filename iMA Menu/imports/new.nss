@@ -2,13 +2,6 @@ menu(mode="single" type='back' expanded=true menu=title.options)
 
 {
 
-    item(title='Folder' cmd=io.dir.create(sys.datetime("ymdHMSs")) image=["\uE0E7"])
-
-    $dt = sys.datetime("dhms")  
-
-    $clip = clipboard.get  
-
-    
 
     item(where=clipboard.is_empty || (!str.contains(clipboard.get(), "<html") && !str.contains(clipboard.get(), "margin:") && !str.contains(clipboard.get(), "function") && !str.contains(clipboard.get(), "def ") && !str.contains(clipboard.get(), "@echo") && !str.contains(clipboard.get(), "Write-Host") && !str.contains(clipboard.get(), "WScript.") && !(str.contains(clipboard.get(), "{") && str.contains(clipboard.get(), ":")) && !str.contains(clipboard.get(), "menu(") && !str.contains(clipboard.get(), "item(") && !str.contains(clipboard.get(), "modify(") && !str.contains(clipboard.get(), "<?xml") && !str.contains(clipboard.get(), "Windows Registry Editor Version") && !str.contains(clipboard.get(), "HKEY_")) title='TXT' cmd=io.file.create('txt ' + sys.datetime("dmHMS") + '.txt', @clipboard.get()) icon=["\uE113"])
 
