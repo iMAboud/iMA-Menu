@@ -5,7 +5,8 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v2.0.1-blue)](https://github.com/iMAboud/iMA-Menu/releases/tag/V.2.0.1)
+[![Release](https://img.shields.io/badge/release-v2.0.1-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.1/iMA.Menu.exe)
+[![Pre-Release](https://img.shields.io/badge/prerelease-v2.0.2-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.2/iMA.Menu.exe)
 [![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 --- 
@@ -17,9 +18,25 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 ---
 </div>
 
+## What's New (v2.0.2+) 🚀
+This release features a custom shell.dll (v2.0.0.1), replacing the outdated Nilesoft shell.
+
+Stability: Added auto-reloading and automatic rollbacks on syntax/corruption errors to prevent crashes.
+
+Customization: Added support for menu background images.
+
+Compatibility: Currently untested on Windows 7/10.
+
+⚠️ Upgrade Notice
+To replace v1.9.19.0: Unregister via shell.exe, then restart your PC to clear existing hooks before overwriting the new shell.dll.
+
+
+<img width="142" height="169" alt="screenshot_20260606_231430" src="https://github.com/user-attachments/assets/0b357b84-e347-4c6d-b183-5f7db059e34f" />
+
 ## Installation 💻
 
-1.  **Install the latest release** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.1/iMA.Menu.exe).
+1.  **Install the PRE Release v2.0.2** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.2/iMA.Menu.exe).
+-   **latest Release v2.0.1** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.1/iMA.Menu.exe).
 2.  Install & done
 
 - **Release page** [Here](https://github.com/iMAboud/iMA-Menu/releases/latest)
@@ -55,12 +72,13 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Screenshots 📸
 
-<img width="400" height="300" alt="chrome_Ee3XF70Guk" src="https://github.com/user-attachments/assets/164f14aa-4f27-4215-be41-0067b96be0c1" />
-<img width="400" height="300" alt="chrome_wheoV30yeR" src="https://github.com/user-attachments/assets/921363a2-fa78-45c8-8c4d-52b03cac4f31" />
-<img width="400" height="300" alt="chrome_R2cuLp6FSk" src="https://github.com/user-attachments/assets/47bc13f7-4956-433b-839b-af78aba9b6e0" />
-<img width="400" height="300" alt="chrome_y4gsMUrQR2" src="https://github.com/user-attachments/assets/31e77565-9c38-45c6-b716-01a18e5d21f7" />
-<img width="400" height="300" alt="chrome_w8fhFC5IQ1" src="https://github.com/user-attachments/assets/9d957483-ca36-49e9-b493-a8525a68aa34" />
-<img width="400" height="300" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/25fb365f-ea1a-48f5-a3c8-b1e27d4f6e00" />
+<img width="400" height="300" alt="chrome_Ee3XF70Guk" src="https://github.com/user-attachments/assets/bedfe6cf-601c-40bc-97af-987f6c0f1c53" />
+<img width="400" height="300" alt="chrome_wheoV30yeR" src="https://github.com/user-attachments/assets/ff35def9-fe20-40f9-bb22-77f1678d4416" />
+<img width="400" height="300" alt="chrome_R2cuLp6FSk" src="https://github.com/user-attachments/assets/fe84b5ae-d158-43b4-b517-79be676faa38" />
+<img width="400" height="300" alt="chrome_y4gsMUrQR2" src="https://github.com/user-attachments/assets/ab83b7e3-5d7a-4b6a-8a51-00de29cd1a52" />
+<img width="400" height="300" alt="chrome_w8fhFC5IQ1" src="https://github.com/user-attachments/assets/c89f0b89-2ffd-4c07-a164-2ccddbb7c458" />
+<img width="400" height="300" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/938506d6-255b-433a-b1c8-d58083825c16" />
+" />
 
 <img src="https://i.imgur.com/TfwHI5q.gif" width="800" height="600">
 
