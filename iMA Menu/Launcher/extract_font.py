@@ -23,7 +23,9 @@ def extract_ttf(dll_path, output_path):
                         is_valid = False
                         break
                     tag = data[table_entry:table_entry+4]
+                    # Check if tag is alphanumeric (common tags: head, glyf, cmap, etc)
                     if not tag.isalnum() and tag != b'OS/2':
+                        # Some tags have spaces or special chars, but let's be strict for now
                         pass
                     
                     offset = struct.unpack('>I', data[table_entry+8:table_entry+12])[0]
@@ -31,8 +33,10 @@ def extract_ttf(dll_path, output_path):
                     max_offset = max(max_offset, offset + length)
                 
                 if is_valid and max_offset > 0 and max_offset < len(data):
+                    # Potential font found
                     font_data = data[idx:idx+max_offset]
                     
+                    # Search for "Nilesoft" in this font data
                     if b'Nilesoft' in font_data:
                         print(f"Found Nilesoft font at offset {idx}, size {len(font_data)}")
                         with open(output_path, 'wb') as out:
@@ -45,6 +49,7 @@ if __name__ == "__main__":
     if extract_ttf(r"C:\Program Files\iMA Menu\shell.dll", "nilesoft.ttf"):
         print("Successfully extracted nilesoft.ttf")
     else:
+        # Try shell.exe
         if extract_ttf(r"C:\Program Files\iMA Menu\shell.exe", "nilesoft.ttf"):
             print("Successfully extracted nilesoft.ttf from shell.exe")
         else:

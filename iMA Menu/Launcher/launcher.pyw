@@ -63,12 +63,12 @@ WM_NCHITTEST = 0x0084
 WM_NCCALCSIZE = 0x0083
 WM_GETMINMAXINFO = 0x0024
 
-APP_REPO = "iMAboud/iMA-Menu"
+APP_REPO = "iMAboud/iMA-Menu-Plugins"
 _GITHUB_REPO = "iMAboud/iMA-Menu-Plugins"
 GITHUB_PLUGINS_JSON_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/plugins.json"
 GITHUB_API_BASE_URL = f"https://api.github.com/repos/{_GITHUB_REPO}"
 GITHUB_RELEASES_API_URL = f"{GITHUB_API_BASE_URL}/releases/latest"
-APP_RELEASES_API_URL = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
+APP_RELEASES_API_URL = f"https://api.github.com/repos/{APP_REPO}/releases"
 REQUEST_TIMEOUT = 15
 
 session = requests.Session()
@@ -259,6 +259,8 @@ class UpdateWorker(QObject):
             resp = requests.get(APP_RELEASES_API_URL, timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
+                if isinstance(data, list) and len(data) > 0:
+                    data = data[0]
                 latest_tag = data.get('tag_name', '').strip()
                 if not latest_tag:
                     self.check_finished.emit(False, VERSION, None)

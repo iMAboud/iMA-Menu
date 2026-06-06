@@ -29,6 +29,7 @@ def build():
         '--hidden-import=win32gui',
         '--hidden-import=win32api',
         '--hidden-import=win32con',
+        # Aggressive exclusions
         '--exclude-module=numpy',
         '--exclude-module=PyQt5.QtWebEngine',
         '--exclude-module=PyQt5.QtWebEngineCore',
