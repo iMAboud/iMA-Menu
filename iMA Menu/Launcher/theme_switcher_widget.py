@@ -9,11 +9,11 @@ import win32con
 import win32gui
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabBar,
-    QScrollArea, QFrame, QButtonGroup, QGridLayout, QPushButton, QGraphicsDropShadowEffect, QLayout, QSizePolicy, QInputDialog, QMessageBox, QMenu, QAction, QFileDialog, QDialog, QLineEdit, QApplication
+    QScrollArea, QFrame, QButtonGroup, QGridLayout, QPushButton, QGraphicsDropShadowEffect, QLayout, QSizePolicy, QInputDialog, QMessageBox, QMenu, QAction, QFileDialog, QDialog, QLineEdit, QApplication, QCheckBox
 )
 from PyQt5.QtGui import QPixmap, QIcon, QCursor, QColor, QFont, QPainter, QPainterPath, QImage
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QRect, QPoint, QMetaObject, Q_ARG
-from utils import safe_file_write, get_shell_dll_version
+from utils import safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir
 import re
 
 
@@ -157,8 +157,10 @@ class AddThemeDialog(QDialog):
             """)
 
     def on_upload(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.jpeg)")
+        initial_dir = get_default_image_dir()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", initial_dir, "Images (*.png *.jpg *.jpeg)")
         if file_path:
+            save_last_image_dir(os.path.dirname(file_path))
             self.current_img_path = file_path
             self._load_preview(file_path)
 
@@ -224,6 +226,17 @@ class EditThemeDialog(QDialog):
         self.name_input = QLineEdit()
         self.name_input.setText(theme_name.replace("theme_", "").replace("_", " "))
         layout.addWidget(self.name_input)
+
+        self.update_settings_cb = QCheckBox("Overwrite with current theme changes")
+        self.update_settings_cb.setChecked(True)
+        self.update_settings_cb.setCursor(QCursor(Qt.PointingHandCursor))
+        self.update_settings_cb.setStyleSheet("""
+            QCheckBox { color: #b0b0b0; font-size: 12px; font-weight: 500; }
+            QCheckBox:hover { color: #ffffff; }
+            QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #555566; background-color: #25252b; }
+            QCheckBox::indicator:checked { background-color: #dc143c; border: 1px solid #dc143c; }
+        """)
+        layout.addWidget(self.update_settings_cb)
         
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -279,8 +292,15 @@ class EditThemeDialog(QDialog):
             """)
 
     def on_upload(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.jpeg)")
+        initial_dir = ""
+        if self.current_img_path and os.path.exists(self.current_img_path):
+            initial_dir = os.path.dirname(self.current_img_path)
+        if not initial_dir or not os.path.exists(initial_dir):
+            initial_dir = get_default_image_dir()
+            
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", initial_dir, "Images (*.png *.jpg *.jpeg)")
         if file_path:
+            save_last_image_dir(os.path.dirname(file_path))
             self.current_img_path = file_path
             self._load_preview(file_path)
 
@@ -293,6 +313,7 @@ class EditThemeDialog(QDialog):
         if not self.theme_name:
             QMessageBox.warning(self, "Invalid Name", "Please enter a valid theme name.")
             return
+        self.should_overwrite_settings = self.update_settings_cb.isChecked()
         self.action_type = "update"
         self.accept()
 
@@ -463,6 +484,13 @@ class ThemeSwitcherWidget(QWidget):
             try:
                 with open(self.theme_nss_path, 'r') as f:
                     content = f.read()
+                
+                if hasattr(self, 'selected_theme') and self.selected_theme:
+                    current_path = os.path.join(self.theme_dir, f"{self.selected_theme}.nss")
+                    if os.path.exists(current_path):
+                        with open(current_path, 'r') as tf:
+                            if tf.read() == content:
+                                return self.selected_theme
                 
                 for filename in os.listdir(self.theme_dir):
                     if filename.endswith(".nss"):
@@ -711,19 +739,21 @@ class ThemeSwitcherWidget(QWidget):
                     new_nss = os.path.join(self.theme_dir, f"{new_theme_key}.nss")
                     if os.path.exists(old_nss):
                         os.rename(old_nss, new_nss)
-                        
                     old_png = os.path.join(self.theme_dir, f"{theme_name}.png")
                     new_png = os.path.join(self.theme_dir, f"{new_theme_key}.png")
-                    if os.path.exists(old_png):
+                    if os.path.exists(old_png) and (not dialog.current_img_path or dialog.current_img_path == old_png):
                         os.rename(old_png, new_png)
-                
+                        
                 # Handle image upload
                 final_png = os.path.join(self.theme_dir, f"{new_theme_key}.png")
                 if dialog.current_img_path and dialog.current_img_path != final_png and os.path.exists(dialog.current_img_path):
                     import shutil
                     shutil.copy2(dialog.current_img_path, final_png)
+
+                # Handle settings overwrite
+                if getattr(dialog, 'should_overwrite_settings', False):
+                    self._update_theme_settings(new_theme_key)
                 
-                self._update_theme_settings(new_theme_key)
                 self.refresh_list()
                 self.status_message_requested.emit(f"Updated '{new_theme_name}' successfully!")
 
@@ -772,6 +802,14 @@ class ThemeSwitcherWidget(QWidget):
                 
                 # Compatibility check for shell.dll version
                 version = get_shell_dll_version()
+                if version < (2, 0, 0, 2):
+                    theme_content = re.sub(r'^\s*image\.effect\s*=.*$', '', theme_content, flags=re.MULTILINE)
+                    theme_content = re.sub(r'^\s*symbol\.effect\s*=.*$', '', theme_content, flags=re.MULTILINE)
+                    def _simplify_sym_normal(match):
+                        arr_str = match.group(1)
+                        items = [x.strip().strip("'\"") for x in arr_str.split(',') if x.strip()]
+                        return f"  symbol.normal = {items[0]}" if items else "  symbol.normal = #ffffff"
+                    theme_content = re.sub(r'^\s*symbol\.normal\s*=\s*\[(.*?)\]', _simplify_sym_normal, theme_content, flags=re.MULTILINE)
                 if version[0] < 2:
                     # Remove background.image line if present
                     theme_content = re.sub(r'^\s*background\.image\s*=.*$', '', theme_content, flags=re.MULTILINE)

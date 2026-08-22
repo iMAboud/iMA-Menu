@@ -8,30 +8,53 @@ from PyQt5.QtWidgets import (
     QFrame, QButtonGroup, QRadioButton, QTabWidget, QScrollArea, QGraphicsDropShadowEffect, QStackedWidget, QDialog,
     QSpinBox, QAbstractSpinBox, QDialogButtonBox, QFileDialog, QListWidget, QListWidgetItem, QSizePolicy
 )
-from PyQt5.QtGui import QIcon, QColor, QFont, QPainter, QBrush, QPen
+from PyQt5.QtGui import QIcon, QColor, QFont, QPainter, QBrush, QPen, QPixmap
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPoint, QEvent, QTimer, QObject, QRect, QPropertyAnimation, pyqtProperty
 
-from utils import resource_path, get_font_icon, get_mdl2_icon, safe_file_write, get_shell_dll_version
+from utils import resource_path, get_font_icon, get_mdl2_icon, safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir
 
 from PyQt5.QtWidgets import QMessageBox
 
+DEFAULT_COLOR_PALETTE = [
+    "#f5e0dc", "#f2cdcd", "#f5c2e7", "#cba6f7", "#f38ba8", "#eba0ac", "#fab387", "#f9e2af",
+    "#a6e3a1", "#94e2d5", "#89dceb", "#74c7ec", "#89b4fa", "#b4befe", "#cdd6f4", "#000000",
+    "#BF616A", "#D08770", "#EBCB8B", "#A3BE8C", "#B48EAD", "#8FBCBB", "#88C0D0", "#81A1C1",
+    "#5E81AC", "#4C566A", "#434C5E", "#3B4252", "#2E3440", "#ECEFF4", "#E5E9F0", "#D8DEE9",
+    "#ff0000", "#ff7f00", "#ffff00", "#00ff00", "#0000ff", "#4b0082", "#9400d3", "#ffffff",
+    "#e53935", "#d81b60", "#8e24aa", "#5e35b1", "#3949ab", "#1e88e5", "#039be5", "#00acc1",
+    "#00897b", "#43a047", "#7cb342", "#c0ca33", "#fdd835", "#ffb300", "#fb8c00", "#f4511e",
+    "#6d4c41", "#757575", "#546e7a", "#424242", "#212121", "#121212", "#0a0a0a", "#333333"
+]
+
 def load_color_palette():
-    palette_path = resource_path('color_palette.json')
+    palette_path = resource_path(os.path.join('cache', 'color_palette.json'))
+    os.makedirs(os.path.dirname(palette_path), exist_ok=True)
     if not os.path.exists(palette_path):
-        return []
+        try:
+            with open(palette_path, 'w', encoding='utf-8') as f:
+                json.dump({'colors': DEFAULT_COLOR_PALETTE}, f, indent=4)
+        except IOError:
+            pass
+        return DEFAULT_COLOR_PALETTE
     try:
-        with open(palette_path, 'r') as f:
+        with open(palette_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            return data.get('colors', [])
+            return data.get('colors', DEFAULT_COLOR_PALETTE)
     except (json.JSONDecodeError, IOError):
-        return []
+        return DEFAULT_COLOR_PALETTE
 
 def load_recent_colors():
-    recent_path = resource_path('recent_colors.json')
+    recent_path = resource_path(os.path.join('cache', 'recent_colors.json'))
+    os.makedirs(os.path.dirname(recent_path), exist_ok=True)
     if not os.path.exists(recent_path):
+        try:
+            with open(recent_path, 'w', encoding='utf-8') as f:
+                json.dump({'colors': []}, f)
+        except IOError:
+            pass
         return []
     try:
-        with open(recent_path, 'r') as f:
+        with open(recent_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             return data.get('colors', [])
     except (json.JSONDecodeError, IOError):
@@ -44,9 +67,10 @@ def save_recent_color(color_hex):
     recent_colors.insert(0, color_hex)
     recent_colors = recent_colors[:8] # Keep top 8
     
-    recent_path = resource_path('recent_colors.json')
+    recent_path = resource_path(os.path.join('cache', 'recent_colors.json'))
     try:
-        with open(recent_path, 'w') as f:
+        os.makedirs(os.path.dirname(recent_path), exist_ok=True)
+        with open(recent_path, 'w', encoding='utf-8') as f:
             json.dump({'colors': recent_colors}, f)
     except IOError:
         pass
@@ -741,18 +765,6 @@ class ThemeEditorWidget(QWidget):
                 with open(self.theme_path, 'r') as file:
                     theme_content = file.read()
                 self._parse_theme(theme_content)
-
-                # Compatibility check for shell.dll version
-                version = get_shell_dll_version()
-                if version[0] < 2:
-                    if 'background.image' in self.theme_data:
-                        del self.theme_data['background.image']
-                        self.is_dirty = True
-                        QTimer.singleShot(500, self._write_temporary_theme)
-                        QMessageBox.warning(self, "Compatibility Note", 
-                            "The 'background.image' feature was removed from your theme because it requires shell.dll version 2.0 or higher.\n"
-                            "Please update your shell.dll to use this experimental feature.")
-
                 self.backup_theme_data = self.theme_data.copy()
                 self.is_dirty = False
                 self._create_form()
@@ -773,6 +785,14 @@ class ThemeEditorWidget(QWidget):
                 self.theme_data[key.strip()] = value.strip().strip('"\'')
         
         if 'dark' not in self.theme_data: self.theme_data['dark'] = 'default'
+        if 'image.effect' not in self.theme_data: self.theme_data['image.effect'] = '0'
+        if 'symbol.effect' not in self.theme_data: self.theme_data['symbol.effect'] = '0'
+        sym_eff = str(self.theme_data.get('symbol.effect', '0')).strip().lower()
+        if sym_eff not in ['1', 'gradient']:
+            sym_norm = self.theme_data.get('symbol.normal', '')
+            sym_list = self._parse_nss_array(sym_norm)
+            if sym_list:
+                self.theme_data['symbol.normal'] = sym_list[0]
         new_color_keys = [
             "item.text.normal.disabled", "item.text.select.disabled",
             "item.back.normal", "item.back.normal.disabled", "item.back.select", "item.back.select.disabled",
@@ -938,7 +958,7 @@ class ThemeEditorWidget(QWidget):
             }),
             "Typography & Icons": (0xE8D2, {
                 "Typography": ["font.name", "font.size", "font.weight", "font.italic"],
-                "Icons": ["image.enabled", "image.color", "symbol.normal"]
+                "Icons": ["image.enabled", "image.effect", "image.color", "symbol.effect", "symbol.normal"]
             })
         }
 
@@ -1088,7 +1108,7 @@ class ThemeEditorWidget(QWidget):
             "name": "Theme Mode", "border.enabled": "Enable Border",
             "border.size": "Border Size", "border.color": "Border Color",
             "border.opacity": "Border Opacity", "border.radius": "Border Radius",
-            "image.enabled": "Enable Image", "image.color": "Image Color",
+            "image.enabled": "Enable Image", "image.effect": "Image Effect", "image.color": "Image Color",
             "background.color": "Background Color", "background.image": "Background Image",
             "background.opacity": "Background Opacity", "background.effect": "Background Effect",
             "item.radius": "Item Radius",
@@ -1102,7 +1122,7 @@ class ThemeEditorWidget(QWidget):
             "shadow.enabled": "Enable Shadow", "shadow.size": "Shadow Size",
             "shadow.opacity": "Shadow Opacity", "shadow.color": "Shadow Color",
             "separator.size": "Separator Size", "separator.color": "Separator Color",
-            "separator.opacity": "Separator Opacity", "symbol.normal": "Symbol", "dark": "Dark Mode",
+            "separator.opacity": "Separator Opacity", "symbol.effect": "Symbol Effect", "symbol.normal": "Symbol Color", "dark": "Dark Mode",
         }
         display_name = display_names.get(key, key)
         value = self.theme_data.get(key)
@@ -1115,6 +1135,7 @@ class ThemeEditorWidget(QWidget):
             elif key == "name" or key == "view": value = "auto"
             elif key == "font.name": value = "Segoe UI Variable Text"
             elif key == "background.effect": value = "disabled"
+            elif key in ["image.effect", "symbol.effect"]: value = "0"
             else: value = ""
             self.theme_data[key] = value
 
@@ -1157,19 +1178,21 @@ class ThemeEditorWidget(QWidget):
             self._add_slider(control_layout, key, val_int, min_val, max_val, show_preview=(key == "border.size"))
         elif str(value).lower() in ["true", "false"] and key != "font.italic":
             self._add_checkbox(control_layout, key, str(value).lower() == "true")
+        elif is_image and key == "image.color":
+            self._add_image_color_picker(control_layout, key, value)
+        elif key == "symbol.normal":
+            self._add_symbol_color_picker(control_layout, key, value)
         elif (str(value).startswith("#") or str(value) == "default") and not is_image:
             self._add_color_picker(control_layout, key, display_name, value)
         elif key == "font.italic" or key == "font.weight":
             self._add_checkbox(control_layout, key, str(value).lower() == "true" or str(value).lower() == "bold")
-        elif key in ["name", "font.name", "view"]:
+        elif key in ["name", "font.name", "view", "background.effect"]:
             self._add_dropdown(control_layout, key, value)
-        elif is_image and key == "image.color":
-            self._add_image_color_picker(control_layout, key, value)
         elif key == "background.color":
             self._add_background_color_picker(control_layout, key, value)
         elif key == "background.image":
             self._add_image_path_selector(control_layout, key, value)
-        elif key == "background.effect":
+        elif key in ["image.effect", "symbol.effect"]:
             self._add_radio_switcher(control_layout, key, value)
         else:
             self._add_text_input(control_layout, key, value)
@@ -1260,15 +1283,106 @@ class ThemeEditorWidget(QWidget):
              color_picker.setEnabled(True)
 
     def _add_radio_switcher(self, layout, key, value):
-        radio_group = QButtonGroup()
-        options = ["disabled", "transparent", "blur", "acrylic"] if key == "background.effect" else ["auto", "display", "ignore"]
-        for i, option in enumerate(options):
-            radio_button = QRadioButton(option.title())
-            radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
-            radio_button.setChecked(value == str(i) or option == value)
-            radio_group.addButton(radio_button)
-            layout.addWidget(radio_button)
-            radio_button.toggled.connect(lambda checked, k=key, v=str(i), o=option: self._update_theme_data(k, v if k == "background.effect" else o) if checked else None )
+        radio_group = QButtonGroup(self)
+        if key in ["image.effect", "symbol.effect"]:
+            options = [("Normal", "0"), ("Gradient", "1"), ("Rainbow", "2")]
+            val_str = str(value).strip().lower()
+            current_val = "0"
+            if val_str in ["1", "gradient"]:
+                current_val = "1"
+            elif val_str in ["2", "rainbow"]:
+                current_val = "2"
+
+            radio_buttons = []
+            for label_text, opt_val in options:
+                radio_button = QRadioButton(label_text)
+                radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
+                radio_button.setChecked(current_val == opt_val)
+                radio_group.addButton(radio_button)
+                layout.addWidget(radio_button)
+                radio_buttons.append((radio_button, opt_val))
+
+            def on_radio_toggled(btn, opt_val):
+                if not btn.isChecked():
+                    return
+                ver = get_shell_dll_version()
+                if opt_val != "0" and ver < (2, 0, 0, 2):
+                    feature_title = "Image Effect" if key == "image.effect" else "Symbol Effect"
+                    updated = self._prompt_shell_core_update(feature_title)
+                    if not updated:
+                        for b, v in radio_buttons:
+                            if v == "0":
+                                b.setChecked(True)
+                                break
+                        return
+                if key == "symbol.effect":
+                    self._on_symbol_effect_changed(opt_val)
+                else:
+                    self._update_theme_data(key, opt_val)
+
+            for rb, opt_v in radio_buttons:
+                rb.toggled.connect(lambda checked, b=rb, v=opt_v: on_radio_toggled(b, v) if checked else None)
+        else:
+            options = ["auto", "display", "ignore"]
+            for i, option in enumerate(options):
+                radio_button = QRadioButton(option.title())
+                radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
+                radio_button.setChecked(value == str(i) or option == value)
+                radio_group.addButton(radio_button)
+                layout.addWidget(radio_button)
+                radio_button.toggled.connect(lambda checked, k=key, v=str(i), o=option: self._update_theme_data(k, v if key == "background.effect" else o) if checked else None )
+
+    def _prompt_shell_core_update(self, feature_name):
+        from utils import launch_shell_core_update, ModernDialog
+        dlg = ModernDialog(
+            self,
+            "Shell Core Update Required",
+            f"<b>{feature_name}</b> requires <b>Shell Core v2.0.0.2</b> or higher to function.<br><br>"
+            "Would you like to update the Shell Core now?<br>"
+            "<small style='color: #b0b0b0;'>Note: Windows Explorer will restart briefly during the update.</small>"
+        )
+        dlg.add_button("Update Shell Core", "installButton", lambda: dlg.done(1))
+        dlg.add_button("Cancel", "sideButton", dlg.reject)
+        if dlg.exec_() == 1:
+            success = launch_shell_core_update(self)
+            if success:
+                QTimer.singleShot(3000, self._on_shell_core_updated)
+                return True
+        return False
+
+    def _on_shell_core_updated(self):
+        ver = get_shell_dll_version()
+        if ver >= (2, 0, 0, 2):
+            try:
+                from utils import ModernDialog
+                info = ModernDialog(self, "Core Updated", "<b>Shell Core v2.0.0.2</b> has been installed successfully!")
+                info.add_button("OK", "installButton", info.accept)
+                info.exec_()
+            except Exception:
+                pass
+            self._create_form()
+
+    def _on_symbol_effect_changed(self, effect_val):
+        self._update_theme_data("symbol.effect", effect_val, trigger_reload=False)
+        is_gradient = (str(effect_val) in ["1", "gradient"])
+        current_sym = self.theme_data.get("symbol.normal", "#ffffff")
+        color_list = self._parse_nss_array(current_sym)
+        if not color_list: color_list = ["#ffffff", "#ffffff"]
+        while len(color_list) < 2: color_list.append(color_list[0] if color_list else "#ffffff")
+        
+        if is_gradient:
+            new_sym_val = f"[{color_list[0]}, {color_list[1]}]"
+            self._update_theme_data("symbol.normal", new_sym_val, trigger_reload=True)
+            if hasattr(self, 'symbol_color_pickers') and len(self.symbol_color_pickers) == 2:
+                self.symbol_color_pickers[0].set_color(color_list[0])
+                self.symbol_color_pickers[1].set_color(color_list[1])
+                self.symbol_color_pickers[1].setVisible(True)
+        else:
+            new_sym_val = color_list[0]
+            self._update_theme_data("symbol.normal", new_sym_val, trigger_reload=True)
+            if hasattr(self, 'symbol_color_pickers') and len(self.symbol_color_pickers) == 2:
+                self.symbol_color_pickers[0].set_color(color_list[0])
+                self.symbol_color_pickers[1].setVisible(False)
 
     def _add_checkbox(self, layout, key, checked):
         toggle = ModernToggle()
@@ -1297,6 +1411,33 @@ class ThemeEditorWidget(QWidget):
         if index < len(color_list):
             color_list[index] = color
             self._update_theme_data(key, f"[{', '.join(color_list)}]")
+
+    def _add_symbol_color_picker(self, layout, key, value):
+        color_list = self._parse_nss_array(value)
+        if not color_list: color_list = ["#ffffff", "#ffffff"]
+        while len(color_list) < 2: color_list.append(color_list[0] if color_list else "#ffffff")
+        self.symbol_color_pickers = []
+        for i in range(2):
+            cp = ColorPickerWidget(color_list[i], key, f"Color {i+1}")
+            cp.colorChanged.connect(lambda k, c, idx=i: self._update_symbol_color(k, c, idx))
+            layout.addWidget(cp)
+            self.symbol_color_pickers.append(cp)
+        
+        eff = str(self.theme_data.get("symbol.effect", "0")).strip().lower()
+        is_gradient = (eff in ["1", "gradient"])
+        self.symbol_color_pickers[1].setVisible(is_gradient)
+
+    def _update_symbol_color(self, key, color, index):
+        eff = str(self.theme_data.get("symbol.effect", "0")).strip().lower()
+        is_gradient = (eff in ["1", "gradient"])
+        if is_gradient:
+            color_list = self._parse_nss_array(self.theme_data.get(key, "[#ffffff, #ffffff]"))
+            while len(color_list) < 2: color_list.append(color_list[0] if color_list else "#ffffff")
+            if index < len(color_list):
+                color_list[index] = color
+                self._update_theme_data(key, f"[{', '.join(color_list)}]")
+        else:
+            self._update_theme_data(key, color)
 
     def _add_radius_picker(self, layout, key, value):
         max_val = self.slider_ranges.get(key, (0, 3))[1]
@@ -1349,20 +1490,33 @@ class ThemeEditorWidget(QWidget):
             QComboBox:hover { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); }
             QComboBox:focus { border: 1px solid #dc143c; }
             QComboBox::drop-down { border: none; width: 30px; }
-            QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid #b0b0b0; margin-right: 10px; }
-            QComboBox::down-arrow:hover { border-top: 5px solid #ffffff; }
-            QComboBox QAbstractItemView { background: #121212; color: white; selection-background-color: rgba(220, 20, 60, 0.2); selection-color: #dc143c; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; outline: none; padding: 5px; }
-            QComboBox QAbstractItemView::item { padding: 8px 12px; border-radius: 8px; margin: 2px; }
+            QComboBox::down-arrow { image: url("icons/chevron_down.svg"); width: 14px; height: 14px; margin-right: 15px; border: none; }
+            QComboBox::down-arrow:hover { image: url("icons/chevron_down_hover.svg"); }
+            QComboBox QAbstractItemView { background: #1c1c20; color: white; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; outline: none; padding: 6px; }
+            QComboBox QAbstractItemView::item { min-height: 24px; padding: 10px 14px; border-radius: 8px; margin: 2px 4px; color: #b0b0b0; }
+            QComboBox QAbstractItemView::item:selected { background-color: rgba(255, 255, 255, 0.1); color: #ffffff; }
         """)
         options = []
         if key == "name": options = ["auto", "classic", "white", "black", "modern"]
         elif key == "view": options = ["auto", "compact", "small", "medium", "large", "wide"]
         elif key == "font.name": options = ["Segoe UI Variable Text", "Comic Sans MS", "Impact", "Arial", "Helvetica", "Times New Roman", "Courier New", "Calibri", "Cambria", "Garamond", "Georgia", "Tahoma", "Trebuchet MS", "Century Gothic", "Franklin Gothic Medium", "Consolas"]
         elif key == "dark": options = ["true", "false", "default"]
+        elif key == "background.effect": options = ["Disabled", "Transparent", "Blur", "Acrylic", "Noise"]
 
         dropdown.addItems(options)
-        dropdown.setCurrentText(value.split('.')[-1] if key == "view" else value)
-        dropdown.currentTextChanged.connect(lambda text, k=key: self._update_theme_data(k, text if key not in ["view", "dark"] else (f"view.{text}" if key == "view" else text)))
+
+        if key == "background.effect":
+            try:
+                idx = int(value)
+                if 0 <= idx < len(options):
+                    dropdown.setCurrentIndex(idx)
+            except ValueError:
+                dropdown.setCurrentText(value.title())
+            dropdown.currentIndexChanged.connect(lambda idx, k=key: self._update_theme_data(k, str(idx)))
+        else:
+            dropdown.setCurrentText(value.split('.')[-1] if key == "view" else value)
+            dropdown.currentTextChanged.connect(lambda text, k=key: self._update_theme_data(k, text if key not in ["view", "dark"] else (f"view.{text}" if key == "view" else text)))
+
         layout.addWidget(dropdown)
 
     def _add_text_input(self, layout, key, value):
@@ -1373,6 +1527,32 @@ class ThemeEditorWidget(QWidget):
         layout.addWidget(line_edit)
 
     def _add_image_path_selector(self, layout, key, value):
+        preview_lbl = QLabel()
+        preview_lbl.setFixedSize(34, 34)
+        preview_lbl.setAlignment(Qt.AlignCenter)
+        preview_lbl.setScaledContents(False)
+        preview_lbl.setStyleSheet("QLabel { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; }")
+
+        def update_preview_icon(img_path):
+            cleaned_path = img_path.strip().strip("'\"")
+            if cleaned_path and os.path.exists(cleaned_path):
+                pixmap = QPixmap(cleaned_path)
+                if not pixmap.isNull():
+                    scaled_pixmap = pixmap.scaled(30, 30, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                    cropped = scaled_pixmap.copy(
+                        max(0, (scaled_pixmap.width() - 30) // 2),
+                        max(0, (scaled_pixmap.height() - 30) // 2),
+                        30,
+                        30
+                    )
+                    preview_lbl.setPixmap(cropped)
+                    preview_lbl.setToolTip(cleaned_path)
+                    preview_lbl.show()
+                    return
+            preview_lbl.setPixmap(QPixmap())
+            preview_lbl.setToolTip("")
+            preview_lbl.hide()
+
         clear_btn = QPushButton("✕")
         clear_btn.setFixedSize(24, 24)
         clear_btn.setCursor(Qt.PointingHandCursor)
@@ -1381,10 +1561,15 @@ class ThemeEditorWidget(QWidget):
         line_edit = QLineEdit(value)
         line_edit.setFixedSize(180, 34)
         line_edit.setStyleSheet("QLineEdit { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 17px; color: white; padding: 0 15px; font-size: 13px; } QLineEdit:hover { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); } QLineEdit:focus { border: 1px solid #dc143c; background: rgba(0, 0, 0, 0.2); }")
-        line_edit.textChanged.connect(lambda text, k=key: self._update_theme_data(k, text))
+        
+        def on_text_changed(text):
+            update_preview_icon(text)
+            self._update_theme_data(key, text)
 
+        line_edit.textChanged.connect(on_text_changed)
         clear_btn.clicked.connect(lambda: line_edit.setText(""))
 
+        layout.addWidget(preview_lbl)
         layout.addWidget(clear_btn)
         layout.addWidget(line_edit)
 
@@ -1395,9 +1580,19 @@ class ThemeEditorWidget(QWidget):
         browse_btn.clicked.connect(lambda: self._browse_image(line_edit))
         layout.addWidget(browse_btn)
 
+        update_preview_icon(value)
+
     def _browse_image(self, line_edit):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)")
+        current_text = line_edit.text().strip().strip("'\"")
+        initial_dir = ""
+        if current_text and os.path.exists(current_text):
+            initial_dir = os.path.dirname(current_text) if os.path.isfile(current_text) else current_text
+        if not initial_dir or not os.path.exists(initial_dir):
+            initial_dir = get_default_image_dir()
+
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", initial_dir, "Images (*.png *.jpg *.jpeg *.bmp *.gif)")
         if file_path:
+            save_last_image_dir(os.path.dirname(file_path))
             line_edit.setText(file_path)
 
     def _update_theme_data(self, key, value, trigger_reload=True):
@@ -1441,6 +1636,16 @@ class ThemeEditorWidget(QWidget):
             
             # Compatibility check for shell.dll version
             version = get_shell_dll_version()
+            if version < (2, 0, 0, 2):
+                if 'image.effect' in keys:
+                    keys.remove('image.effect')
+                if 'symbol.effect' in keys:
+                    keys.remove('symbol.effect')
+                if 'symbol.normal' in keys:
+                    val = self.theme_data['symbol.normal']
+                    sym_list = self._parse_nss_array(val)
+                    if sym_list:
+                        self.theme_data['symbol.normal'] = sym_list[0]
             if version[0] < 2:
                 if 'background.image' in keys:
                     keys.remove('background.image')
@@ -1449,6 +1654,31 @@ class ThemeEditorWidget(QWidget):
                 keys.remove('background.image')
                 idx = keys.index('background.color')
                 keys.insert(idx + 1, 'background.image')
+
+            if 'image.enabled' in keys and 'image.effect' in keys:
+                keys.remove('image.effect')
+                idx = keys.index('image.enabled')
+                keys.insert(idx + 1, 'image.effect')
+
+            if 'image.effect' in keys and 'image.color' in keys:
+                keys.remove('image.color')
+                idx = keys.index('image.effect')
+                keys.insert(idx + 1, 'image.color')
+
+            if 'symbol.effect' in keys:
+                if 'image.color' in keys:
+                    keys.remove('symbol.effect')
+                    idx = keys.index('image.color')
+                    keys.insert(idx + 1, 'symbol.effect')
+                elif 'image.enabled' in keys:
+                    keys.remove('symbol.effect')
+                    idx = keys.index('image.enabled')
+                    keys.insert(idx + 1, 'symbol.effect')
+
+            if 'symbol.effect' in keys and 'symbol.normal' in keys:
+                keys.remove('symbol.normal')
+                idx = keys.index('symbol.effect')
+                keys.insert(idx + 1, 'symbol.normal')
 
             for key in keys:
                 value = self.theme_data[key]

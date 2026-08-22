@@ -8,9 +8,9 @@ from PyQt5.QtWidgets import (QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLay
                              QCheckBox, QRadioButton, QGridLayout, QButtonGroup, QListWidget,
                              QListWidgetItem, QSizePolicy, QDialog, QFormLayout, 
                              QGraphicsDropShadowEffect, QTabWidget, QLayout, QListView,
-                             QStyledItemDelegate, QStyle, QAbstractItemView)
+                             QStyledItemDelegate, QStyle, QAbstractItemView, QTextEdit, QFileIconProvider)
 from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QIcon, QPixmap, QFontDatabase, QFontMetrics, QImage
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QPoint, QPointF, QRect, QRectF, QTimer, QObject, QAbstractListModel, QModelIndex
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QPoint, QPointF, QRect, QRectF, QTimer, QObject, QAbstractListModel, QModelIndex, QFileInfo
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
 from utils import resource_path, UnsavedChangesDialog, safe_file_write, get_font_icon, get_mdl2_icon, NILESOFT_FONT_FAMILY, _init_nilesoft_font
@@ -84,6 +84,7 @@ class NSSCacheManager:
         cls._cache[fp] = {'hash': h, 'items': items}
 
 KEY_TOGGLE_ICONS = {
+    'Hide': (0xED1A, 'Hide'),
     'Normal': (0xE73E, 'Normal'),
     'Shift': (0xE752, 'Shift'),
     'Ctrl': (0xE765, 'Ctrl'),
@@ -98,9 +99,9 @@ class KeyToggleButton(QPushButton):
         icon_code, self._label = KEY_TOGGLE_ICONS.get(label, (0xE73E, label))
         glyph = chr(icon_code)
         self.setText(f"{glyph}\n{self._label}")
-        self.setFont(QFont('Segoe MDL2 Assets', 11))
+        self.setFont(QFont('Segoe MDL2 Assets', 10))
         self.setCheckable(True)
-        self.setFixedSize(52, 44)
+        self.setFixedSize(50, 40)
         self.setCursor(Qt.PointingHandCursor)
         self._update_style()
         self.toggled.connect(self._on_toggled)
@@ -131,15 +132,234 @@ class KeyToggleButton(QPushButton):
         if not self.isEnabled(): c = QColor(220, 20, 60, 153)
         if self.underMouse() and self.isEnabled(): c = c.lighter(130)
         painter.setPen(c)
-        icon_font = QF('Segoe MDL2 Assets', 14)
+        icon_font = QF('Segoe MDL2 Assets', 12)
         icon_font.setWeight(QF.Bold)
         painter.setFont(icon_font)
-        painter.drawText(self.rect().adjusted(0, 2, 0, -12), Qt.AlignHCenter | Qt.AlignTop, glyph)
+        painter.drawText(self.rect().adjusted(0, 3, 0, -14), Qt.AlignHCenter | Qt.AlignTop, glyph)
         label_font = QF('Segoe UI Variable Display', 8)
         label_font.setWeight(QF.DemiBold)
         painter.setFont(label_font)
-        painter.drawText(self.rect().adjusted(0, 24, 0, 0), Qt.AlignHCenter | Qt.AlignTop, self._label)
+        painter.drawText(self.rect().adjusted(0, 22, 0, 0), Qt.AlignHCenter | Qt.AlignTop, self._label)
         painter.end()
+
+class VisibilityWidget(QWidget):
+    valueChanged = pyqtSignal(str)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._updating = False
+        self._custom_vis = ""
+        self._user_modified = False
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        
+        self.btn_hide = KeyToggleButton("Hide")
+        self.btn_normal = KeyToggleButton("Normal")
+        self.btn_shift = KeyToggleButton("Shift")
+        self.btn_ctrl = KeyToggleButton("Ctrl")
+        self.btn_caps = KeyToggleButton("Caps")
+        self.btn_lmb = KeyToggleButton("LMB")
+        
+        self.buttons = {
+            'hide': self.btn_hide,
+            'normal': self.btn_normal,
+            'shift': self.btn_shift,
+            'ctrl': self.btn_ctrl,
+            'caps': self.btn_caps,
+            'lmb': self.btn_lmb,
+        }
+        
+        for key, btn in self.buttons.items():
+            layout.addWidget(btn)
+            btn.toggled.connect(lambda checked, k=key: self._on_btn_toggled(k, checked))
+            
+        self.set_value("")
+
+    def _on_btn_toggled(self, key, checked):
+        if self._updating:
+            return
+        self._updating = True
+        self._user_modified = True
+        if checked:
+            for k, btn in self.buttons.items():
+                if k != key:
+                    btn.setChecked(False)
+        else:
+            if not any(btn.isChecked() for btn in self.buttons.values()):
+                self.btn_normal.setChecked(True)
+        self._updating = False
+        self.valueChanged.emit(self.get_value())
+
+    def get_value(self):
+        if self.btn_hide.isChecked():
+            return "vis.remove"
+        if self.btn_shift.isChecked():
+            return "key.shift()"
+        if self.btn_ctrl.isChecked():
+            return "key.control()"
+        if self.btn_caps.isChecked():
+            return "key.capslock()"
+        if self.btn_lmb.isChecked():
+            return "key.lbutton()"
+        if not self._user_modified and self._custom_vis:
+            return self._custom_vis
+        return ""
+
+    def set_value(self, vis_str):
+        self._updating = True
+        self._user_modified = False
+        self._custom_vis = ""
+        raw_str = str(vis_str or '').strip()
+        clean_vis = raw_str.strip('\'" ').lower()
+        
+        if clean_vis in ('key.remove', 'vis.remove', 'key.hidden', 'vis.hidden', 'remove', 'hidden', '0'):
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'hide')
+        elif clean_vis in ('key.shift()', 'vis.shift', 'shift', 'key.shift'):
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'shift')
+        elif clean_vis in ('key.control()', 'key.ctrl()', 'vis.control', 'vis.ctrl', 'control', 'ctrl', 'key.control', 'key.ctrl'):
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'ctrl')
+        elif clean_vis in ('key.capslock()', 'key.caps()', 'vis.capslock', 'vis.caps', 'capslock', 'caps', 'key.capslock', 'key.caps'):
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'caps')
+        elif clean_vis in ('key.lbutton()', 'key.lmb()', 'vis.lbutton', 'vis.lmb', 'lbutton', 'lmb', 'key.lbutton'):
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'lmb')
+        elif clean_vis in ('', 'normal', 'vis.normal', '1', 'vis.visible', 'visible', 'always visible'):
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'normal')
+        else:
+            self._custom_vis = raw_str
+            for k, btn in self.buttons.items():
+                btn.setChecked(k == 'normal')
+        self._updating = False
+
+TYPE_PRESETS = [
+    ('all', 'All'),
+    ('desktop', 'Desktop'),
+    ('taskbar', 'Taskbar'),
+    ('computer', 'This PC'),
+    ('recyclebin', 'Recycle Bin'),
+    ('back', 'Background'),
+    ('dir', 'Folders'),
+    ('file', 'Files'),
+]
+
+class TypeWidget(QWidget):
+    valueChanged = pyqtSignal(str)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._updating = False
+        self.preset_checkboxes = {}
+        
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(4)
+        
+        # Grid of checkboxes for presets
+        grid_w = QWidget()
+        grid_lay = QGridLayout(grid_w)
+        grid_lay.setContentsMargins(0, 0, 0, 0)
+        grid_lay.setSpacing(8)
+        
+        cb_style = """
+            QCheckBox {
+                color: #ffffff;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid #45475a;
+                background: #2a2a30;
+            }
+            QCheckBox::indicator:checked {
+                background: #dc143c;
+                border: 1px solid #dc143c;
+            }
+        """
+        
+        for i, (val, friendly) in enumerate(TYPE_PRESETS):
+            cb = QCheckBox(friendly)
+            cb.setStyleSheet(cb_style)
+            cb.setProperty("type_val", val)
+            cb.setCursor(Qt.PointingHandCursor)
+            self.preset_checkboxes[val] = cb
+            row = i // 4
+            col = i % 4
+            grid_lay.addWidget(cb, row, col)
+            cb.toggled.connect(self._on_cb_toggled)
+            
+        main_layout.addWidget(grid_w)
+        
+        # Set default state
+        self.set_value("")
+
+    def _on_cb_toggled(self, checked):
+        if self._updating:
+            return
+        sender = self.sender()
+        val = sender.property("type_val")
+        self._updating = True
+        if val == "all":
+            if checked:
+                for k, cb in self.preset_checkboxes.items():
+                    if k != "all":
+                        cb.setChecked(False)
+            else:
+                if not any(cb.isChecked() for k, cb in self.preset_checkboxes.items() if k != "all"):
+                    self.preset_checkboxes["all"].setChecked(True)
+        else:
+            if checked:
+                self.preset_checkboxes["all"].setChecked(False)
+            else:
+                if not any(cb.isChecked() for k, cb in self.preset_checkboxes.items() if k != "all"):
+                    self.preset_checkboxes["all"].setChecked(True)
+        self._updating = False
+        self._on_state_changed()
+
+    def _on_state_changed(self):
+        if self._updating:
+            return
+        self.valueChanged.emit(self.get_value())
+
+    def get_value(self):
+        if self.preset_checkboxes["all"].isChecked():
+            return ""
+        parts = []
+        for val, _ in TYPE_PRESETS:
+            if val != "all" and self.preset_checkboxes[val].isChecked():
+                parts.append(val)
+        if not parts:
+            return ""
+        return "|".join(parts)
+
+    def set_value(self, val_str):
+        self._updating = True
+        val_str = str(val_str or '').strip('\'" ')
+        
+        if not val_str:
+            for k, cb in self.preset_checkboxes.items():
+                cb.setChecked(k == "all")
+            self._updating = False
+            return
+            
+        items = [i.strip().lower() for i in val_str.split('|') if i.strip()]
+        preset_vals = set(items)
+                
+        if not (preset_vals & set(p[0] for p in TYPE_PRESETS if p[0] != 'all')):
+            for k, cb in self.preset_checkboxes.items():
+                cb.setChecked(k == "all")
+        else:
+            self.preset_checkboxes["all"].setChecked(False)
+            for k, cb in self.preset_checkboxes.items():
+                if k != "all":
+                    cb.setChecked(k in preset_vals)
+                    
+        self._updating = False
 
 def _fuzzy_match(query, text):
     if not query: return True
@@ -151,6 +371,66 @@ def _fuzzy_match(query, text):
             if q_idx == len(query): return True
     return False
 
+def calculate_search_score(query, item):
+    if not query:
+        return True, 0
+    
+    q = query.strip().lower()
+    if not q:
+        return True, 0
+        
+    props = item.get('props', {})
+    title = str(props.get('title', '')).strip('\'" ').lower()
+    find = str(props.get('find', '')).strip('\'" ').lower()
+    file_name = os.path.basename(item.get('file', '')).replace('.nss', '').lower()
+    in_menu = str(props.get('in', '')).strip('\'" ').lower()
+    cmd = str(props.get('cmd', '')).strip('\'" ').lower()
+    tip = str(props.get('tip', '')).strip('\'" ').lower()
+    item_type = str(item.get('type', '')).lower()
+    
+    score = 0
+    
+    # 1. Primary Title / Find Exact match
+    if title == q or find == q:
+        score = max(score, 1000)
+    elif title.startswith(q) or find.startswith(q):
+        score = max(score, 800)
+    elif any(w.startswith(q) for w in title.split()) or any(w.startswith(q) for w in find.split()):
+        score = max(score, 650)
+    elif q in title or q in find:
+        score = max(score, 500)
+        
+    # 2. File name match
+    if file_name == q:
+        score = max(score, 450)
+    elif file_name.startswith(q):
+        score = max(score, 400)
+    elif q in file_name:
+        score = max(score, 350)
+        
+    # 3. in_menu / tip match
+    if q in in_menu or q in tip:
+        score = max(score, 300)
+        
+    # 4. Command match (only check basename or clean command, not huge paths)
+    if q in cmd:
+        score = max(score, 200)
+        
+    # 5. Type match (e.g. searching 'menu' or 'item' or 'file')
+    if q == item_type:
+        score = max(score, 150)
+        
+    # 6. Fallback fuzzy match on title or find (only if query is at least 2 chars)
+    if score == 0 and len(q) >= 2:
+        if title and _fuzzy_match(q, title):
+            score = max(score, 100 - max(0, len(title) - len(q)))
+        elif find and _fuzzy_match(q, find):
+            score = max(score, 90 - max(0, len(find) - len(q)))
+        elif file_name and _fuzzy_match(q, file_name):
+            score = max(score, 80 - max(0, len(file_name) - len(q)))
+            
+    return (score > 0), score
+
 class NSSItemModel(QAbstractListModel):
     def __init__(self, items=None, parent=None):
         super().__init__(parent); self._items = items or []; self._filtered_items = self._items[:]
@@ -161,46 +441,59 @@ class NSSItemModel(QAbstractListModel):
     def set_items(self, items):
         self.beginResetModel(); self._items = items; self._filtered_items = items[:]; self.endResetModel()
     def filter(self, text, file_filter=None, type_tag=None, action_tag=None):
-        self.beginResetModel(); t = text.lower()
-        self._filtered_items = []
+        self.beginResetModel()
+        t = (text or '').strip().lower()
+        scored_items = []
         for i in self._items:
             # 1. File filter check
-            if file_filter and i.get('file') != file_filter: continue
+            if file_filter and i.get('file') != file_filter:
+                continue
             
-            # 2. Text search check (Fuzzy Matching)
-            props = i.get('props', {})
-            text_match = not t or \
-                         any(_fuzzy_match(t, str(v).lower()) for v in props.values()) or \
-                         _fuzzy_match(t, i.get('type', '').lower()) or \
-                         _fuzzy_match(t, os.path.basename(i.get('file', '')).lower())
-            if not text_match: continue
-            
-            # 3. Type filter check (All, Item, Menu, Modify)
+            # 2. Type filter check (All, Item, Menu, Modify)
             if type_tag and type_tag != "All":
                 tt = type_tag.lower()
-                if i.get('type', '').lower() != tt: continue
+                if i.get('type', '').lower() != tt:
+                    continue
             
-            # 4. Action/Property filter check
+            # 3. Action/Property filter check
+            props = i.get('props', {})
             if action_tag and action_tag != "All":
                 at = action_tag.lower()
                 has_tag = False
-                if at == "renamed": has_tag = bool(props.get('title'))
-                elif at == "icons": has_tag = bool(props.get('icon') or props.get('image'))
+                if at == "renamed":
+                    has_tag = bool(props.get('title'))
+                elif at == "icons":
+                    has_tag = bool(props.get('icon') or props.get('image'))
                 elif at == "hidden": 
                     v = str(props.get('vis', '')).lower()
                     has_tag = v in ('vis.remove', 'vis.hidden', 'remove', 'hidden')
                 elif at == "part hidden":
                     v = str(props.get('vis', '')).lower()
                     has_tag = v != '' and v != 'normal' and v not in ('vis.remove', 'vis.hidden', 'remove', 'hidden')
-                elif at == "moved": has_tag = bool(props.get('menu'))
-                elif at == "position": has_tag = bool(props.get('pos'))
-                elif at == "separator": has_tag = bool(props.get('sep'))
+                elif at == "moved":
+                    has_tag = bool(props.get('menu'))
+                elif at == "position":
+                    has_tag = bool(props.get('pos'))
+                elif at == "separator":
+                    has_tag = bool(props.get('sep'))
                 elif at == "modified":
                     has_tag = any(k in props for k in ('title', 'icon', 'image', 'vis', 'menu', 'pos', 'sep'))
                 
-                if not has_tag: continue
-                
-            self._filtered_items.append(i)
+                if not has_tag:
+                    continue
+            
+            # 4. Text search check with relevance scoring
+            if not t:
+                scored_items.append((0, i))
+            else:
+                matched, score = calculate_search_score(t, i)
+                if matched:
+                    scored_items.append((score, i))
+                    
+        if t:
+            scored_items.sort(key=lambda x: (-x[0], x[1].get('type') != 'menu', str(x[1].get('props', {}).get('title', '')).lower()))
+            
+        self._filtered_items = [it for _, it in scored_items]
         self.endResetModel()
 
 class NSSItemDelegate(QStyledItemDelegate):
@@ -228,8 +521,25 @@ class NSSItemDelegate(QStyledItemDelegate):
         icon_rect = QRect(rect.x() + 18, rect.y() + 18, 52, 52)
         painter.setBrush(QColor(255,255,255,15)); painter.drawRoundedRect(icon_rect, 14, 14)
         
+        svg_content = _extract_svg_content(val)
         has_icon = False
-        if codes:
+        if svg_content and QtSvg:
+            try:
+                clean_svg = svg_content.replace("@image.color1", "#ffffff").replace("@image.color2", "#ffffff").replace("@color3", "#ffffff")
+                renderer = QtSvg.QSvgRenderer(clean_svg.encode('utf-8'))
+                if renderer.isValid():
+                    sz = renderer.defaultSize()
+                    w = sz.width() if sz.width() > 0 else 24
+                    h = sz.height() if sz.height() > 0 else 24
+                    pm = QPixmap(w * 4, h * 4); pm.fill(Qt.transparent)
+                    p_svg = QPainter(pm); p_svg.setRenderHint(QPainter.Antialiasing); renderer.render(p_svg); p_svg.end()
+                    scaled_pm = pm.scaled(icon_rect.width() - 12, icon_rect.height() - 12, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    target_r = QRect((icon_rect.width() - scaled_pm.width())//2 + icon_rect.x(), (icon_rect.height() - scaled_pm.height())//2 + icon_rect.y(), scaled_pm.width(), scaled_pm.height())
+                    painter.drawPixmap(target_r, scaled_pm)
+                    has_icon = True
+            except: pass
+
+        if not has_icon and codes:
             theme_cs = _get_theme_glyph_colors()
             painter.setFont(QFont(NILESOFT_FONT_FAMILY, 28))
             c1 = colors[0] if len(colors) > 0 else theme_cs[0]
@@ -240,51 +550,57 @@ class NSSItemDelegate(QStyledItemDelegate):
                 painter.setPen(QColor(c2 or theme_cs[1]))
                 painter.drawText(icon_rect, Qt.AlignCenter, chr(codes[1]))
             has_icon = True
-        elif val:
-            # Try to load as SVG
-            svg_content = _extract_svg_content(val)
-            if svg_content and QtSvg:
-                try:
-                    renderer = QtSvg.QSvgRenderer(svg_content.encode('utf-8'))
-                    if renderer.isValid():
-                        pm = QPixmap(128, 128); pm.fill(Qt.transparent)
-                        p_svg = QPainter(pm); renderer.render(p_svg); p_svg.end()
-                        painter.drawPixmap(icon_rect.adjusted(4, 4, -4, -4), pm.scaled(44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                        has_icon = True
-                except: pass
             
-            if not has_icon:
-                # Try to load as image
-                path, clr = _extract_img_path_and_color(val)
-                if not path: path = val.strip('\'" ')
-                res_path = _resolve_app_dir_path(path)
-                if not os.path.exists(res_path) and data.get('file'):
-                    alt = os.path.join(os.path.dirname(data['file']), path)
-                    if os.path.exists(alt): res_path = alt
+        if not has_icon:
+            # Try to load as image
+            path, clr = _extract_img_path_and_color(val)
+            if not path: path = val.strip('\'" ')
+            cmd_val = props.get('cmd') or props.get('path') or props.get('find') or ''
+            res_path = _resolve_app_dir_path(path)
+            if (not res_path or not os.path.exists(res_path)) and cmd_val:
+                m = re.search(r'([a-zA-Z]:[\\/][^"\'\n\r\t]+?\.(?:exe|ico|dll))', str(cmd_val), re.I)
+                if m and os.path.exists(m.group(1)):
+                    res_path = m.group(1)
+                elif os.path.exists(str(cmd_val).strip('\'" ')):
+                    res_path = str(cmd_val).strip('\'" ')
+
+            if (not res_path or not os.path.exists(res_path)) and data.get('file'):
+                alt = os.path.join(os.path.dirname(data['file']), path)
+                if os.path.exists(alt): res_path = alt
+            
+            if res_path and os.path.exists(res_path):
+                pm = QPixmap()
+                if res_path.lower().endswith('.svg') and QtSvg:
+                    try:
+                        renderer = QtSvg.QSvgRenderer(res_path)
+                        if renderer.isValid():
+                            pm = QPixmap(128, 128); pm.fill(Qt.transparent)
+                            p_svg = QPainter(pm); renderer.render(p_svg); p_svg.end()
+                    except: pass
+                if pm.isNull():
+                    try:
+                        with open(res_path, 'rb') as f: data_b = f.read()
+                        pm.loadFromData(data_b)
+                    except: pass
+                if pm.isNull():
+                    provider = QFileIconProvider()
+                    icon = provider.icon(QFileInfo(res_path))
+                    if not icon.isNull():
+                        pm = icon.pixmap(128, 128)
+                    if pm.isNull():
+                        icon = QIcon(res_path)
+                        pm = icon.pixmap(128, 128)
                 
-                if res_path and os.path.exists(res_path):
-                    if res_path.lower().endswith('.svg') and QtSvg:
-                        try:
-                            renderer = QtSvg.QSvgRenderer(res_path)
-                            if renderer.isValid():
-                                pm = QPixmap(128, 128); pm.fill(Qt.transparent)
-                                p_svg = QPainter(pm); renderer.render(p_svg); p_svg.end()
-                            else: pm = QPixmap()
-                        except: pm = QPixmap()
-                    else:
-                        icon = QIcon(res_path); pm = icon.pixmap(128, 128)
-                        if pm.isNull(): pm = QPixmap(res_path)
-                    
-                    if not pm.isNull():
-                        if clr:
-                            img = pm.toImage().convertToFormat(QImage.Format_ARGB32); c = QColor(clr)
-                            for y in range(img.height()):
-                                for x in range(img.width()):
-                                    p = img.pixelColor(x, y)
-                                    if p.alpha() > 0: c.setAlpha(p.alpha()); img.setPixelColor(x, y, c)
-                            pm = QPixmap.fromImage(img)
-                        painter.drawPixmap(icon_rect.adjusted(4, 4, -4, -4), pm.scaled(44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                        has_icon = True
+                if not pm.isNull():
+                    if clr:
+                        img = pm.toImage().convertToFormat(QImage.Format_ARGB32); c = QColor(clr)
+                        for y in range(img.height()):
+                            for x in range(img.width()):
+                                p = img.pixelColor(x, y)
+                                if p.alpha() > 0: c.setAlpha(p.alpha()); img.setPixelColor(x, y, c)
+                        pm = QPixmap.fromImage(img)
+                    painter.drawPixmap(icon_rect.adjusted(4, 4, -4, -4), pm.scaled(icon_rect.width() - 8, icon_rect.height() - 8, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    has_icon = True
         
         if not has_icon:
             painter.setPen(QColor(255,255,255,30)); painter.setFont(QFont("Segoe MDL2 Assets", 22))
@@ -409,7 +725,7 @@ class NonScrollComboBox(QComboBox):
 
 class CustomMessageBox(QDialog):
     def __init__(self, parent=None):
-        super().__init__(parent); self.setWindowTitle("Message"); self.setFixedSize(350, 180); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.layout = QVBoxLayout(self); self.frame = QFrame(); self.frame.setStyleSheet("QFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 15px; }"); self.layout.addWidget(self.frame); self.content_layout = QVBoxLayout(self.frame); self.title_label = QLabel("Title"); self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; border: none;"); self.msg_label = QLabel(""); self.msg_label.setWordWrap(True); self.msg_label.setStyleSheet("color: #b0b0b0; border: none;"); self.ok_btn = QPushButton("OK"); self.ok_btn.setFixedSize(80, 32); self.ok_btn.setStyleSheet("QPushButton { background-color: #dc143c; color: #ffffff; border-radius: 8px; font-weight: bold; } QPushButton:hover { background-color: #dc143c; }"); self.ok_btn.clicked.connect(self.accept); self.content_layout.addWidget(self.title_label); self.content_layout.addWidget(self.msg_label); self.content_layout.addWidget(self.ok_btn, 0, Qt.AlignRight)
+        super().__init__(parent); self.setWindowTitle("Message"); self.setFixedSize(350, 180); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.layout = QVBoxLayout(self); self.frame = QFrame(); self.frame.setStyleSheet("QFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 15px; }"); self.layout.addWidget(self.frame); self.content_layout = QVBoxLayout(self.frame); self.title_label = QLabel("Title"); self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; border: none;"); self.msg_label = QLabel(""); self.msg_label.setWordWrap(True); self.msg_label.setStyleSheet("color: #b0b0b0; border: none;"); self.ok_btn = QPushButton("OK"); self.ok_btn.setFixedSize(80, 32); self.ok_btn.setStyleSheet("QPushButton { background-color: #dc143c; color: #ffffff; border-radius: 8px; font-weight: bold; } QPushButton:hover { background-color: #dc143c; }"); self.ok_btn.clicked.connect(self.accept); self.content_layout.addWidget(self.title_label); self.content_layout.addWidget(self.msg_label); self.content_layout.addWidget(self.ok_btn, 0, Qt.AlignRight)
     def setText(self, text): self.title_label.setText(text)
     def setInformativeText(self, text): self.msg_label.setText(text)
 
@@ -456,8 +772,11 @@ class IDPopupDialog(QDialog):
             QComboBox { background: #2a2a30; border: 1px solid #45475a; border-radius: 8px; padding: 8px; color: #ffffff; font-size: 12px; }
             QComboBox:hover { border: 1px solid #dc143c; }
             QComboBox::drop-down { border: none; width: 20px; }
-            QComboBox::down-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #b0b0b0; }
-            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
+            QComboBox::down-arrow { image: url("icons/chevron_down.svg"); width: 14px; height: 14px; border: none; }
+            QComboBox::down-arrow:hover { image: url("icons/chevron_down_hover.svg"); }
+            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; color: #ffffff; outline: none; border-radius: 8px; padding: 6px; }
+            QComboBox QAbstractItemView::item { min-height: 24px; padding: 8px 12px; border-radius: 8px; margin: 2px; }
+            QComboBox QAbstractItemView::item:selected { background-color: rgba(255, 255, 255, 0.1); color: #ffffff; }
         """)
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.addWidget(self.frame); cl = QVBoxLayout(self.frame); cl.setContentsMargins(15, 12, 15, 15); cl.setSpacing(10)
         h1 = QLabel("MENU LOCATION"); cl.addWidget(h1)
@@ -618,9 +937,55 @@ class GlobalTintWorker(QObject):
         self.progress.emit(total, total)
         self.finished.emit()
 
+def _find_target_executable_or_shortcut(cmd_or_title):
+    if not cmd_or_title: return None
+    s = str(cmd_or_title).strip('\'" ')
+    # 1. Direct path check or extracted path with quotes/slashes
+    m = re.search(r'([a-zA-Z]:[\\/][^"\'\n\r\t]+?\.(?:exe|lnk|ico|dll|png|svg))', s, re.I)
+    if m and os.path.exists(m.group(1)):
+        return m.group(1)
+    if os.path.exists(s) and os.path.isfile(s):
+        return s
+
+    # 2. Check if clean name matches common app directories or Start Menu shortcuts
+    clean_name = re.sub(r'[^a-zA-Z0-9 _\-]', '', s).strip().lower()
+    if not clean_name: return None
+
+    search_dirs = [
+        os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
+        os.path.expandvars(r"%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs"),
+        os.path.expandvars(r"%USERPROFILE%\Desktop"),
+        os.path.expandvars(r"%PUBLIC%\Desktop"),
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs"),
+        os.path.expandvars(r"%ProgramFiles%"),
+        os.path.expandvars(r"%ProgramFiles(x86)%"),
+    ]
+
+    for base_dir in search_dirs:
+        if not os.path.exists(base_dir): continue
+        try:
+            for root, _, files in os.walk(base_dir):
+                for f in files:
+                    fl = f.lower()
+                    if fl.endswith(('.lnk', '.exe')):
+                        name_without_ext = os.path.splitext(fl)[0]
+                        if clean_name == name_without_ext or clean_name in name_without_ext:
+                            candidate = os.path.join(root, f)
+                            if os.path.exists(candidate):
+                                return candidate
+        except: pass
+    return None
+
 def _extract_svg_content(val):
     if not val: return None
-    if str(val).strip().startswith('<svg'): return str(val).strip()
+    s = str(val).strip()
+    # Strip any leading/trailing quotes or brackets
+    s = re.sub(r"^[ '\"\[\\]+|[ '\"\]\\]+$", "", s).strip()
+    if s.startswith('<svg') and s.endswith('</svg>'): return s
+    if '<svg' in s and '</svg>' in s:
+        start_idx = s.find('<svg')
+        end_idx = s.rfind('</svg>') + 6
+        return s[start_idx:end_idx]
     m = re.search(r"image\.svg\s*\(\s*", val, re.IGNORECASE)
     if not m: return None
     start = m.end(); pc = 1; p = start; qc = None
@@ -635,60 +1000,83 @@ def _extract_svg_content(val):
         return val[start:p-1].strip().strip("'").strip('"')
     return None
 
-def _update_label_asset(lbl, val, nss_path=None):
+def _update_label_asset(lbl, val, nss_path=None, cmd=None):
     # Clear children
     for c in lbl.findChildren(QWidget): c.deleteLater()
     lbl.setPixmap(QPixmap()); lbl.setText("")
     if not val:
         lbl.setText("\u2726"); lbl.setStyleSheet("color: rgba(220, 20, 60, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
         return
-    codes = _extract_glyph_codes(val); colors = _extract_all_colors(val)
-    if codes:
-        pw = GlyphPreviewLabel(codes, size=lbl.height()-6, font_family=NILESOFT_FONT_FAMILY, colors=colors, parent=lbl)
-        pw.setFixedSize(lbl.size()); pw.show(); return
-    if val.strip('\'" ').startswith('icon.'):
-        pw = GlyphPreviewLabel([0xE91B], size=lbl.height()-6, parent=lbl) # Image icon
-        pw.setFixedSize(lbl.size()); pw.show(); return
     svg_content = _extract_svg_content(val)
     if svg_content:
         try:
             if QtSvg:
-                renderer = QtSvg.QSvgRenderer(svg_content.encode('utf-8'))
+                clean_svg = svg_content.replace("@image.color1", "#ffffff").replace("@image.color2", "#ffffff").replace("@color3", "#ffffff")
+                renderer = QtSvg.QSvgRenderer(clean_svg.encode('utf-8'))
                 if renderer.isValid():
-                    pm = QPixmap(256, 256); pm.fill(Qt.transparent)
-                    p_obj = QPainter(pm); renderer.render(p_obj); p_obj.end()
-                    lbl.setPixmap(pm.scaled(lbl.width()-6, lbl.height()-6, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    sz = renderer.defaultSize()
+                    w = sz.width() if sz.width() > 0 else 24
+                    h = sz.height() if sz.height() > 0 else 24
+                    pm = QPixmap(w * 4, h * 4); pm.fill(Qt.transparent)
+                    p_obj = QPainter(pm); p_obj.setRenderHint(QPainter.Antialiasing); p_obj.setRenderHint(QPainter.SmoothPixmapTransform)
+                    renderer.render(p_obj); p_obj.end()
+                    target_w = max(20, (lbl.width() if lbl.width() > 0 else 46) - 10)
+                    target_h = max(20, (lbl.height() if lbl.height() > 0 else 46) - 10)
+                    scaled_pm = pm.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    lbl.setPixmap(scaled_pm)
                     return
         except: pass
+    codes = _extract_glyph_codes(val); colors = _extract_all_colors(val)
+    if codes:
+        pw = GlyphPreviewLabel(codes, size=lbl.height(), font_family=NILESOFT_FONT_FAMILY, colors=colors, parent=lbl)
+        pw.setFixedSize(lbl.size()); pw.show(); return
+    if val.strip('\'" ').startswith('icon.'):
+        pw = GlyphPreviewLabel([0xE91B], size=lbl.height(), parent=lbl) # Image icon
+        pw.setFixedSize(lbl.size()); pw.show(); return
     path, color = _extract_img_path_and_color(val)
-    if not path: path = val.strip('\'" ')
+    if not path:
+        clean_v = val.strip('\'" ')
+        m_res = re.search(r"image\.res\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", val, re.IGNORECASE)
+        if m_res:
+            path = m_res.group(1)
+        else:
+            path = clean_v
+    
+    # Try resolving path directly or extracting executable path from command
     res_path = _resolve_app_dir_path(path)
-    if not os.path.exists(res_path) and nss_path:
+    if (not res_path or not os.path.exists(res_path)) and cmd:
+        m = re.search(r'([a-zA-Z]:[\\/][^"\'\n\r\t]+?\.(?:exe|ico|dll))', str(cmd), re.I)
+        if m and os.path.exists(m.group(1)):
+            res_path = m.group(1)
+        elif os.path.exists(str(cmd).strip('\'" ')):
+            res_path = str(cmd).strip('\'" ')
+
+    if res_path and not os.path.exists(res_path) and nss_path:
         alt = os.path.join(os.path.dirname(nss_path), path)
         if os.path.exists(alt): res_path = alt
     if res_path and os.path.exists(res_path):
+        pm = QPixmap()
         if res_path.lower().endswith('.svg') and QtSvg:
             try:
                 renderer = QtSvg.QSvgRenderer(res_path)
                 if renderer.isValid():
                     pm = QPixmap(256, 256); pm.fill(Qt.transparent)
-                    p_svg = QPainter(pm); renderer.render(p_svg); p_svg.end()
-                else: pm = QPixmap()
-            except: pm = QPixmap()
-        else:
-            pm = QPixmap()
+                    p_svg = QPainter(pm); p_svg.setRenderHint(QPainter.Antialiasing); p_svg.setRenderHint(QPainter.SmoothPixmapTransform); renderer.render(p_svg); p_svg.end()
+            except: pass
+        if pm.isNull():
             try:
                 with open(res_path, 'rb') as f: data = f.read()
-                if res_path.lower().endswith('.svg') and QtSvg:
-                    renderer = QtSvg.QSvgRenderer(data)
-                    if renderer.isValid():
-                        pm = QPixmap(256, 256); pm.fill(Qt.transparent)
-                        p_svg = QPainter(pm); renderer.render(p_svg); p_svg.end()
-                else:
-                    pm.loadFromData(data)
-            except:
-                icon = QIcon(res_path); pm = icon.pixmap(128, 128)
-                if pm.isNull(): pm = QPixmap(res_path)
+                pm.loadFromData(data)
+            except: pass
+        if pm.isNull():
+            # Use Windows system icon extraction for executables, dlls, shortcuts, etc.
+            provider = QFileIconProvider()
+            icon = provider.icon(QFileInfo(res_path))
+            if not icon.isNull():
+                pm = icon.pixmap(128, 128)
+            if pm.isNull():
+                icon = QIcon(res_path)
+                pm = icon.pixmap(128, 128)
         
         if not pm.isNull():
             if color:
@@ -698,7 +1086,9 @@ def _update_label_asset(lbl, val, nss_path=None):
                         p = img.pixelColor(x, y)
                         if p.alpha() > 0: c.setAlpha(p.alpha()); img.setPixelColor(x, y, c)
                 pm = QPixmap.fromImage(img)
-            lbl.setPixmap(pm.scaled(lbl.width()-6, lbl.height()-6, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            target_w = max(20, (lbl.width() if lbl.width() > 0 else 46) - 10)
+            target_h = max(20, (lbl.height() if lbl.height() > 0 else 46) - 10)
+            lbl.setPixmap(pm.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             return
     lbl.setText("\uE12B"); lbl.setFont(QFont('Segoe MDL2 Assets', 18)); lbl.setStyleSheet("color: #dc143c; background: transparent;")
 def _build_glyph_val(codes, colors=None):
@@ -786,7 +1176,8 @@ class ImportedItemCard(QFrame):
     def update_ui(self):
         data = self.data.get('props', {})
         val = data.get('image') or data.get('icon') or ''
-        _update_label_asset(self.icon_label, val, self.data.get('file'))
+        cmd_val = data.get('cmd') or data.get('path') or ''
+        _update_label_asset(self.icon_label, val, self.data.get('file'), cmd=cmd_val)
         title = data.get('title', 'No Title'); typ = self.data.get('type', 'item').title()
         self.title_label.setText(f"{typ}: <span style='color: #dc143c;'>{title}</span>")
         fname = os.path.basename(self.data.get('file', 'unknown'))
@@ -907,7 +1298,8 @@ class ModificationRuleCard(QFrame):
         
     def update_ui(self):
         data = self.data; val = data.get('image') or data.get('icon') or ''
-        _update_label_asset(self.il, val)
+        cmd_val = data.get('cmd') or data.get('path') or data.get('find') or ''
+        _update_label_asset(self.il, val, cmd=cmd_val)
         
         # Build a friendly Target Title
         target = "Global Rule"
@@ -1122,9 +1514,8 @@ def _extract_img_path_and_color(value):
 
     if not value: return None, None
     text = str(value).strip('\'" ')
-    m = re.search(r"image\.(?:ico|png|bmp|svg|jpg)\s*\(\s*(['\"].*?['\"])\s*\)", text, re.IGNORECASE)
+    m = re.search(r"image\.(?:ico|png|bmp|svg|jpg|res)?\s*\(\s*(['\"].*?['\"])\s*\)", text, re.IGNORECASE)
     if m: 
-        # Check if it's a file path or raw SVG
         inner = m.group(1).strip('\'" ')
         if not inner.startswith('<svg'): text = inner
     # Check for string with bracketed color: "path.png [#ffffff]"
@@ -1202,27 +1593,42 @@ def _get_theme_glyph_colors():
     return _THEME_COLOR_CACHE
 
 class GlyphPreviewLabel(QLabel):
-    def __init__(self, codes, size=36, parent=None, font_family=NILESOFT_FONT_FAMILY, colors=None):
+    def __init__(self, codes, size=36, parent=None, font_family=NILESOFT_FONT_FAMILY, colors=None, font_families=None):
         super().__init__(parent); self.codes = codes; self.glyph_size = size; self.font_family = font_family
+        self.font_families = font_families or [font_family, font_family]
         self.colors = list(colors) if colors else [None, None]
         while len(self.colors) < 2: self.colors.append(None)
-        if font_family == NILESOFT_FONT_FAMILY: _init_nilesoft_font()
+        _init_nilesoft_font()
         self.setAlignment(Qt.AlignCenter); self.setStyleSheet("background: transparent;")
     def paintEvent(self, event):
-        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
-        size = self.glyph_size * 2 // 3
-        font = QFont(self.font_family, size)
-        p.setFont(font)
-        if len(self.codes) == 1:
-            def_c = _get_theme_glyph_colors()[0]
-            p.setPen(QColor(self.colors[0] if self.colors[0] else def_c))
-            p.drawText(self.rect(), Qt.AlignCenter, chr(self.codes[0]))
-        elif len(self.codes) >= 2:
-            def_cs = _get_theme_glyph_colors()
-            p.setPen(QColor(self.colors[0] if self.colors[0] else def_cs[0]))
-            p.drawText(self.rect(), Qt.AlignCenter, chr(self.codes[0]))
-            p.setPen(QColor(self.colors[1] if self.colors[1] else def_cs[1]))
-            p.drawText(self.rect(), Qt.AlignCenter, chr(self.codes[1]))
+        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing); p.setRenderHint(QPainter.SmoothPixmapTransform)
+        metadata = getattr(GlyphBrowserDialog, '_glyphs_cache', {})
+        def_cs = _get_theme_glyph_colors()
+        w_avail = self.width()
+        h_avail = self.height()
+        draw_size = max(16, min(w_avail, h_avail) - 8)
+        
+        if len(self.codes) >= 1:
+            for i, code in enumerate(self.codes[:2]):
+                meta = metadata.get(code, {})
+                c_hex = self.colors[i] if (i < len(self.colors) and self.colors[i]) else def_cs[i if i < len(def_cs) else 0]
+                paths = meta.get('paths', [])
+                if paths:
+                    paths_xml = ''.join([f'<path fill="{c_hex}" d="{d}"/>' for d in paths])
+                    svg_xml = f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{paths_xml}</svg>'
+                    from PyQt5.QtSvg import QSvgRenderer
+                    from PyQt5.QtCore import QByteArray, QRectF
+                    renderer = QSvgRenderer(QByteArray(svg_xml.encode('utf-8')))
+                    if renderer.isValid():
+                        r = QRectF((w_avail - draw_size)/2, (h_avail - draw_size)/2, draw_size, draw_size)
+                        renderer.render(p, r)
+                else:
+                    if isinstance(code, int):
+                        font_size = int(draw_size * 0.72)
+                        font = QFont(self.font_families[i] if i < len(self.font_families) else self.font_family, font_size)
+                        p.setFont(font)
+                        p.setPen(QColor(c_hex))
+                        p.drawText(self.rect(), Qt.AlignCenter, chr(code))
         p.end()
 
 NILESOFT_GLYPH_RANGES = [
@@ -1231,19 +1637,32 @@ NILESOFT_GLYPH_RANGES = [
 
 def get_all_font_glyphs():
     _init_nilesoft_font()
+    codes = set()
     font = QFont(NILESOFT_FONT_FAMILY)
     fm = QFontMetrics(font)
-    codes = []
     for start, end in NILESOFT_GLYPH_RANGES:
         for code in range(start, end + 1):
             ch = chr(code)
             if fm.inFont(ch) and fm.horizontalAdvance(ch) > 0:
-                codes.append(code)
-    return codes
+                codes.add(code)
+    try:
+        from utils import get_glyphs_data
+        data = get_glyphs_data()
+        for key in data.keys():
+            try:
+                codes.add(int(key, 16))
+            except ValueError:
+                codes.add(key)
+    except Exception:
+        pass
+    
+    int_codes = sorted([c for c in codes if isinstance(c, int)])
+    str_codes = sorted([c for c in codes if isinstance(c, str)])
+    return int_codes + str_codes
 
 class ManualSyncConflictDialog(QDialog):
     def __init__(self, manual_items, parent=None):
-        super().__init__(parent); self.manual_items = manual_items; self.setMinimumWidth(500); self.setMinimumHeight(400); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.setup_ui()
+        super().__init__(parent); self.manual_items = manual_items; self.setMinimumWidth(500); self.setMinimumHeight(400); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.setup_ui()
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame"); self.mf.setStyleSheet("#mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.addWidget(self.mf); cl = QVBoxLayout(self.mf); cl.setContentsMargins(25, 25, 25, 25); cl.setSpacing(15)
@@ -1265,6 +1684,102 @@ class ManualSyncConflictDialog(QDialog):
         sync_btn = QPushButton("Sync Selected"); sync_btn.clicked.connect(self.accept); sync_btn.setStyleSheet("background: #dc143c; color: #ffffff; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
         btns.addWidget(skip_all); btns.addWidget(sync_btn); cl.addLayout(btns)
     def get_selected_indices(self): return [cb.property("item_idx") for cb in self.checkboxes if cb.isChecked()]
+
+class AddSVGDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent); self.setWindowTitle("Add Custom SVG Icon"); self.setMinimumWidth(480); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; }")
+        self.created_key = None
+        self._drag_pos = None
+        self.setup_ui()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self._drag_pos is not None:
+            self.move(event.globalPos() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+
+    def setup_ui(self):
+        self.mf = QFrame(self); self.mf.setObjectName("addSvgFrame")
+        self.mf.setStyleSheet("#addSvgFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } QLabel { color: #ffffff; font-size: 13px; } QLineEdit, QTextEdit { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #ffffff; font-size: 12px; }")
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.addWidget(self.mf)
+        cl = QVBoxLayout(self.mf); cl.setContentsMargins(22, 22, 22, 22); cl.setSpacing(10)
+        h = QLabel("Add Custom SVG Icon"); h.setStyleSheet("font-size: 17px; font-weight: bold; color: white;"); cl.addWidget(h)
+        
+        cl.addWidget(QLabel("Icon Title / Name:"))
+        self.name_inp = QLineEdit(); self.name_inp.setPlaceholderText("e.g. Valorant, Discord, Custom Logo")
+        cl.addWidget(self.name_inp)
+
+        cl.addWidget(QLabel("Search Keywords (comma-separated):"))
+        self.kw_inp = QLineEdit(); self.kw_inp.setPlaceholderText("e.g. game, riot, fps, shooter, play")
+        cl.addWidget(self.kw_inp)
+
+        cl.addWidget(QLabel("SVG Content or Path(s):"))
+        self.svg_inp = QTextEdit()
+        self.svg_inp.setPlaceholderText("Paste raw <svg>...</svg> code or d=\"...\" path string")
+        self.svg_inp.setFixedHeight(105)
+        cl.addWidget(self.svg_inp)
+
+        btns = QHBoxLayout()
+        cancel_btn = QPushButton("Cancel"); cancel_btn.setCursor(Qt.PointingHandCursor); cancel_btn.setStyleSheet("QPushButton { background: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 16px; } QPushButton:hover { background: #45475a; }")
+        cancel_btn.clicked.connect(self.reject)
+        save_btn = QPushButton("Add Icon"); save_btn.setCursor(Qt.PointingHandCursor); save_btn.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
+        save_btn.clicked.connect(self.save_svg)
+        btns.addStretch(); btns.addWidget(cancel_btn); btns.addWidget(save_btn)
+        cl.addLayout(btns)
+
+    def save_svg(self):
+        title = self.name_inp.text().strip()
+        raw_svg = self.svg_inp.toPlainText().strip()
+        if not title or not raw_svg:
+            return
+        
+        paths = re.findall(r'd=["\']([^"\']+)["\']', raw_svg, re.IGNORECASE)
+        if not paths:
+            if raw_svg.startswith("M") or raw_svg.startswith("m"):
+                paths = [raw_svg]
+
+        if not paths:
+            return
+
+        from utils import get_glyphs_json_path, get_glyphs_data, generate_glyphs_data
+        json_path = get_glyphs_json_path()
+        glyphs = get_glyphs_data()
+
+        clean_name = title.lower().replace(" ", "_")
+        key = f"custom_{clean_name}"
+        
+        extra_keywords = [kw.strip().lower() for kw in self.kw_inp.text().split(',') if kw.strip()]
+        base_keywords = [title.lower(), 'custom', 'svg']
+        combined_keywords = list(dict.fromkeys(base_keywords + extra_keywords))
+
+        glyphs[key] = {
+            'name': title.lower(),
+            'font': 'svg',
+            'paths': paths,
+            'keywords': combined_keywords
+        }
+
+        try:
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(glyphs, f, ensure_ascii=False, indent=2)
+            try:
+                generate_glyphs_data()
+            except Exception:
+                pass
+            if hasattr(GlyphBrowserDialog, '_glyphs_cache'):
+                GlyphBrowserDialog._glyphs_cache = None
+            self.created_key = key
+            self.accept()
+        except Exception as e:
+            print("Error saving SVG:", e)
 
 class GlyphBrowserDialog(QDialog):
     preview_changed = pyqtSignal(str)
@@ -1288,17 +1803,43 @@ class GlyphBrowserDialog(QDialog):
         h = QLabel("Glyph Browser"); h.setStyleSheet("font-size: 18px; font-weight: bold; color: white;"); cl.addWidget(h)
         desc = QLabel("Select up to 2 glyphs. Single = image, Dual = layered icon."); desc.setStyleSheet("color: #888888; font-size: 12px;"); cl.addWidget(desc)
         top_row = QHBoxLayout()
-        self.search_inp = QLineEdit(); self.search_inp.setPlaceholderText("Search by code e.g. E249")
-        self.search_inp.setStyleSheet("background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 8px; color: #ffffff; font-size: 13px;")
-        self.search_inp.textChanged.connect(self.filter_glyphs)
-        top_row.addWidget(self.search_inp, 1)
+        self.search_inp = QLineEdit(); self.search_inp.setPlaceholderText("Search glyphs or keywords...")
+        self.search_inp.setStyleSheet("background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 8px 12px; color: #ffffff; font-size: 13px;")
         
-        self.preview_frame = QFrame(); self.preview_frame.setFixedSize(60, 50)
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.setInterval(40)
+        self.search_timer.timeout.connect(lambda: self.filter_glyphs(self.search_inp.text()))
+        self.search_inp.textChanged.connect(lambda: self.search_timer.start())
+        top_row.addWidget(self.search_inp, 1)
+
+        self.upload_img_btn = QPushButton("\uE8E5")
+        self.upload_img_btn.setFont(QFont('Segoe MDL2 Assets', 12))
+        self.upload_img_btn.setFixedSize(38, 38)
+        self.upload_img_btn.setCursor(Qt.PointingHandCursor)
+        self.upload_img_btn.setToolTip("Upload Custom Image/Icon")
+        self.upload_img_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 10px;
+                color: #e0e0e0;
+            }
+            QPushButton:hover {
+                background: rgba(220, 20, 60, 0.2);
+                border: 1px solid #dc143c;
+                color: #ffffff;
+            }
+        """)
+        self.upload_img_btn.clicked.connect(self._upload_custom_icon)
+        top_row.addWidget(self.upload_img_btn)
+        
+        self.preview_frame = QFrame(); self.preview_frame.setFixedSize(56, 44)
         self.preview_frame.setStyleSheet("background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);")
         self.preview_layout = QVBoxLayout(self.preview_frame); self.preview_layout.setContentsMargins(0, 0, 0, 0)
         self._update_preview()
         top_row.addWidget(self.preview_frame)
-        self.sel_label = QLabel(self._selection_text()); self.sel_label.setStyleSheet("color: #dc143c; font-size: 12px; font-weight: bold;"); self.sel_label.setFixedWidth(120)
+        self.sel_label = QLabel(self._selection_text()); self.sel_label.setStyleSheet("color: #dc143c; font-size: 12px; font-weight: bold;"); self.sel_label.setFixedWidth(110)
         top_row.addWidget(self.sel_label)
         cl.addLayout(top_row)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setStyleSheet("background: transparent; border: none;")
@@ -1311,7 +1852,12 @@ class GlyphBrowserDialog(QDialog):
         self.glyph_list.setSelectionMode(QListWidget.MultiSelection)
         self.glyph_list.setStyleSheet("QListWidget { background: transparent; border: none; outline: none; } QListWidget::item { background: rgba(255,255,255,0.04); border-radius: 8px; margin: 2px; } QListWidget::item:hover { background: rgba(255,255,255,0.1); } QListWidget::item:selected { background: rgba(220, 20, 60, 0.2); border: 1px solid #dc143c; }")
         self.glyph_list.itemClicked.connect(self.on_item_clicked)
+        self.glyph_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
         cl.addWidget(self.glyph_list, 1)
+
+        self._current_items = []
+        self._rendered_count = 0
+        self._batch_size = 80
         self._populate_list(self.all_codes)
         btns = QHBoxLayout()
         color_area = QHBoxLayout(); color_area.setSpacing(6)
@@ -1326,7 +1872,7 @@ class GlyphBrowserDialog(QDialog):
         self.color1_btn.setEnabled(self.color1_enabled.isChecked())
         self.color1_enabled.stateChanged.connect(lambda s: (self.color1_btn.setEnabled(bool(s)), self._on_color_toggle(0, bool(s))))
         color_area.addWidget(self.color1_enabled); color_area.addWidget(self.color1_btn)
-        c1l = QLabel("G1"); c1l.setStyleSheet("color: #333333; font-size: 10px;"); color_area.addWidget(c1l)
+        c1l = QLabel("G1"); c1l.setStyleSheet("color: #888888; font-size: 10px;"); color_area.addWidget(c1l)
         color_area.addSpacing(8)
         self.color2_enabled = QCheckBox(); self.color2_enabled.setFixedSize(16, 16)
         self.color2_enabled.setToolTip("Enable color for glyph 2")
@@ -1339,7 +1885,7 @@ class GlyphBrowserDialog(QDialog):
         self.color2_btn.setEnabled(self.color2_enabled.isChecked())
         self.color2_enabled.stateChanged.connect(lambda s: (self.color2_btn.setEnabled(bool(s)), self._on_color_toggle(1, bool(s))))
         color_area.addWidget(self.color2_enabled); color_area.addWidget(self.color2_btn)
-        c2l = QLabel("G2"); c2l.setStyleSheet("color: #333333; font-size: 10px;"); color_area.addWidget(c2l)
+        c2l = QLabel("G2"); c2l.setStyleSheet("color: #888888; font-size: 10px;"); color_area.addWidget(c2l)
         btns.addLayout(color_area)
         btns.addStretch()
         clear_btn = QPushButton("Clear"); clear_btn.setCursor(Qt.PointingHandCursor); clear_btn.setStyleSheet("QPushButton { background: #45475a; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #333333; }")
@@ -1351,6 +1897,15 @@ class GlyphBrowserDialog(QDialog):
         btns.addWidget(clear_btn); btns.addWidget(cancel_btn); btns.addWidget(ok_btn)
         cl.addLayout(btns)
 
+    def _upload_custom_icon(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Select Icon / Image", "", "Images (*.png *.ico *.bmp *.jpg *.svg)")
+        if path:
+            norm_path = os.path.normpath(path)
+            dlg = LocalIconTintDialog(norm_path, self)
+            if dlg.exec_():
+                self.result_value = dlg.result_value
+                self.preview_changed.emit(self.result_value)
+                self.accept()
         
     def _update_color_btn(self, btn, color_hex):
         btn.setStyleSheet(f"QPushButton {{ background-color: {color_hex}; border-radius: 14px; border: 2px solid rgba(255,255,255,0.2); }} QPushButton:hover {{ border: 2px solid white; }} QPushButton:disabled {{ opacity: 0.3; background-color: #45475a; }}")
@@ -1376,50 +1931,217 @@ class GlyphBrowserDialog(QDialog):
             self._update_preview()
         dlg.colorSelected.connect(on_color)
         dlg.exec_()
-    def _populate_list(self, codes):
+
+    def on_item_clicked(self, item):
+        code = item.data(Qt.UserRole)
+        metadata, _ = self._load_glyphs_metadata()
+        meta = metadata.get(code, {})
+        is_svg = bool(meta.get('paths'))
+        
+        if code in self.selected:
+            self.selected.remove(code)
+            item.setSelected(False)
+        else:
+            if is_svg:
+                for i in range(self.glyph_list.count()):
+                    it = self.glyph_list.item(i)
+                    it.setSelected(False)
+                self.selected = [code]
+                item.setSelected(True)
+            else:
+                svg_selected = [c for c in self.selected if metadata.get(c, {}).get('paths')]
+                for old_code in svg_selected:
+                    self.selected.remove(old_code)
+                    for i in range(self.glyph_list.count()):
+                        it = self.glyph_list.item(i)
+                        if it.data(Qt.UserRole) == old_code:
+                            it.setSelected(False)
+                            break
+                if len(self.selected) < 2:
+                    self.selected.append(code)
+                    item.setSelected(True)
+                else:
+                    old_code = self.selected.pop()
+                    for i in range(self.glyph_list.count()):
+                        it = self.glyph_list.item(i)
+                        if it.data(Qt.UserRole) == old_code:
+                            it.setSelected(False)
+                            break
+                    self.selected.append(code)
+                    item.setSelected(True)
+                    
+        self.sel_label.setText(self._selection_text()); self._update_preview()
+        self.preview_changed.emit(self._get_result_value())
+
+    def _load_glyphs_metadata(self):
+        from utils import get_glyphs_data, get_glyphs_json_path
+        json_path = get_glyphs_json_path()
+        curr_mtime = os.path.getmtime(json_path) if os.path.exists(json_path) else 0
+
+        if hasattr(GlyphBrowserDialog, '_glyphs_cache') and GlyphBrowserDialog._glyphs_cache:
+            if getattr(GlyphBrowserDialog, '_glyphs_mtime', 0) == curr_mtime and curr_mtime > 0:
+                return GlyphBrowserDialog._glyphs_cache, GlyphBrowserDialog._glyphs_reverse_map
+
+        data = get_glyphs_data()
+
+        cache = {}
+        reverse_map = {}
+        if data:
+            for key, item in data.items():
+                try:
+                    code_int = int(key, 16)
+                except ValueError:
+                    code_int = key
+                name = str(item.get('name', '')).strip().lower()
+                keywords = [str(kw).strip().lower() for kw in item.get('keywords', []) if str(kw).strip()]
+                font_family = str(item.get('font', '')).strip()
+                paths = item.get('paths', [])
+                cache[code_int] = {
+                    'key': key,
+                    'name': name,
+                    'keywords': keywords,
+                    'font': font_family,
+                    'paths': paths
+                }
+                reverse_map[code_int] = name
+
+        GlyphBrowserDialog._glyphs_cache = cache
+        GlyphBrowserDialog._glyphs_reverse_map = reverse_map
+        GlyphBrowserDialog._glyphs_mtime = curr_mtime
+        return cache, reverse_map
+
+    def _on_scroll(self, value):
+        scroll_bar = self.glyph_list.verticalScrollBar()
+        if scroll_bar.maximum() - value < 150:
+            self._render_next_batch()
+
+    def _populate_list(self, items_to_show, preserve_order=False):
+        self.glyph_list.setUpdatesEnabled(False)
         self.glyph_list.clear()
-        font = QFont(NILESOFT_FONT_FAMILY, 18)
-        # Sort so selected are first
-        sorted_codes = sorted(codes, key=lambda c: (0 if c in self.selected else 1, c))
-        for code in sorted_codes:
-            item = QListWidgetItem(chr(code))
-            item.setFont(font)
+        metadata, rev_map = self._load_glyphs_metadata()
+        
+        if not hasattr(self, '_icon_cache'):
+            self._icon_cache = {}
+
+        processed = []
+        for entry in items_to_show:
+            if isinstance(entry, tuple):
+                code, meta_name = entry
+            else:
+                code = entry
+                meta_name = rev_map.get(code, '')
+            processed.append((code, meta_name))
+            
+        if preserve_order:
+            self._current_items = processed
+        else:
+            self._current_items = sorted(processed, key=lambda x: (0 if x[0] in self.selected else 1, 0 if isinstance(x[0], int) else 1, str(x[0])))
+
+        self._rendered_count = 0
+        self._render_next_batch()
+        self.glyph_list.setUpdatesEnabled(True)
+
+    def _render_next_batch(self):
+        if self._rendered_count >= len(self._current_items):
+            return
+
+        metadata, _ = self._load_glyphs_metadata()
+        batch = self._current_items[self._rendered_count:self._rendered_count + self._batch_size]
+        self._rendered_count += len(batch)
+
+        for code, meta_name in batch:
+            meta = metadata.get(code, {})
+            paths = meta.get('paths', [])
+            item = QListWidgetItem()
+            clean_title = meta_name
+            if clean_title.startswith('ri '): clean_title = clean_title[3:]
+            elif clean_title.startswith('la '): clean_title = clean_title[3:]
+            tooltip = clean_title if clean_title else (f"\\u{code:04X}" if isinstance(code, int) else str(code))
+
+            if paths:
+                if code not in self._icon_cache:
+                    paths_xml = ''.join([f'<path fill="#ffffff" d="{d}"/>' for d in paths])
+                    svg_xml = f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{paths_xml}</svg>'
+                    from PyQt5.QtSvg import QSvgRenderer
+                    from PyQt5.QtGui import QPixmap, QPainter, QIcon
+                    from PyQt5.QtCore import QByteArray
+                    renderer = QSvgRenderer(QByteArray(svg_xml.encode('utf-8')))
+                    pixmap = QPixmap(32, 32)
+                    pixmap.fill(Qt.transparent)
+                    p = QPainter(pixmap)
+                    renderer.render(p)
+                    p.end()
+                    self._icon_cache[code] = QIcon(pixmap)
+                item.setIcon(self._icon_cache[code])
+            else:
+                item.setText(chr(code) if isinstance(code, int) else str(code))
+                item.setFont(QFont(NILESOFT_FONT_FAMILY, 18))
+
             item.setTextAlignment(Qt.AlignCenter)
-            item.setToolTip(f"\\u{code:04X}")
+            item.setToolTip(tooltip)
             item.setData(Qt.UserRole, code)
             item.setSizeHint(QSize(46, 46))
             self.glyph_list.addItem(item)
             if code in self.selected:
                 item.setSelected(True)
 
-    def on_item_clicked(self, item):
-        code = item.data(Qt.UserRole)
-        if code in self.selected:
-            self.selected.remove(code)
-            item.setSelected(False)
-        elif len(self.selected) < 2:
-            self.selected.append(code)
-            item.setSelected(True)
-        else:
-            # Replace the second selected (the last one picked)
-            old_code = self.selected.pop()
-            # Find and unselect the old item in the list
-            for i in range(self.glyph_list.count()):
-                it = self.glyph_list.item(i)
-                if it.data(Qt.UserRole) == old_code:
-                    it.setSelected(False)
-                    break
-            self.selected.append(code)
-            item.setSelected(True)
-        self.sel_label.setText(self._selection_text()); self._update_preview()
-        self.preview_changed.emit(self._get_result_value())
-
     def filter_glyphs(self, text):
-        t = text.strip().upper().replace("\\U", "").replace("0X", "")
-        if not t:
-            self._populate_list(self.all_codes); return
-        filtered = [c for c in self.all_codes if t in f"{c:04X}"]
-        self._populate_list(filtered)
+        raw_query = text.strip()
+        if not raw_query:
+            self._populate_list(self.all_codes, preserve_order=False)
+            return
+
+        q_lower = raw_query.lower()
+        q_hex = q_lower.replace("\\u", "").replace("0x", "")
+        metadata, _ = self._load_glyphs_metadata()
+
+        matched_results = []
+        for code in self.all_codes:
+            code_hex = f"{code:04X}" if isinstance(code, int) else str(code)
+            score = float('inf')
+            
+            meta = metadata.get(code)
+            meta_name = meta['name'] if meta else ''
+            keywords = meta['keywords'] if meta else []
+
+            if meta_name and meta_name == q_lower:
+                score = 0
+            elif keywords and any(kw == q_lower for kw in keywords):
+                score = 1
+            elif q_hex and isinstance(code, int) and code_hex.lower() == q_hex:
+                score = 2
+            elif isinstance(code, int) and raw_query == chr(code):
+                score = 3
+            elif meta_name and q_lower in re.split(r'[ _\-]+', meta_name):
+                score = 4
+            elif meta_name and meta_name.startswith(q_lower):
+                score = 5 + min(len(meta_name) - len(q_lower), 50) * 0.01
+            elif keywords and any(kw.startswith(q_lower) for kw in keywords):
+                matching_kw = next(kw for kw in keywords if kw.startswith(q_lower))
+                score = 6 + min(len(matching_kw) - len(q_lower), 50) * 0.01
+            elif meta_name and q_lower in meta_name:
+                score = 7 + min(len(meta_name), 50) * 0.01
+            elif keywords and any(q_lower in kw for kw in keywords):
+                score = 8
+            elif q_hex and q_hex in code_hex.lower():
+                score = 9
+            elif meta_name and _fuzzy_match(q_lower, meta_name):
+                score = 10
+            elif keywords and any(_fuzzy_match(q_lower, kw) for kw in keywords):
+                score = 11
+
+            if score < float('inf'):
+                matched_results.append((score, len(meta_name), code, meta_name))
+
+        matched_results.sort(key=lambda x: (
+            0 if x[2] in self.selected else 1,
+            x[0],
+            x[1],
+            0 if isinstance(x[2], int) else 1,
+            str(x[2])
+        ))
+        filtered_codes = [(item[2], item[3]) for item in matched_results]
+        self._populate_list(filtered_codes, preserve_order=True)
 
     def clear_selection(self):
         self.selected.clear()
@@ -1428,13 +2150,27 @@ class GlyphBrowserDialog(QDialog):
         self.preview_changed.emit('')
     def _get_result_value(self):
         if len(self.selected) == 0: return ''
+        metadata, _ = self._load_glyphs_metadata()
+        def_cs = _get_theme_glyph_colors()
+        
+        selected_code = self.selected[0]
+        meta = metadata.get(selected_code, {})
+        paths = meta.get('paths', [])
+        
+        if paths:
+            c1 = self.glyph_colors[0] if self.color1_enabled.isChecked() else None
+            fill_val = c1 if c1 else "@image.color1"
+            paths_xml = ''.join([f'<path fill="{fill_val}" d="{d}"/>' for d in paths])
+            svg_str = f'<svg fill="none" viewBox="0 0 24 24">{paths_xml}</svg>'
+            return f"'{svg_str}'"
+            
         c1 = self.glyph_colors[0] if self.color1_enabled.isChecked() else None
         c2 = self.glyph_colors[1] if self.color2_enabled.isChecked() else None
         if len(self.selected) == 1:
             g = f"\\u{self.selected[0]:04X}"
             if c1: return f'[["{g}", {c1}]]'
             return f'["{g}"]'
-        codes = [f"\\u{c:04X}" for c in self.selected]
+        codes = [f"\\u{c:04X}" if isinstance(c, int) else str(c) for c in self.selected]
         parts = []
         for i, g in enumerate(codes):
             en = self.color1_enabled if i == 0 else self.color2_enabled
@@ -1447,7 +2183,7 @@ class GlyphBrowserDialog(QDialog):
 
     def _selection_text(self):
         if not self.selected: return "None selected"
-        return " + ".join([f"\\u{c:04X}" for c in self.selected])
+        return " + ".join([f"\\u{c:04X}" if isinstance(c, int) else str(c) for c in self.selected])
 
     def _update_preview(self):
         if not hasattr(self, 'preview_layout'): return
@@ -1457,7 +2193,9 @@ class GlyphBrowserDialog(QDialog):
         if self.selected:
             c1 = self.glyph_colors[0] if not hasattr(self, 'color1_enabled') or self.color1_enabled.isChecked() else None
             c2 = self.glyph_colors[1] if not hasattr(self, 'color2_enabled') or self.color2_enabled.isChecked() else None
-            pw = GlyphPreviewLabel(self.selected, size=44, font_family=NILESOFT_FONT_FAMILY, colors=[c1, c2]); pw.setFixedSize(50, 44)
+            metadata, _ = self._load_glyphs_metadata()
+            font_families = [NILESOFT_FONT_FAMILY for _ in self.selected]
+            pw = GlyphPreviewLabel(self.selected, size=44, font_family=NILESOFT_FONT_FAMILY, colors=[c1, c2], font_families=font_families); pw.setFixedSize(50, 44)
             self.preview_layout.addWidget(pw); pw.show()
         else:
             pl = QLabel("\u2726"); pl.setAlignment(Qt.AlignCenter); pl.setStyleSheet("color: #333333; font-size: 24px; background: transparent;"); self.preview_layout.addWidget(pl); pl.show()
@@ -1549,85 +2287,170 @@ class LocalIconTintDialog(QDialog):
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Save Error", f"Failed to save icon. The file may be in use by another process.\n\nError: {str(e)}")
 
+class ClickablePreviewLabel(QLabel):
+    clicked = pyqtSignal()
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
 class ImportEditorDialog(QDialog):
-    def __init__(self, data=None, parent=None):
-        super().__init__(parent); self.data = data or {}; self.props = data.get('props', {}).copy()
-        self.setMinimumWidth(520); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #ffffff; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.4); border-radius: 8px; padding: 8px 14px; font-family: 'Segoe UI Variable Display'; font-size: 12px; }")
+    def __init__(self, data=None, parent=None, embed_mode=False):
+        super().__init__(parent)
+        self.data = data or {}
+        self.props = data.get('props', {}).copy()
+        self.embed_mode = embed_mode
+        self.setMinimumWidth(500)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
+        self._drag_pos = None
         self.setup_ui()
+
+    def mousePressEvent(self, event):
+        if not self.embed_mode and event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if not self.embed_mode and event.buttons() == Qt.LeftButton and self._drag_pos is not None:
+            self.move(event.globalPos() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
 
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
             #mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
-            QLabel { color: #ffffff; font-size: 13px; } 
-            QLineEdit, QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #ffffff; } 
+            QLabel { color: #ffffff; font-size: 12px; } 
+            QLineEdit { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; selection-background-color: #dc143c; } 
+            QLineEdit:focus { border: 1px solid #dc143c; }
+            QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; }
+            QComboBox:hover, QComboBox:focus { border: 1px solid #dc143c; }
             QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
-            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 10px 20px; font-weight: bold; } 
+            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } 
             QPushButton#saveBtn:hover { background-color: #ff2a55; }
-            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 10px 20px; }
+            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 18px; }
             QPushButton#cancelBtn:hover { background-color: #45475a; }
         """)
-        layout = QVBoxLayout(self); layout.addWidget(self.mf)
-        cl = QVBoxLayout(self.mf); cl.setContentsMargins(25, 25, 25, 25); cl.setSpacing(15)
+        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.addWidget(self.mf)
+        cl = QVBoxLayout(self.mf); cl.setContentsMargins(18, 16, 18, 16); cl.setSpacing(10)
         
-        h = QLabel(f"Edit {self.data.get('type', 'Item').title()}"); h.setStyleSheet("font-size: 18px; font-weight: bold; color: white;"); cl.addWidget(h)
+        if not self.embed_mode:
+            h = QLabel(f"Edit {self.data.get('type', 'Item').title()}"); h.setStyleSheet("font-size: 16px; font-weight: bold; color: white;"); cl.addWidget(h)
         
-        ag = QFrame(); ag.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); al = QGridLayout(ag); cl.addWidget(ag)
+        ag = QFrame(); ag.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); al = QGridLayout(ag); al.setVerticalSpacing(8); al.setHorizontalSpacing(10); cl.addWidget(ag)
         
         self.t_inp = QLineEdit(self.props.get('title', '').strip('\'\"')); al.addWidget(QLabel("Title:"), 0, 0); al.addWidget(self.t_inp, 0, 1)
         
         ic_row = QHBoxLayout()
-        self.c_lay = QHBoxLayout(); self.c_lay.setSpacing(5); self.c_lay.setAlignment(Qt.AlignLeft)
-        ic_row.addLayout(self.c_lay)
-        self.ic_prev_lbl = QLabel(); self.ic_prev_lbl.setFixedSize(38, 38); self.ic_prev_lbl.setAlignment(Qt.AlignCenter); self.ic_prev_lbl.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
-        self.ic_inp = QLineEdit(self.props.get('icon') or self.props.get('image') or ''); self.ic_inp.textChanged.connect(self._update_colors_ui)
+        ic_row.setSpacing(6)
         
-        self.ic_glyph = QPushButton("\uED58") # Glyphs icon
-        self.ic_glyph.setFont(QFont('Segoe MDL2 Assets', 14))
-        self.ic_glyph.setFixedSize(38, 38)
-        self.ic_glyph.setCursor(Qt.PointingHandCursor)
-        self.ic_glyph.setToolTip("Browse Glyphs")
-        self.ic_glyph.setStyleSheet("QPushButton { background: rgba(226, 158, 74, 0.1); border: 1px solid rgba(226, 158, 74, 0.3); border-radius: 10px; color: #E29E4A; } QPushButton:hover { background: #E29E4A; color: white; border: none; }")
-        self.ic_glyph.clicked.connect(self._open_glyph_browser)
-
-        self.ic_browse = QPushButton("\uE8E5") # Image icon
-        self.ic_browse.setFont(QFont('Segoe MDL2 Assets', 14))
-        self.ic_browse.setFixedSize(38, 38)
-        self.ic_browse.setCursor(Qt.PointingHandCursor)
-        self.ic_browse.setToolTip("Upload Local Image")
-        self.ic_browse.setStyleSheet("QPushButton { background: rgba(74, 144, 226, 0.1); border: 1px solid rgba(74, 144, 226, 0.3); border-radius: 10px; color: #4A90E2; } QPushButton:hover { background: #4A90E2; color: white; border: none; }")
-        self.ic_browse.clicked.connect(self._browse_icon)
-
-        ic_row.addWidget(self.ic_prev_lbl); ic_row.addWidget(self.ic_inp, 1); ic_row.addWidget(self.ic_glyph); ic_row.addWidget(self.ic_browse)
-        al.addWidget(QLabel("Icon/Image:"), 1, 0); al.addLayout(ic_row, 1, 1)
+        self.c_container = QWidget()
+        self.c_lay = QHBoxLayout(self.c_container)
+        self.c_lay.setContentsMargins(0, 0, 0, 0)
+        self.c_lay.setSpacing(4)
+        self.c_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        self.ic_prev_lbl = ClickablePreviewLabel()
+        self.ic_prev_lbl.setFixedSize(46, 46)
+        self.ic_prev_lbl.setAlignment(Qt.AlignCenter)
+        self.ic_prev_lbl.setToolTip("Click to Browse Glyphs / Upload Icon")
+        self.ic_prev_lbl.setStyleSheet("""
+            ClickablePreviewLabel {
+                background: rgba(255,255,255,0.05); 
+                border-radius: 12px; 
+                border: 1px solid rgba(255,255,255,0.12);
+            }
+            ClickablePreviewLabel:hover {
+                border: 1px solid #dc143c;
+                background: rgba(220, 20, 60, 0.12);
+            }
+        """)
+        self.ic_prev_lbl.clicked.connect(self._open_glyph_browser)
+        
+        self.ic_inp = QLineEdit(self.props.get('icon') or self.props.get('image') or '')
+        self.ic_inp.setPlaceholderText("e.g. \\uE102, image path, or image.res(...)")
+        self.ic_inp.textChanged.connect(self._update_colors_ui)
         self.ic_inp.textChanged.connect(lambda t: _update_label_asset(self.ic_prev_lbl, t))
+        
+        btn_action_style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 10px;
+                color: #e0e0e0;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: rgba(220, 20, 60, 0.2);
+                border: 1px solid #dc143c;
+                color: #ffffff;
+            }
+        """
+
+        self.ic_inherit = QPushButton("\uE777")
+        self.ic_inherit.setFont(QFont('Segoe MDL2 Assets', 13))
+        self.ic_inherit.setFixedSize(34, 34)
+        self.ic_inherit.setCursor(Qt.PointingHandCursor)
+        self.ic_inherit.setToolTip("Inherit Icon from Target Command/File")
+        self.ic_inherit.setStyleSheet(btn_action_style)
+        self.ic_inherit.clicked.connect(self._inherit_icon)
+
+        self.ic_remove = QPushButton("\uE74D")
+        self.ic_remove.setFont(QFont('Segoe MDL2 Assets', 13))
+        self.ic_remove.setFixedSize(34, 34)
+        self.ic_remove.setCursor(Qt.PointingHandCursor)
+        self.ic_remove.setToolTip("Remove Icon")
+        self.ic_remove.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+                color: #888888;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: rgba(255, 50, 50, 0.25);
+                border: 1px solid #ff4444;
+                color: #ffffff;
+            }
+        """)
+        self.ic_remove.clicked.connect(lambda: self.ic_inp.setText(""))
+
+        ic_row.addWidget(self.c_container)
+        ic_row.addWidget(self.ic_prev_lbl)
+        ic_row.addWidget(self.ic_inp, 1)
+        if not self.embed_mode:
+            ic_row.addWidget(self.ic_inherit)
+            ic_row.addWidget(self.ic_remove)
+        al.addWidget(QLabel("Icon/Image:"), 1, 0); al.addLayout(ic_row, 1, 1)
         _update_label_asset(self.ic_prev_lbl, self.ic_inp.text()); self._update_colors_ui()
 
         self.p_box = NonScrollComboBox(); self.p_box.addItems(ModifyRuleEditorDialog.POS_OPTIONS)
+        self.p_box.setFixedWidth(110)
         p_val = str(self.props.get('pos', '')).strip('\'"')
         (self.p_box.setCurrentText(p_val) if p_val in ModifyRuleEditorDialog.POS_OPTIONS else (self.p_box.addItem(p_val), self.p_box.setCurrentText(p_val)))
-        al.addWidget(QLabel("Position:"), 2, 0); al.addWidget(self.p_box, 2, 1)
         
-        v_inv = {v: k for k, v in _get_vis_options().items()}
-        self.v_box = NonScrollComboBox(); self.v_box.addItems(list(_get_vis_options().keys())); self.v_box.setCurrentText(v_inv.get(self.props.get('vis', ''), "Always Visible")); al.addWidget(QLabel("Visibility:"), 3, 0); al.addWidget(self.v_box, 3, 1)
-        
-        self.cond_w = QWidget(); self.cond_l = QHBoxLayout(self.cond_w); self.cond_l.setContentsMargins(0,0,0,0); self.cond_l.setSpacing(6)
-        self.cb_normal = KeyToggleButton("Normal"); self.cb_normal.setChecked(True); self.cb_normal.setEnabled(False)
-        self.cb_shift = KeyToggleButton("Shift"); self.cb_ctrl = KeyToggleButton("Ctrl"); self.cb_caps = KeyToggleButton("Caps"); self.cb_lmb = KeyToggleButton("LMB")
-        for cb in [self.cb_normal, self.cb_shift, self.cb_ctrl, self.cb_caps, self.cb_lmb]: self.cond_l.addWidget(cb)
-        al.addWidget(self.cond_w, 4, 1); self.cond_w.hide()
-        self.v_box.currentTextChanged.connect(lambda t: self.cond_w.setVisible(t == "Visible In..."))
-        
-        v_val = str(self.props.get('vis', '')).lower()
-        if '@if' in v_val and 'hidden' in v_val:
-            self.v_box.setCurrentText("Visible In...")
-            res = _parse_vis_expression(v_val)
-            self.cb_shift.setChecked(res['shift']); self.cb_ctrl.setChecked(res['ctrl'])
-            self.cb_caps.setChecked(res['caps']); self.cb_lmb.setChecked(res['lmb'])
+        v_val = str(self.props.get('vis', ''))
+        self.vis_widget = VisibilityWidget()
+        self.vis_widget.set_value(v_val)
+        al.addWidget(QLabel("Visibility:"), 2, 0); al.addWidget(self.vis_widget, 2, 1)
+
+        self.type_widget = TypeWidget()
+        self.type_widget.set_value(self.props.get('type', ''))
+        al.addWidget(QLabel("Show in:"), 3, 0); al.addWidget(self.type_widget, 3, 1)
         
         m_opts = ["None", "Main", "Options"]
         self.m_box = NonScrollComboBox(); self.m_box.addItems(m_opts)
+        self.m_box.setFixedWidth(130)
         
         curr_m = str(self.props.get('menu', '')).strip('\'"')
         curr_m_low = curr_m.lower()
@@ -1639,23 +2462,54 @@ class ImportEditorDialog(QDialog):
                 self.m_box.addItem(curr_m)
             self.m_box.setCurrentText(curr_m)
         
-        al.addWidget(QLabel("Move to:"), 5, 0); al.addWidget(self.m_box, 5, 1)
-        
-        self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"]); al.addWidget(QLabel("Separator:"), 6, 0); al.addWidget(self.sep_box, 6, 1)
+        self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"])
+        self.sep_box.setFixedWidth(130)
         curr_sep = str(self.props.get('sep', '')).strip('\'"')
         if curr_sep:
             if curr_sep.lower() in ('true', '1'): self.sep_box.setCurrentText("Before")
             else: self.sep_box.setCurrentText(curr_sep.title())
 
-        btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Changes"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
+        m_row = QHBoxLayout()
+        m_row.addWidget(self.m_box)
+        m_row.addStretch()
+        al.addWidget(QLabel("Move to:"), 4, 0)
+        al.addLayout(m_row, 4, 1)
+
+        p_row = QHBoxLayout()
+        p_row.addWidget(self.p_box)
+        p_row.addStretch()
+        al.addWidget(QLabel("Position:"), 5, 0)
+        al.addLayout(p_row, 5, 1)
+
+        sep_row = QHBoxLayout()
+        sep_row.addWidget(self.sep_box)
+        sep_row.addStretch()
+        al.addWidget(QLabel("Separator:"), 6, 0)
+        al.addLayout(sep_row, 6, 1)
+
+        if not self.embed_mode:
+            btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Changes"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
+            
         self.ic_inp.textChanged.connect(lambda: self.reload_requested.emit())
         self.t_inp.textChanged.connect(lambda: self.reload_requested.emit())
         self.p_box.currentTextChanged.connect(lambda: self.reload_requested.emit())
         self.m_box.currentTextChanged.connect(lambda: self.reload_requested.emit())
         self.sep_box.currentTextChanged.connect(lambda: self.reload_requested.emit())
-        self.v_box.currentTextChanged.connect(lambda: self.reload_requested.emit())
+        self.vis_widget.valueChanged.connect(lambda _: self.reload_requested.emit())
+        self.type_widget.valueChanged.connect(lambda _: self.reload_requested.emit())
 
     reload_requested = pyqtSignal()
+
+    def _inherit_icon(self):
+        cmd = self.props.get('cmd', '') or self.props.get('path', '') or self.props.get('title', '')
+        target_path = _find_target_executable_or_shortcut(cmd)
+        if not target_path:
+            file_path, _ = QFileDialog.getOpenFileName(self, "Select Executable/Shortcut/Icon to Inherit From", "C:\\Program Files", "Executables & Shortcuts (*.exe *.lnk *.ico *.dll *.png)")
+            if file_path:
+                target_path = file_path
+        if target_path:
+            norm = os.path.normpath(target_path).replace('\\', '/')
+            self.ic_inp.setText(f"image.res('{norm}')")
 
     def _update_colors_ui(self):
         if not hasattr(self, 'c_lay'): return
@@ -1683,10 +2537,8 @@ class ImportEditorDialog(QDialog):
             val = self.ic_inp.text().strip()
             codes = _extract_glyph_codes(val)
             if codes:
-                # Standard glyph color replacement
                 self.ic_inp.setText(_get_new_asset_value(val, old_color, hex_color, idx=idx))
             else:
-                # Physical image tinting
                 path, _ = _extract_img_path_and_color(val)
                 resolved = _resolve_app_dir_path(path)
                 if resolved and os.path.exists(resolved):
@@ -1695,8 +2547,12 @@ class ImportEditorDialog(QDialog):
         
         dlg.colorSelected.connect(on_color); dlg.exec_()
     def _open_glyph_browser(self):
-        dlg = GlyphBrowserDialog(self.ic_inp.text().strip(), self)
-        if dlg.exec_(): self.ic_inp.setText(dlg.result_value)
+        orig = self.ic_inp.text().strip()
+        dlg = GlyphBrowserDialog(orig, self)
+        if dlg.exec_():
+            self.ic_inp.setText(dlg.result_value)
+        else:
+            self.ic_inp.setText(orig)
     def _browse_icon(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select Icon", "", "Images (*.png *.ico *.bmp *.jpg *.svg)")
         if path:
@@ -1707,21 +2563,258 @@ class ImportEditorDialog(QDialog):
         title_val = self.t_inp.text().strip()
         p['title'] = f"'{title_val}'" if title_val and ' ' in title_val else title_val
         p['pos'] = self.p_box.currentText()
-        v_n = self.v_box.currentText()
-        if v_n == "Visible In...":
-            p['vis'] = _build_vis_expression({'shift': self.cb_shift.isChecked(), 'ctrl': self.cb_ctrl.isChecked(), 'caps': self.cb_caps.isChecked(), 'lmb': self.cb_lmb.isChecked()})
-        else: p['vis'] = _get_vis_options().get(v_n, "")
+        vis_val = self.vis_widget.get_value()
+        if vis_val:
+            p['vis'] = vis_val
+        else:
+            p.pop('vis', None)
+
+        type_val = self.type_widget.get_value()
+        if type_val:
+            p['type'] = type_val
+        else:
+            p.pop('type', None)
         
         m_sel = self.m_box.currentText()
         if m_sel == "None": p['menu'] = None
         elif m_sel == "Main": p['menu'] = ""
         elif m_sel == "Options": p['menu'] = "options"
-        (p.__setitem__('image', self.ic_inp.text()) if 'image' in p or 'icon' not in p else p.__setitem__('icon', self.ic_inp.text()))
+        
+        icon_val = self.ic_inp.text().strip()
+        if not icon_val:
+            for ik in ('image', 'icon', 'fill', 'viewBox', 'd'):
+                p.pop(ik, None)
+        else:
+            (p.__setitem__('image', icon_val) if 'image' in p or 'icon' not in p else p.__setitem__('icon', icon_val))
+            
         sv = self.sep_box.currentText().lower()
         if sv == "none": p.pop('sep', None); p.pop('separator', None)
         elif sv == "before": p['sep'] = True
         else: p['sep'] = sv
         return p
+
+    def get_changes(self):
+        p1 = self.get_props()
+        p2 = self.props
+        changes = []
+        key_names = {
+            'title': 'Title',
+            'pos': 'Position',
+            'vis': 'Visibility',
+            'type': 'Show in',
+            'menu': 'Move to',
+            'sep': 'Separator',
+            'image': 'Icon / Image',
+            'icon': 'Icon / Image'
+        }
+        def format_user_friendly(prop_key, val):
+            val_clean = str(val or '').strip('\'" ')
+            if prop_key == 'vis':
+                vl = val_clean.lower().strip()
+                if not vl or vl in ("normal", "always visible", "vis.normal", "1"): return "Normal"
+                if vl in ("vis.remove", "key.remove", "vis.hidden", "key.hidden", "remove", "hidden", "0"): return "Hide"
+                if vl in ("key.shift()", "vis.shift", "shift", "key.shift"): return "Shift"
+                if vl in ("key.control()", "key.ctrl()", "vis.control", "vis.ctrl", "control", "ctrl", "key.control", "key.ctrl"): return "Ctrl"
+                if vl in ("key.capslock()", "key.caps()", "vis.capslock", "vis.caps", "capslock", "caps", "key.capslock", "key.caps"): return "Caps"
+                if vl in ("key.lbutton()", "key.lmb()", "vis.lbutton", "vis.lmb", "lbutton", "lmb", "key.lbutton"): return "LMB"
+                return val_clean
+            if prop_key == 'sep':
+                vl = val_clean.lower()
+                if vl in ("true", "1", "before"): return "Before"
+                if vl == "after": return "After"
+                if vl == "both": return "Both"
+                if vl in ("false", "0", "none", ""): return "None"
+                return val_clean.title()
+            if prop_key == 'menu':
+                vl = val_clean.lower()
+                if not vl or vl in ("none", "main", "menu.main"): return "Main"
+                if vl in ("options", "title.options"): return "Options"
+                return val_clean
+            return val_clean or "(empty)"
+
+        for k in ['title', 'pos', 'vis', 'type', 'menu', 'sep']:
+            v1 = str(p1.get(k, '')).strip('\'" ')
+            v2 = str(p2.get(k, '')).strip('\'" ')
+            if k == 'vis':
+                v1_low = v1.lower()
+                v2_low = v2.lower()
+                v1_norm = "" if v1_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v1_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v1_low)
+                v2_norm = "" if v2_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v2_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v2_low)
+                if v1_norm == v2_norm: continue
+            if k == 'menu':
+                v1_norm = "" if v1.lower() in ("none", "main", "menu.main") else v1
+                v2_norm = "" if v2.lower() in ("none", "main", "menu.main") else v2
+                if v1_norm.lower() == v2_norm.lower(): continue
+            if k == 'sep':
+                v1_norm = "true" if v1.lower() in ("true", "1") else "false" if v1.lower() in ("false", "0", "none", "") else v1.lower()
+                v2_norm = "true" if v2.lower() in ("true", "1") else "false" if v2.lower() in ("false", "0", "none", "") else v2.lower()
+                if v1_norm == v2_norm: continue
+            if v1.lower() != v2.lower():
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2)} ➔ {format_user_friendly(k, v1)}")
+        
+        i1 = str(p1.get('icon') or p1.get('image') or '').strip('\'" ')
+        i2 = str(p2.get('icon') or p2.get('image') or '').strip('\'" ')
+        if i1 != i2:
+            changes.append(f"Icon: '{i2 or '(none)'}' ➔ '{i1 or '(none)'}'")
+        return changes
+
+    def is_dirty(self):
+        return len(self.get_changes()) > 0
+
+    def reject(self):
+        if not self.embed_mode and self.is_dirty():
+            from utils import UnsavedChangesDialog
+            changes = self.get_changes()
+            dialog = UnsavedChangesDialog(None, text="You have unsaved changes in this item. Do you want to save them?", changes=changes)
+            res = dialog.exec_()
+            if res == 1:
+                self.accept(); return
+            elif res == 2:
+                return
+        super().reject()
+
+class MultiItemEditDialog(QDialog):
+    def __init__(self, items, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(650, 680)
+        self._drag_pos = None
+        
+        main_frame = QFrame(self)
+        main_frame.setObjectName("multiMainFrame")
+        main_frame.setStyleSheet("""
+            #multiMainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }
+            QTabWidget::pane { border: 1px solid #2a2a30; border-radius: 12px; background: transparent; }
+            QTabBar::tab { background: rgba(255,255,255,0.05); color: #b0b0b0; padding: 6px 14px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; height: 26px; font-weight: bold; }
+            QTabBar::tab:selected { background: rgba(220, 20, 60, 0.2); color: #dc143c; border: 1px solid rgba(220, 20, 60, 0.4); }
+        """)
+        
+        dlg_layout = QVBoxLayout(self)
+        dlg_layout.setContentsMargins(0, 0, 0, 0)
+        dlg_layout.addWidget(main_frame)
+        
+        layout = QVBoxLayout(main_frame)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+        
+        # Header titlebar
+        title_bar = QHBoxLayout()
+        title_label = QLabel("Edit Items/Menus")
+        title_label.setFont(QFont('Segoe UI Variable Display', 15, QFont.Bold))
+        title_label.setStyleSheet("color: white;")
+        title_bar.addWidget(title_label)
+        title_bar.addStretch()
+        
+        close_btn = QPushButton("\uE711")
+        close_btn.setFont(QFont('Segoe MDL2 Assets', 10))
+        close_btn.setFixedSize(28, 28)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #b0b0b0; } QPushButton:hover { background: rgba(220,20,60,0.2); color: #dc143c; }")
+        close_btn.clicked.connect(self.reject)
+        title_bar.addWidget(close_btn)
+        layout.addLayout(title_bar)
+        
+        embed_style = """
+            #mainFrame { background: transparent; border: none; }
+            QLabel { color: #ffffff; font-size: 12px; } 
+            QLineEdit { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; selection-background-color: #dc143c; } 
+            QLineEdit:focus { border: 1px solid #dc143c; }
+            QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; }
+            QComboBox:hover, QComboBox:focus { border: 1px solid #dc143c; }
+            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
+        """
+        self.editors = []
+        if len(items) == 1:
+            editor = ImportEditorDialog(items[0], self, embed_mode=True)
+            editor.mf.setStyleSheet(embed_style)
+            layout.addWidget(editor)
+            self.editors.append((items[0], editor))
+        else:
+            self.tabs = QTabWidget()
+            for idx, item in enumerate(items):
+                title = str(item['props'].get('title', '')).strip('\'"') or f"Item {idx+1}"
+                editor = ImportEditorDialog(item, self, embed_mode=True)
+                editor.mf.setStyleSheet(embed_style)
+                
+                # Render exact icon thumbnail using editor's preview label
+                tab_icon = None
+                if hasattr(editor, 'ic_prev_lbl'):
+                    pix = editor.ic_prev_lbl.grab()
+                    if not pix.isNull():
+                        tab_icon = QIcon(pix)
+                
+                if tab_icon and not tab_icon.isNull():
+                    self.tabs.addTab(editor, tab_icon, title)
+                else:
+                    self.tabs.addTab(editor, title)
+                self.editors.append((item, editor))
+            layout.addWidget(self.tabs)
+
+        # Global Save / Cancel action bar
+        action_bar = QHBoxLayout()
+        action_bar.addStretch()
+        
+        cancel_b = QPushButton("Cancel")
+        cancel_b.setCursor(Qt.PointingHandCursor)
+        cancel_b.setStyleSheet("QPushButton { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } QPushButton:hover { background-color: #45475a; }")
+        cancel_b.clicked.connect(self.reject)
+        action_bar.addWidget(cancel_b)
+        
+        save_b = QPushButton("Save Changes")
+        save_b.setCursor(Qt.PointingHandCursor)
+        save_b.setStyleSheet("QPushButton { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } QPushButton:hover { background-color: #ff2a55; }")
+        save_b.clicked.connect(self.on_save_all)
+        action_bar.addWidget(save_b)
+        
+        layout.addLayout(action_bar)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self._drag_pos is not None:
+            self.move(event.globalPos() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+
+    def get_changes(self):
+        all_changes = []
+        for item, editor in self.editors:
+            c = editor.get_changes()
+            item_title = str(item['props'].get('title', '')).strip('\'"') or 'Untitled'
+            for line in c:
+                all_changes.append(f"[{item_title}] {line}")
+        return all_changes
+
+    def is_dirty(self):
+        return len(self.get_changes()) > 0
+
+    def reject(self):
+        if self.is_dirty():
+            from utils import UnsavedChangesDialog
+            changes = self.get_changes()
+            dialog = UnsavedChangesDialog(None, text="You have unsaved changes in these items. Do you want to save them?", changes=changes)
+            res = dialog.exec_()
+            if res == 1:
+                self.on_save_all(); return
+            elif res == 2:
+                return
+        super().reject()
+            
+    def on_save_all(self):
+        self.save_all()
+        self.accept()
+
+    def save_all(self):
+        for item, editor in self.editors:
+            save_imported_item(item, editor.get_props())
+
 
 class ImportsWidget(QWidget):
     reload_requested = pyqtSignal()
@@ -1831,6 +2924,7 @@ class ImportsWidget(QWidget):
     def refresh_sidebar_highlights(self):
         self.all_btn.setStyleSheet(f"QPushButton {{ background: {'rgba(220, 20, 60, 0.1)' if not self.curr_filter else 'rgba(49, 50, 68, 0.6)'}; color: {'#dc143c' if not self.curr_filter else '#b0b0b0'}; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid {'rgba(220, 20, 60, 0.4)' if not self.curr_filter else 'rgba(220, 20, 60, 0.1)'}; }}")
         self.update_file_filters(self.model._items)
+
     def edit_item(self, data):
         d = ImportEditorDialog(data, self)
         d.reload_requested.connect(self.reload_requested.emit)
@@ -1915,11 +3009,29 @@ class NSSLexer:
                     while self.pos + 1 < len(self.text) and self.text[self.pos:self.pos+2] != '*/': self.pos += 1
                     self.pos += 2; tokens.append(('COMMENT', self.text[start:self.pos], start)); continue
             if ch in ("'", '"'):
-                start = self.pos; qc = ch; self.pos += 1
-                while self.pos < len(self.text):
-                    if self.text[self.pos] == qc and self.text[self.pos-1] != '\\': self.pos += 1; break
-                    self.pos += 1
-                tokens.append(('STRING', self.text[start:self.pos], start)); continue
+                start = self.pos
+                if ch == "'" and self.text[self.pos:self.pos+3] == "'''":
+                    self.pos += 3
+                    while self.pos < len(self.text):
+                        if self.text[self.pos:self.pos+3] == "'''":
+                            self.pos += 3
+                            break
+                        self.pos += 1
+                    tokens.append(('STRING', self.text[start:self.pos], start)); continue
+                elif ch == '"' and self.text[self.pos:self.pos+3] == '"""':
+                    self.pos += 3
+                    while self.pos < len(self.text):
+                        if self.text[self.pos:self.pos+3] == '"""':
+                            self.pos += 3
+                            break
+                        self.pos += 1
+                    tokens.append(('STRING', self.text[start:self.pos], start)); continue
+                else:
+                    qc = ch; self.pos += 1
+                    while self.pos < len(self.text):
+                        if self.text[self.pos] == qc and self.text[self.pos-1] != '\\': self.pos += 1; break
+                        self.pos += 1
+                    tokens.append(('STRING', self.text[start:self.pos], start)); continue
             if ch.isalpha() or ch in ('@', '_', '$', '#', '\\'):
                 start = self.pos; self.pos += 1
                 while self.pos < len(self.text) and (self.text[self.pos].isalnum() or self.text[self.pos] in ('.', '_', '\\', '#', '-')): self.pos += 1
@@ -1944,12 +3056,18 @@ def parse_nss_args(text, tokens):
                 if pc == 0 and bc == 0:
                     if vt_val in (',', ')'): break
                     if i + 1 < len(tokens) and tokens[i+1][1] == '=': break
-                if vt_val == '(': pc += 1
-                elif vt_val == ')': pc -= 1
+                if vt_val == '(':
+                    pc += 1
+                elif vt_val == ')':
+                    if pc > 0:
+                        pc -= 1
+                    else:
+                        break
                 elif vt_val == '[': bc += 1
                 elif vt_val == ']': bc -= 1
                 last_pos = vt_pos + len(vt_val); i += 1
             val = text[v_start_pos:last_pos].strip()
+            # If the extracted value is wrapped in single quotes, keep it clean
             props[key] = val; order.append(key)
         else:
             if t_type == 'IDENTIFIER': props[t_val] = True; order.append(t_val)
@@ -2030,13 +3148,19 @@ def format_nss_value(k, v):
     if v == '': return f"{k}=''"
     v = v.strip()
     
+    # Strip unnecessary enclosing parentheses if it's wrapping a single path/string (e.g. ('C:/...'))
+    while v.startswith('(') and v.endswith(')'):
+        inner = v[1:-1].strip()
+        # Only strip if it's not a multi-term expression or Nilesoft function call
+        if inner.startswith("'") or inner.startswith('"') or ('\\' in inner or '/' in inner):
+            v = inner
+        else:
+            break
+
     # Normalize: strip existing quotes to prevent nesting
     while (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
         # Only strip if it's a simple wrap, don't strip if quotes are part of an expression (e.g. ['A', 'B'])
         if v.startswith('[') or (v.count("'") + v.count('"')) > 2:
-            # If it's a complex string like 'val', 'val2' it has more than 2 quotes
-            # But if it's ''val'' it also has more than 2.
-            # Check for double single quotes specifically
             if v.startswith("''") and v.endswith("''"):
                 v = v[2:-2]
                 continue
@@ -2045,14 +3169,17 @@ def format_nss_value(k, v):
     
     v = v.strip()
     
-    # Check if ALREADY quoted (after normalization, this would be False unless complex)
+    # Check if ALREADY quoted
     is_quoted = (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"'))
     if is_quoted:
         return f"{k}={v}"
 
     is_wrapped = v.startswith('[') and v.endswith(']')
-    is_expression = '(' in v and ')' in v
-    is_complex = '@if' in v or '@sel' in v or 'key.' in v or is_expression
+    is_image_res = v.lower().startswith('image.res(') and v.endswith(')')
+    is_image_svg = v.lower().startswith('image.svg(') and v.endswith(')')
+    is_path = ('\\' in v or '/' in v or ':' in v) and not (is_image_res or is_image_svg)
+    is_expression = '(' in v and ')' in v and not (is_image_res or is_image_svg or is_path)
+    is_complex = ('@if' in v or '@sel' in v or 'key.' in v or is_expression) and not is_path
     
     nilesoft_prefixes = (
         'vis.', 'key.', 'clr.', 'sys.', 'app.', 'this.', 'id.', 'menu.', 'tip.', 'sel.', 'title.',
@@ -2071,30 +3198,23 @@ def format_nss_value(k, v):
     has_space = ' ' in v
     has_dot = '.' in v
     
-    # Force quotes for find, title, menu and in strings
-    if k in ('find', 'title', 'menu', 'in') and not (is_wrapped or is_complex or is_nilesoft_obj or is_glyph):
+    # Force quotes for find, title, menu, in, cmd, and path strings
+    if k in ('find', 'title', 'menu', 'in', 'cmd', 'path') and not (is_wrapped or is_complex or is_nilesoft_obj or is_glyph or is_image_res or is_image_svg):
         return f"{k}='{v}'"
 
-    # A valid path should not start with a stray slash followed by a quote
-    is_path = ('\\' in v or '/' in v) and not (is_complex or is_wrapped or is_glyph)
-    if is_path and (v.startswith('/') or v.startswith('\\')):
-        # Botched syntax check: if it looks like /'val', it's NOT a path
-        if len(v) > 1 and v[1] in ("'", '"'):
-            is_path = False
+    if is_path:
+        return f"{k}='{v}'"
 
     has_pipe = '|' in v
     
-    should_not_quote = is_wrapped or is_complex or is_nilesoft_obj or is_glyph or \
+    should_not_quote = is_wrapped or is_complex or is_nilesoft_obj or is_glyph or is_image_res or is_image_svg or \
                        (v.isdigit() and not has_dot) or v.lower() in keywords
     
-    if has_pipe:
-        should_not_quote = False
-    
-    if is_path:
+    if has_pipe and not (is_expression or is_complex):
         should_not_quote = False
 
     if should_not_quote:
-        if has_space and not (is_wrapped or is_expression):
+        if has_space and not (is_wrapped or is_expression or is_complex or is_image_res or is_image_svg):
             return f"{k}='{v}'"
         return f"{k}={v}"
     
@@ -2125,8 +3245,11 @@ def save_imported_item(data, new_props):
     
     # Merge props: keep everything from target['props'], update with new_props
     merged = target['props'].copy()
+    for k in list(merged.keys()):
+        if k not in new_props and k not in ('_order', 'file', 'start', 'end', 'cmd', 'arg', 'args', 'where', 'mode', 'window', 'admin', 'type'):
+            del merged[k]
     for k, v in new_props.items():
-        if v is None or v == 'None' or (k in ('vis', 'pos') and not str(v).strip()):
+        if v is None or v == 'None' or (k in ('vis', 'pos', 'type') and not str(v).strip()):
             if k in merged: del merged[k]
         else: merged[k] = v
             
@@ -2141,14 +3264,13 @@ def save_imported_item(data, new_props):
             pts.append(format_nss_value('sep', v)); handled.add('sep')
 
     for k, v in merged.items():
-        if k and k not in handled and k not in ('_order', 'file', 'start', 'end') and re.match(r'^\w+$', k):
+        if k and k not in handled and k not in ('_order', 'file', 'start', 'end', 'cmd_end', 'raw_inner', 'has_children', 'indent') and re.match(r'^\w+$', k):
             pts.append(format_nss_value(k, str(v).strip()))
             
-    is_multi = '\n' in target.get('raw_inner', '')
-    indent = target.get('indent', '    ')
+    header = f"{target['type']}({ ' '.join(pts) })"
+    cmd_end = target.get('cmd_end', target['end'])
     try:
-        new_raw = mass_save_op(target, merged)
-        new_content = content[:target['start']] + new_raw + content[target['end']:]
+        new_content = content[:target['start']] + header + content[cmd_end:]
         safe_file_write(fp, new_content)
         if hasattr(NSSCacheManager, 'cache') and fp in NSSCacheManager.cache:
             del NSSCacheManager.cache[fp]
@@ -2170,21 +3292,13 @@ def mass_save_op(item_data, new_props):
             if k == 'menu' and v is None: handled.add(k); continue
             pts.append(format_nss_value(k, v)); handled.add(k)
     for k, v in new_props.items():
-        if k and k not in handled and k not in ('_order', 'file', 'start', 'end', 'type', 'raw_inner', 'indent', 'cmd_end') and re.match(r'^\w+$', k):
+        if k and k not in handled and k not in ('_order', 'file', 'start', 'end', 'raw_inner', 'indent', 'cmd_end', 'has_children') and re.match(r'^\w+$', k):
             v_s = str(v).strip()
-            if k in ('pos', 'vis', 'remove', 'hidden') and not v_s: continue
+            if k in ('pos', 'vis', 'remove', 'hidden', 'type') and not v_s: continue
             if k == 'menu' and v_s is None: continue
             pts.append(format_nss_value(k, v_s))
     
     header = f"{item_data['type']}({ ' '.join(pts) })"
-    
-    # If the item has a body { ... }, we must preserve it
-    # cmd_end is the end of the (...) header
-    # end is the end of the } block
-    if item_data['end'] > item_data['cmd_end']:
-        # There is a body block or extra text
-        body = read_file(item_data['file'])[item_data['cmd_end']:item_data['end']]
-        return header + body
     return header
 
 def _get_custom_menus_from_nss():
@@ -2245,73 +3359,185 @@ class ModifyRuleEditorDialog(QDialog):
     POS_OPTIONS = ["", "top", "bottom", "1", "2", "3", "4", "5", "middle"]
     live_update = pyqtSignal(dict)
     def __init__(self, data=None, parent=None):
-        super().__init__(parent); self.data = data or {}; self.setMinimumWidth(500); self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #ffffff; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.4); border-radius: 8px; padding: 8px 14px; font-family: 'Segoe UI Variable Display'; font-size: 12px; }")
+        super().__init__(parent); self.data = data or {}; self.setMinimumWidth(500); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
         self.created_temp_icons = []
         self._custom_menus = _get_custom_menus_from_nss()
+        self._drag_pos = None
         self.setup_ui(); self.load_data(data) if data else None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self._drag_pos is not None:
+            self.move(event.globalPos() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
             #mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
             QLabel { color: #ffffff; font-size: 13px; } 
-            QLineEdit, QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #ffffff; } 
+            QLineEdit, QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 7px 10px; color: #ffffff; } 
+            QLineEdit:focus { border: 1px solid #dc143c; }
+            QComboBox:hover, QComboBox:focus { border: 1px solid #dc143c; }
             QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
-            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 10px 20px; font-weight: bold; } 
+            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } 
             QPushButton#saveBtn:hover { background-color: #ff2a55; }
-            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 10px 20px; }
+            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 18px; }
             QPushButton#cancelBtn:hover { background-color: #45475a; }
         """)
-        layout = QVBoxLayout(self); layout.addWidget(self.mf); cl = QVBoxLayout(self.mf); cl.setContentsMargins(25, 25, 25, 25); cl.setSpacing(15); h = QLabel("Modify Rule Configuration"); h.setStyleSheet("font-size: 18px; font-weight: bold; color: white;"); cl.addWidget(h); tg = QFrame(); tg.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); tl = QGridLayout(tg); cl.addWidget(QLabel("Target Criteria")); cl.addWidget(tg)
-        self.f_inp = QLineEdit(); self.f_inp.setPlaceholderText("e.g. Refresh"); tl.addWidget(QLabel("Find Title:"), 0, 0); tl.addWidget(self.f_inp, 0, 1)
-        self.find_mode_group = QButtonGroup(self); sw_row = QHBoxLayout(); sw_row.setContentsMargins(0, 2, 0, 2); sw_row.setSpacing(25); tl.addLayout(sw_row, 1, 1)
-        for i, (text, mode) in enumerate([("Contains", "contains"), ("Starts with", "starts"), ("Ends with", "ends"), ("Exact", "exact")]):
-            v_box = QVBoxLayout(); v_box.setSpacing(0); v_box.setAlignment(Qt.AlignCenter)
+        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.addWidget(self.mf)
+        cl = QVBoxLayout(self.mf); cl.setContentsMargins(20, 18, 20, 18); cl.setSpacing(12)
+        h = QLabel("Modify Rule Configuration"); h.setStyleSheet("font-size: 17px; font-weight: bold; color: white;"); cl.addWidget(h)
+        
+        tg = QFrame(); tg.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); tl = QGridLayout(tg); tl.setVerticalSpacing(8); tl.setHorizontalSpacing(10); cl.addWidget(QLabel("Target Criteria")); cl.addWidget(tg)
+        
+        find_row = QHBoxLayout()
+        find_row.setSpacing(8)
+        self.f_inp = QLineEdit(); self.f_inp.setPlaceholderText("e.g. Refresh")
+        find_row.addWidget(self.f_inp, 1)
+        
+        self.find_mode_group = QButtonGroup(self)
+        sw_row = QHBoxLayout(); sw_row.setContentsMargins(0, 0, 0, 0); sw_row.setSpacing(10)
+        for i, (text, mode) in enumerate([("Contains", "contains"), ("Starts", "starts"), ("Ends", "ends"), ("Exact", "exact")]):
+            h_sub = QHBoxLayout(); h_sub.setSpacing(3); h_sub.setAlignment(Qt.AlignVCenter)
             rb = RadioDot(); rb.setProperty("mode", mode)
             rb.setCursor(Qt.PointingHandCursor)
-            rl = QLabel(text); rl.setStyleSheet("font-size: 10px; color: #b0b0b0; background: transparent; border: none;"); rl.setAlignment(Qt.AlignCenter)
-            v_box.addWidget(rb, 0, Qt.AlignCenter); v_box.addWidget(rl, 0, Qt.AlignCenter); sw_row.addLayout(v_box); self.find_mode_group.addButton(rb, i); (rb.setChecked(True) if i == 0 else None)
-        sw_row.addStretch()
-        self.i_inp = QLineEdit(); self.i_inp.setPlaceholderText("e.g. open with"); tl.addWidget(QLabel("In Menu:"), 2, 0); tl.addWidget(self.i_inp, 2, 1)
-        ag = QFrame(); ag.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); al = QGridLayout(ag); cl.addWidget(QLabel("Actions to Perform")); cl.addWidget(ag)
+            rl = QLabel(text); rl.setStyleSheet("font-size: 11px; color: #b0b0b0; background: transparent; border: none;"); rl.setAlignment(Qt.AlignVCenter)
+            h_sub.addWidget(rb); h_sub.addWidget(rl)
+            sw_row.addLayout(h_sub)
+            self.find_mode_group.addButton(rb, i)
+            if i == 0: rb.setChecked(True)
+        find_row.addLayout(sw_row)
+        
+        tl.addWidget(QLabel("Find Title:"), 0, 0); tl.addLayout(find_row, 0, 1)
+        self.i_inp = QLineEdit(); self.i_inp.setPlaceholderText("e.g. open with"); tl.addWidget(QLabel("In Menu:"), 1, 0); tl.addWidget(self.i_inp, 1, 1)
+        
+        ag = QFrame(); ag.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); al = QGridLayout(ag); al.setVerticalSpacing(8); al.setHorizontalSpacing(10); cl.addWidget(QLabel("Actions to Perform")); cl.addWidget(ag)
         self.ti_inp = QLineEdit(); al.addWidget(QLabel("New Title:"), 0, 0); al.addWidget(self.ti_inp, 0, 1)
         
         self.m_inp = NonScrollComboBox(); self.m_inp.setEditable(False)
         self.m_inp.addItems(["None", "Main", "Options"])
-        al.addWidget(QLabel("Move to:"), 1, 0); al.addWidget(self.m_inp, 1, 1)
-        ic_row = QHBoxLayout(); btn_style = "QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #dc143c; padding: 0; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #dc143c; color: white; }"
-        self.c_lay = QHBoxLayout(); self.c_lay.setSpacing(5); self.c_lay.setAlignment(Qt.AlignLeft)
-        ic_row.addLayout(self.c_lay)
-        self.ic_inp = QLineEdit(); self.ic_inp.setPlaceholderText("e.g. \\uE102 or path"); self.ic_inp.textChanged.connect(self._update_colors_ui)
-        self.ic_prev_lbl = QLabel(); self.ic_prev_lbl.setFixedSize(38, 38); self.ic_prev_lbl.setAlignment(Qt.AlignCenter); self.ic_prev_lbl.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); padding: 0; margin: 0;")
-        self.ic_preview = QPushButton("\uE7B5"); self.ic_preview.setFixedSize(38, 38); self.ic_preview.setFont(QFont('Segoe MDL2 Assets', 14))
-        self.ic_preview.setToolTip("Browse Glyphs"); self.ic_preview.clicked.connect(self._open_glyph_browser); self.ic_preview.setStyleSheet(btn_style); self.ic_preview.setCursor(Qt.PointingHandCursor)
-        self.ic_browse = QPushButton("\uE8B7"); self.ic_browse.setFont(QFont('Segoe MDL2 Assets', 14)); self.ic_browse.setFixedSize(38, 38)
-        self.ic_browse.setToolTip("Browse Local Icon"); self.ic_browse.clicked.connect(self._browse_icon); self.ic_browse.setStyleSheet(btn_style.replace("#dc143c", "#dc143c")); self.ic_browse.setCursor(Qt.PointingHandCursor)
-        self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"]); al.addWidget(QLabel("Separator:"), 3, 0); al.addWidget(self.sep_box, 3, 1)
-        ic_row.addWidget(self.ic_prev_lbl); ic_row.addWidget(self.ic_inp, 1); ic_row.addWidget(self.ic_preview); ic_row.addWidget(self.ic_browse)
-        al.addWidget(QLabel("Icon/Image:"), 2, 0); al.addLayout(ic_row, 2, 1)
+        self.m_inp.setFixedWidth(130)
+        
+        ic_row = QHBoxLayout()
+        ic_row.setSpacing(6)
+        
+        self.c_container = QWidget()
+        self.c_lay = QHBoxLayout(self.c_container)
+        self.c_lay.setContentsMargins(0, 0, 0, 0)
+        self.c_lay.setSpacing(4)
+        self.c_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        self.ic_inp = QLineEdit(); self.ic_inp.setPlaceholderText("e.g. \\uE102, image path, or image.res(...)"); self.ic_inp.textChanged.connect(self._update_colors_ui)
+        self.ic_prev_lbl = ClickablePreviewLabel()
+        self.ic_prev_lbl.setFixedSize(46, 46)
+        self.ic_prev_lbl.setAlignment(Qt.AlignCenter)
+        self.ic_prev_lbl.setToolTip("Click to Browse Glyphs / Upload Icon")
+        self.ic_prev_lbl.setStyleSheet("""
+            ClickablePreviewLabel {
+                background: rgba(255,255,255,0.05); 
+                border-radius: 12px; 
+                border: 1px solid rgba(255,255,255,0.12);
+            }
+            ClickablePreviewLabel:hover {
+                border: 1px solid #dc143c;
+                background: rgba(220, 20, 60, 0.12);
+            }
+        """)
+        self.ic_prev_lbl.clicked.connect(self._open_glyph_browser)
+        
+        btn_action_style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 10px;
+                color: #e0e0e0;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: rgba(220, 20, 60, 0.2);
+                border: 1px solid #dc143c;
+                color: #ffffff;
+            }
+        """
+        
+        self.ic_inherit = QPushButton("\uE777")
+        self.ic_inherit.setFont(QFont('Segoe MDL2 Assets', 13)); self.ic_inherit.setFixedSize(34, 34)
+        self.ic_inherit.setToolTip("Inherit Icon from Target Command/File"); self.ic_inherit.clicked.connect(self._inherit_icon); self.ic_inherit.setStyleSheet(btn_action_style); self.ic_inherit.setCursor(Qt.PointingHandCursor)
+
+        self.ic_remove = QPushButton("\uE74D")
+        self.ic_remove.setFont(QFont('Segoe MDL2 Assets', 13)); self.ic_remove.setFixedSize(34, 34)
+        self.ic_remove.setToolTip("Remove Icon"); self.ic_remove.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+                color: #888888;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: rgba(255, 50, 50, 0.25);
+                border: 1px solid #ff4444;
+                color: #ffffff;
+            }
+        """)
+        self.ic_remove.setCursor(Qt.PointingHandCursor)
+        self.ic_remove.clicked.connect(lambda: self.ic_inp.setText(""))
+
+        self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"])
+        self.sep_box.setFixedWidth(130)
+        
+        ic_row.addWidget(self.c_container)
+        ic_row.addWidget(self.ic_prev_lbl)
+        ic_row.addWidget(self.ic_inp, 1)
+        ic_row.addWidget(self.ic_inherit)
+        ic_row.addWidget(self.ic_remove)
+        al.addWidget(QLabel("Icon/Image:"), 1, 0); al.addLayout(ic_row, 1, 1)
         self.ic_inp.textChanged.connect(self._update_icon_preview)
-        self.p_inp = NonScrollComboBox(); self.p_inp.addItems(self.POS_OPTIONS); al.addWidget(QLabel("Position:"), 4, 0); al.addWidget(self.p_inp, 4, 1)
+        self.p_inp = NonScrollComboBox(); self.p_inp.addItems(self.POS_OPTIONS)
+        self.p_inp.setFixedWidth(110)
         
-        self.v_inp = NonScrollComboBox(); self.v_inp.addItems(list(_get_vis_options().keys())); al.addWidget(QLabel("Visibility:"), 5, 0); al.addWidget(self.v_inp, 5, 1)
-        
-        self.cond_w = QWidget(); self.cond_l = QHBoxLayout(self.cond_w); self.cond_l.setContentsMargins(0,0,0,0); self.cond_l.setSpacing(6)
-        self.cb_normal = KeyToggleButton("Normal"); self.cb_normal.setChecked(True); self.cb_normal.setEnabled(False)
-        self.cb_shift = KeyToggleButton("Shift"); self.cb_ctrl = KeyToggleButton("Ctrl"); self.cb_caps = KeyToggleButton("Caps"); self.cb_lmb = KeyToggleButton("LMB")
-        for cb in [self.cb_normal, self.cb_shift, self.cb_ctrl, self.cb_caps, self.cb_lmb]: 
-            self.cond_l.addWidget(cb)
-            if cb is not self.cb_normal: cb.stateChanged.connect(lambda: self.live_update.emit(self.get_data()))
-        al.addWidget(self.cond_w, 6, 1)
-        self.cond_w.hide()
-        self.v_inp.currentTextChanged.connect(lambda t: self.cond_w.setVisible(t == "Visible In..."))
+        v_val = str(self.data.get('vis', ''))
+        self.vis_widget = VisibilityWidget()
+        self.vis_widget.set_value(v_val)
+        self.vis_widget.valueChanged.connect(lambda _: self.live_update.emit(self.get_data()))
+        al.addWidget(QLabel("Visibility:"), 2, 0); al.addWidget(self.vis_widget, 2, 1)
+
+        self.type_widget = TypeWidget()
+        self.type_widget.valueChanged.connect(lambda _: self.live_update.emit(self.get_data()))
+        al.addWidget(QLabel("Show in:"), 3, 0); al.addWidget(self.type_widget, 3, 1)
+
+        m_row = QHBoxLayout()
+        m_row.addWidget(self.m_inp)
+        m_row.addStretch()
+        al.addWidget(QLabel("Move to:"), 4, 0)
+        al.addLayout(m_row, 4, 1)
+
+        p_row = QHBoxLayout()
+        p_row.addWidget(self.p_inp)
+        p_row.addStretch()
+        al.addWidget(QLabel("Position:"), 5, 0)
+        al.addLayout(p_row, 5, 1)
+
+        sep_row = QHBoxLayout()
+        sep_row.addWidget(self.sep_box)
+        sep_row.addStretch()
+        al.addWidget(QLabel("Separator:"), 6, 0)
+        al.addLayout(sep_row, 6, 1)
 
         self.i_inp.textChanged.connect(self._update_move_to_options)
         self._update_move_to_options(self.i_inp.text())
 
-        # Connect signals for live preview after widgets are created
         for w in [self.f_inp, self.i_inp, self.ti_inp, self.ic_inp]: w.textChanged.connect(lambda: self.live_update.emit(self.get_data()))
-        for w in [self.m_inp, self.p_inp, self.v_inp, self.sep_box]: (w.currentTextChanged.connect(lambda: self.live_update.emit(self.get_data())) if hasattr(w, 'currentTextChanged') else w.currentIndexChanged.connect(lambda: self.live_update.emit(self.get_data())))
+        for w in [self.m_inp, self.p_inp, self.sep_box]: (w.currentTextChanged.connect(lambda: self.live_update.emit(self.get_data())) if hasattr(w, 'currentTextChanged') else w.currentIndexChanged.connect(lambda: self.live_update.emit(self.get_data())))
         btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Rule"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
     def _update_move_to_options(self, text=None):
         if text is None: text = self.i_inp.text()
@@ -2334,34 +3560,93 @@ class ModifyRuleEditorDialog(QDialog):
         else:
             self.m_inp.setCurrentIndex(0)
         self.m_inp.blockSignals(False)
-    def is_dirty(self):
+    def _inherit_icon(self):
+        cmd = self.data.get('cmd', '') or self.data.get('path', '') or self.f_inp.text() or self.ti_inp.text() or self.i_inp.text()
+        target_path = _find_target_executable_or_shortcut(cmd)
+        if not target_path:
+            file_path, _ = QFileDialog.getOpenFileName(self, "Select Executable/Shortcut/Icon to Inherit From", "C:\\Program Files", "Executables & Shortcuts (*.exe *.lnk *.ico *.dll *.png)")
+            if file_path:
+                target_path = file_path
+        if target_path:
+            norm = os.path.normpath(target_path).replace('\\', '/')
+            self.ic_inp.setText(f"image.res('{norm}')")
+
+    def get_changes(self):
         d1 = self.get_data(); d2 = self.data
-        for k in ['find', 'in', 'title', 'menu', 'pos', 'vis', 'sep']:
-            v1 = str(d1.get(k, '')).strip('\'" ').lower()
-            v2 = str(d2.get(k, '')).strip('\'" ').lower()
+        changes = []
+        key_names = {
+            'find': 'Find Title',
+            'in': 'In Menu',
+            'title': 'New Title',
+            'menu': 'Move to',
+            'pos': 'Position',
+            'vis': 'Visibility',
+            'sep': 'Separator',
+            'type': 'Show in',
+            'icon': 'Icon / Image'
+        }
+        def format_user_friendly(prop_key, val):
+            val_clean = str(val or '').strip('\'" ')
+            if prop_key == 'vis':
+                vl = val_clean.lower().strip()
+                if not vl or vl in ("normal", "always visible", "vis.normal", "1"): return "Normal"
+                if vl in ("vis.remove", "key.remove", "vis.hidden", "key.hidden", "remove", "hidden", "0"): return "Hide"
+                if vl in ("key.shift()", "vis.shift", "shift", "key.shift"): return "Shift"
+                if vl in ("key.control()", "key.ctrl()", "vis.control", "vis.ctrl", "control", "ctrl", "key.control", "key.ctrl"): return "Ctrl"
+                if vl in ("key.capslock()", "key.caps()", "vis.capslock", "vis.caps", "capslock", "caps", "key.capslock", "key.caps"): return "Caps"
+                if vl in ("key.lbutton()", "key.lmb()", "vis.lbutton", "vis.lmb", "lbutton", "lmb", "key.lbutton"): return "LMB"
+                return val_clean
+            if prop_key == 'sep':
+                vl = val_clean.lower()
+                if vl in ("true", "1", "before"): return "Before"
+                if vl == "after": return "After"
+                if vl == "both": return "Both"
+                if vl in ("false", "0", "none", ""): return "None"
+                return val_clean.title()
+            if prop_key == 'menu':
+                vl = val_clean.lower()
+                if not vl or vl in ("none", "main", "menu.main"): return "Main"
+                if vl in ("options", "title.options"): return "Options"
+                return val_clean
+            return val_clean or "(empty)"
+
+        for k in ['find', 'in', 'title', 'menu', 'pos', 'vis', 'sep', 'type']:
+            v1 = str(d1.get(k, '')).strip('\'" ')
+            v2 = str(d2.get(k, '')).strip('\'" ')
             if k == 'find':
-                # Treat 'text' and '*text*' as equivalent if mode is contains
                 if v1.startswith('*') and v1.endswith('*') and v1.strip('*') == v2: continue
                 if v2.startswith('*') and v2.endswith('*') and v2.strip('*') == v1: continue
             if k == 'vis':
-                v1 = "" if v1 in ("normal", "always visible", "vis.normal") else v1
-                v2 = "" if v2 in ("normal", "always visible", "vis.normal") else v2
+                v1_low = v1.lower()
+                v2_low = v2.lower()
+                v1_norm = "" if v1_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v1_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v1_low)
+                v2_norm = "" if v2_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v2_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v2_low)
+                if v1_norm == v2_norm: continue
             if k == 'menu':
-                v1 = "" if v1 in ("none", "main", "menu.main") else v1
-                v2 = "" if v2 in ("none", "main", "menu.main") else v2
+                v1_norm = "" if v1.lower() in ("none", "main", "menu.main") else v1
+                v2_norm = "" if v2.lower() in ("none", "main", "menu.main") else v2
+                if v1_norm.lower() == v2_norm.lower(): continue
             if k == 'sep':
-                v1 = "true" if v1 in ("true", "1") else "false" if v1 in ("false", "0", "none", "") else v1
-                v2 = "true" if v2 in ("true", "1") else "false" if v2 in ("false", "0", "none", "") else v2
-            if v1 != v2: return True
-        # Check icons separately to handle paths
+                v1_norm = "true" if v1.lower() in ("true", "1") else "false" if v1.lower() in ("false", "0", "none", "") else v1.lower()
+                v2_norm = "true" if v2.lower() in ("true", "1") else "false" if v2.lower() in ("false", "0", "none", "") else v2.lower()
+                if v1_norm == v2_norm: continue
+            if v1.lower() != v2.lower():
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2)} ➔ {format_user_friendly(k, v1)}")
         i1 = str(d1.get('icon') or d1.get('image') or '').strip('\'" ')
         i2 = str(d2.get('icon') or d2.get('image') or '').strip('\'" ')
-        return i1 != i2
+        if i1 != i2:
+            changes.append(f"Icon: '{i2 or '(none)'}' ➔ '{i1 or '(none)'}'")
+        return changes
+
+    def is_dirty(self):
+        return len(self.get_changes()) > 0
 
     def reject(self):
         if self.is_dirty():
             from utils import UnsavedChangesDialog
-            dialog = UnsavedChangesDialog(None, text="You have unsaved changes in this rule. Do you want to save them?")
+            changes = self.get_changes()
+            dialog = UnsavedChangesDialog(None, text="You have unsaved changes in this rule. Do you want to save them?", changes=changes)
             res = dialog.exec_()
             if res == 1:
                 self.accept(); return
@@ -2399,18 +3684,12 @@ class ModifyRuleEditorDialog(QDialog):
     def _open_glyph_browser(self):
         orig = self.ic_inp.text().strip()
         dlg = GlyphBrowserDialog(orig, self)
-        dlg.preview_changed.connect(self.ic_inp.setText)
         if dlg.exec_():
-            self.ic_inp.setText(dlg.result_value)
+            if dlg.result_value != orig:
+                self.ic_inp.setText(dlg.result_value)
+                self.live_update.emit(self.get_data())
         else:
-            curr = self.ic_inp.text().strip()
-            if curr != orig:
-                from utils import UnsavedChangesDialog
-                dialog = UnsavedChangesDialog(None, text="Do you want to keep these changes?")
-                res = dialog.exec_()
-                if res == 0: self.ic_inp.setText(orig)
-                elif res == 2: pass # Treat Cancel as keeping it open, but since it's already closed, it just keeps the changes temporarily. Or maybe we shouldn't show Cancel here? We'll just ignore 2.
-        self.live_update.emit(self.get_data())
+            self.ic_inp.setText(orig)
     def _browse_icon(self):
         from PyQt5.QtWidgets import QFileDialog
         import os
@@ -2461,21 +3740,8 @@ class ModifyRuleEditorDialog(QDialog):
         if not text:
              self.ic_prev_lbl.setText("\u2726"); self.ic_prev_lbl.setStyleSheet("color: rgba(220, 20, 60, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
     def load_data(self, d):
-        v = d.get('vis', '')
-        v_low = v.lower()
-        if 'vis.remove' in v_low: self.v_inp.setCurrentText("Hidden")
-        elif '@if' in v_low and 'hidden' in v_low:
-            self.v_inp.setCurrentText("Visible In...")
-            res = _parse_vis_expression(v_low)
-            self.cb_shift.setChecked(res['shift'])
-            self.cb_ctrl.setChecked(res['ctrl'])
-            self.cb_caps.setChecked(res['caps'])
-            self.cb_lmb.setChecked(res['lmb'])
-        else:
-            found_v = False
-            for n, val in _get_vis_options().items():
-                if val and val.lower() == v_low: self.v_inp.setCurrentText(n); found_v = True; break
-            if not found_v: self.v_inp.setCurrentText("Always Visible")
+        self.vis_widget.set_value(d.get('vis', ''))
+        self.type_widget.set_value(d.get('type', ''))
 
         f = d.get('find', '')
         if f:
@@ -2503,7 +3769,6 @@ class ModifyRuleEditorDialog(QDialog):
         self.ic_inp.setText(str(d.get('icon') or d.get('image') or '')); self._update_icon_preview(self.ic_inp.text())
         p = str(d.get('pos', '')).strip('\'"')
         (self.p_inp.setCurrentText(p) if p in self.POS_OPTIONS else (self.p_inp.addItem(p), self.p_inp.setCurrentText(p)))
-        # Visibility handled at start of method
         s = str(d.get('sep', '')).strip('\'"')
         (self.sep_box.setCurrentText("None") if not s else self.sep_box.setCurrentText("Before") if (s.lower() in ('true', '1')) else self.sep_box.setCurrentText(s.title()))
     def get_data(self):
@@ -2538,21 +3803,17 @@ class ModifyRuleEditorDialog(QDialog):
         if p: res['pos'] = p
         else: res.pop('pos', None)
         
-        v_n = self.v_inp.currentText()
-        if v_n == "Visible In...":
-            res['vis'] = _build_vis_expression({
-                'shift': self.cb_shift.isChecked(),
-                'ctrl': self.cb_ctrl.isChecked(),
-                'caps': self.cb_caps.isChecked(),
-                'lmb': self.cb_lmb.isChecked()
-            })
-            if not res['vis']: res.pop('vis', None)
-        elif v_n in _get_vis_options():
-            v_v = _get_vis_options()[v_n]
-            if v_v: res['vis'] = v_v
-            else: res.pop('vis', None)
+        vis_val = self.vis_widget.get_value()
+        if vis_val:
+            res['vis'] = vis_val
         else:
-            res['vis'] = v_n
+            res.pop('vis', None)
+
+        type_val = self.type_widget.get_value()
+        if type_val:
+            res['type'] = type_val
+        else:
+            res.pop('type', None)
         
         i = self.ic_inp.text().strip()
         res.pop('icon', None); res.pop('image', None)
@@ -2570,7 +3831,7 @@ class ModifyRuleEditorDialog(QDialog):
         return res
 
 def is_rule_complete(props):
-    for k in ('title', 'menu', 'pos', 'vis', 'icon', 'image', 'sep'):
+    for k in ('title', 'menu', 'pos', 'vis', 'icon', 'image', 'sep', 'type'):
         v = props.get(k)
         if v is not None:
             if isinstance(v, str) and v.strip(): return True
@@ -2685,14 +3946,20 @@ class ModifyWidget(QWidget):
     def edit_rule(self, item):
         props = item.get('props', {}); orig_props = props.copy(); orig_content = read_file(self.filepath)
         d = ModifyRuleEditorDialog(props, self)
-        self.live_timer = QTimer(); self.live_timer.setSingleShot(True); self.live_timer.timeout.connect(self.save_all_modifications)
+        self.live_timer = QTimer(); self.live_timer.setSingleShot(True)
+        preview_saved = {'saved': False}
+        def do_live_save():
+            preview_saved['saved'] = True
+            self.save_all_modifications()
+        self.live_timer.timeout.connect(do_live_save)
+
         def handle_preview(nd):
             for r in self.custom_rules:
                 if r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')):
                     r['props'] = nd; break
             self.model.layoutChanged.emit()
             if is_rule_complete(nd):
-                self.live_timer.start(500)
+                self.live_timer.start(1000)
                 self.status_label.setText("Previewing changes...")
                 self.status_label.setStyleSheet("color: #dc143c;")
             else:
@@ -2702,28 +3969,39 @@ class ModifyWidget(QWidget):
         d.live_update.connect(handle_preview)
         if d.exec_():
             self.live_timer.stop()
-            # Explicitly find and update the item in the current rules list to prevent reference loss
             updated_data = d.get_data()
             if not self.is_dirty: self.original_content = read_file(self.filepath)
             self.is_dirty = True
-            for r in self.custom_rules:
-                if r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')):
-                    r['props'] = updated_data; break
+            
+            if is_rule_complete(updated_data):
+                for r in self.custom_rules:
+                    if r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')):
+                        r['props'] = updated_data; break
+            else:
+                self.custom_rules = [r for r in self.custom_rules if not (r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')))]
+                
             self.save_all_modifications()
-            self.model.layoutChanged.emit()
+            self.model.set_items(self.custom_rules)
             self.filter_rules(self.search.text())
         else:
             self.live_timer.stop()
             item['props'] = orig_props
-            write_file(self.filepath, orig_content)
-            self.refresh_rules_model()
-            self.reload_requested.emit()
-
-
+            if preview_saved['saved']:
+                write_file(self.filepath, orig_content)
+                self.refresh_rules_model()
+                self.reload_requested.emit()
+            else:
+                self.refresh_rules_model()
 
     def add_new_rule_dialog(self):
         orig_content = read_file(self.filepath); d = ModifyRuleEditorDialog(parent=self)
-        self.live_timer = QTimer(); self.live_timer.setSingleShot(True); self.live_timer.timeout.connect(self.save_all_modifications)
+        self.live_timer = QTimer(); self.live_timer.setSingleShot(True)
+        preview_saved = {'saved': False}
+        def do_live_save():
+            preview_saved['saved'] = True
+            self.save_all_modifications()
+        self.live_timer.timeout.connect(do_live_save)
+
         def handle_new_preview(nd):
             temp_item = {'type': 'modify', 'props': nd, 'file': self.filepath}
             self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
@@ -2732,21 +4010,25 @@ class ModifyWidget(QWidget):
             self.model.layoutChanged.emit()
             self.status_label.setText("Drafting new rule...")
             self.status_label.setStyleSheet("color: #b0b0b0;")
+            if is_rule_complete(nd):
+                self.live_timer.start(1000)
         d.live_update.connect(handle_new_preview)
         if d.exec_():
             self.live_timer.stop()
-            # Remove temp flag and commit
             final_data = d.get_data()
             self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
-            new_item = {'type': 'modify', 'props': final_data, 'file': self.filepath}
-            self.custom_rules.insert(0, new_item)
+            if is_rule_complete(final_data):
+                new_item = {'type': 'modify', 'props': final_data, 'file': self.filepath}
+                self.custom_rules.insert(0, new_item)
             self.model.set_items(self.custom_rules)
             self.save_all_modifications()
             self.filter_rules(self.search.text())
         else: 
+            self.live_timer.stop()
             self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
             self.model.set_items(self.custom_rules)
-            write_file(self.filepath, orig_content)
+            if preview_saved['saved']:
+                write_file(self.filepath, orig_content)
 
     def delete_rule(self, item):
         if item in self.custom_rules:
@@ -2759,8 +4041,14 @@ class ModifyWidget(QWidget):
             start_m, end_m = "// -- iMA Managed --", "// -- End iMA Managed --"
             managed = []
             
+            # Filter out rules that only have target criteria but no actions (empty modifications)
+            self.custom_rules = [r for r in self.custom_rules if is_rule_complete(r.get('props', {}))]
+
             for item in self.custom_rules:
                 data = item.get('props', {})
+                if not is_rule_complete(data):
+                    continue
+
                 pts = []
                 pr = ['find', 'type', 'where', 'in', 'pos', 'title', 'menu', 'vis', 'icon', 'image']
                 for k in pr:
@@ -2839,6 +4127,7 @@ def extract_custom_rules(content):
     for it in items:
         # If it was a generic scan (no managed markers), skip items with 'where' (likely built-ins)
         if s_idx == -1 and 'where' in it['props']: continue
+        if not is_rule_complete(it.get('props', {})): continue
         rules.append(it)
     return rules
 def update_section(content, sm, em, ids):
