@@ -5,12 +5,11 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v2.0.1-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.1/iMA.Menu.exe)
-[![Pre-Release](https://img.shields.io/badge/prerelease-v2.0.2-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.2/iMA.Menu.exe)
+[![Release](https://img.shields.io/badge/release-v2.0.10-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.10/iMA.Menu.exe)
 [![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 --- 
-<img width="134" height="162" alt="6M7DfigquF" src="https://github.com/user-attachments/assets/02ff0ac4-a7d0-42b6-9206-a023844fea29" /> <img width="140" height="166" alt="DpooD6exN7" src="https://github.com/user-attachments/assets/3fa1573e-244d-4471-91c2-0b891795acbc" /> <img width="136" height="162" alt="wMbpzQQEJ1" src="https://github.com/user-attachments/assets/c7273f18-846e-419c-99d0-07b832cfe642" /> <img width="140" height="166" alt="dJs79Bi6bc" src="https://github.com/user-attachments/assets/335d25a1-0cb5-4ee9-b6d0-8ced1944515a" /> <img width="140" height="166" alt="6SvipXLQQW" src="https://github.com/user-attachments/assets/e449a46a-b349-4c41-942b-520f3c766d55" />
+<img width="134" height="162" alt="6M7DfigquF" src="https://github.com/user-attachments/assets/02ff0ac4-a7d0-42b6-9206-a023844fea29" /> <img width="140" height="166" alt="DpooD6exN7" src="https://github.com/user-attachments/assets/3fa1573e-244d-4471-91c2-0b891795acbc" /> <img width="136" height="162" alt="wMbpzQQEJ1" src="https://github.com/user-attachments/assets/c7273f18-846e-419c-99d0-07b832cfe642" /> <img width="140" height="166" alt="dJs79Bi6bc" src="https://github.com/user-attachments/assets/335d25a1-0cb5-4ee9-b6d0-8ced1944515a" /> <img width="142" height="169" alt="screenshot_20260606_231430" src="https://github.com/user-attachments/assets/0b357b84-e347-4c6d-b183-5f7db059e34f" />
 
 
 iMA Menu is a powerful, customizable desktop enhancement suite designed to streamline your workflow and personalize your Windows experience. Rebuilt for robustness and efficiency, it offers unparalleled control over your context menus, a modular plugin system, advanced theming options, and a suite of integrated productivity tools.
@@ -18,28 +17,10 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 ---
 </div>
 
-## What's New (v2.0.2+) 🚀
-This release features a custom shell.dll (v2.0.0.1), replacing the outdated Nilesoft shell.
-
-Stability: Added auto-reloading and automatic rollbacks on syntax/corruption errors to prevent crashes.
-
-Customization: Added support for menu background images.
-
-Compatibility: Currently untested on Windows 7/10.
-
-⚠️ Upgrade Notice
-To replace v1.9.19.0: Unregister via shell.exe, then restart your PC to clear existing hooks before overwriting the new shell.dll.
-
-
-<img width="142" height="169" alt="screenshot_20260606_231430" src="https://github.com/user-attachments/assets/0b357b84-e347-4c6d-b183-5f7db059e34f" />
-
 ## Installation 💻
 
-1.  **Install the PRE Release v2.0.2** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.2/iMA.Menu.exe).
--   **latest Release v2.0.1** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.1/iMA.Menu.exe).
-2.  Install & done
+**Install the latest Release v2.0.10** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.10/iMA.Menu.exe).
 
-- **Release page** [Here](https://github.com/iMAboud/iMA-Menu/releases/latest)
 ---
 
 ## Key Features 🌟
