@@ -5,11 +5,16 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v2.0.17-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.17/iMA.Menu.exe)
+[![Release](https://img.shields.io/badge/release-v2.0.21-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.21/iMA.Menu.exe)
 [![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 --- 
-<img width="134" height="162" alt="6M7DfigquF" src="https://github.com/user-attachments/assets/02ff0ac4-a7d0-42b6-9206-a023844fea29" /> <img width="140" height="166" alt="DpooD6exN7" src="https://github.com/user-attachments/assets/3fa1573e-244d-4471-91c2-0b891795acbc" /> <img width="136" height="162" alt="wMbpzQQEJ1" src="https://github.com/user-attachments/assets/c7273f18-846e-419c-99d0-07b832cfe642" /> <img width="140" height="166" alt="dJs79Bi6bc" src="https://github.com/user-attachments/assets/335d25a1-0cb5-4ee9-b6d0-8ced1944515a" /> <img width="142" height="169" alt="screenshot_20260606_231430" src="https://github.com/user-attachments/assets/0b357b84-e347-4c6d-b183-5f7db059e34f" />
+<img width="150" height="181" alt="screenshot_20260902_054803" src="https://github.com/user-attachments/assets/5ce0ea90-ae01-4bca-9484-8d25bb3ee969" /> <img width="142" height="173" alt="screenshot_20260902_054757" src="https://github.com/user-attachments/assets/11bb8bcf-bd6d-4245-a6c9-b1098ffb1373" />
+ <img width="151" height="172" alt="screenshot_20260902_054842" src="https://github.com/user-attachments/assets/d9dccdbd-c0af-447e-b088-911bc2f77b5d" /> <img width="148" height="174" alt="screenshot_20260902_054739" src="https://github.com/user-attachments/assets/13745380-a700-4ee9-a2cf-9f8ec5df3fa5" /> <img width="151" height="172" alt="screenshot_20260902_054807" src="https://github.com/user-attachments/assets/1855d579-1053-4268-ac66-692a4d7a32fb" />
+
+
+
+
 
 
 iMA Menu is a powerful, customizable desktop enhancement suite designed to streamline your workflow and personalize your Windows experience. Rebuilt for robustness and efficiency, it offers unparalleled control over your context menus, a modular plugin system, advanced theming options, and a suite of integrated productivity tools.
@@ -19,7 +24,7 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Installation 💻
 
-**Install the latest Release v2.0.17** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.17/iMA.Menu.exe).
+**Install the latest Release v2.0.21** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.0.21/iMA.Menu.exe).
 
 ---
 
@@ -53,15 +58,15 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Screenshots 📸
 
-<img width="400" height="300" alt="chrome_Ee3XF70Guk" src="https://github.com/user-attachments/assets/bedfe6cf-601c-40bc-97af-987f6c0f1c53" />
-<img width="400" height="300" alt="chrome_wheoV30yeR" src="https://github.com/user-attachments/assets/ff35def9-fe20-40f9-bb22-77f1678d4416" />
-<img width="400" height="300" alt="chrome_R2cuLp6FSk" src="https://github.com/user-attachments/assets/fe84b5ae-d158-43b4-b517-79be676faa38" />
-<img width="400" height="300" alt="chrome_y4gsMUrQR2" src="https://github.com/user-attachments/assets/ab83b7e3-5d7a-4b6a-8a51-00de29cd1a52" />
-<img width="400" height="300" alt="chrome_w8fhFC5IQ1" src="https://github.com/user-attachments/assets/c89f0b89-2ffd-4c07-a164-2ccddbb7c458" />
-<img width="400" height="300" alt="chrome_xWDlzURaVA" src="https://github.com/user-attachments/assets/938506d6-255b-433a-b1c8-d58083825c16" />
-" />
+<img width="425" height="325" alt="plugins" src="https://github.com/user-attachments/assets/0e0327a1-6a8c-4191-8f5b-8a6c0260eec2" />
+<img width="425" height="325" alt="rules" src="https://github.com/user-attachments/assets/52c7f89f-438f-45ea-9080-fa4157236b86" />
+<img width="425" height="325" alt="imports" src="https://github.com/user-attachments/assets/ffc64776-6b13-48f5-818d-e49f7ef0060c" />
+<img width="425" height="325" alt="themes" src="https://github.com/user-attachments/assets/212c3466-6db8-41ec-8e9e-cdc2c4a9b78a" />
+<img width="425" height="325" alt="cursors" src="https://github.com/user-attachments/assets/c50ba5f4-c6ed-4bbd-9959-a91728939fae" />
+<img width="425" height="325" alt="editor" src="https://github.com/user-attachments/assets/989266f7-fa93-4d5d-a3f7-951207efabed" />
 
-<img src="https://i.imgur.com/TfwHI5q.gif" width="800" height="600">
+
+<img src="https://i.imgur.com/59R59gy.gif" width="850" height="550">
 
 ---
 
