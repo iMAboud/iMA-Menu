@@ -13,6 +13,56 @@ for env_key in list(os.environ.keys()):
 
 import traceback
 import time
+import winreg
+
+def _sync_local_runtime():
+    """If running in frozen onefile mode, sync extracted files to local _internal folder for fast caching."""
+    if not getattr(sys, 'frozen', False):
+        return
+    try:
+        meipass = getattr(sys, '_MEIPASS', None)
+        if not meipass or not os.path.exists(meipass):
+            return
+        
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        internal_dir = os.path.join(exe_dir, '_internal')
+        
+        # Check if local _internal is missing or outdated
+        stamp_file = os.path.join(internal_dir, '.version')
+        should_sync = False
+        if not os.path.exists(internal_dir) or not os.path.exists(stamp_file):
+            should_sync = True
+        else:
+            try:
+                with open(stamp_file, 'r', encoding='utf-8') as sf:
+                    cached_v = sf.read().strip()
+                if cached_v != VERSION:
+                    should_sync = True
+            except Exception:
+                should_sync = True
+                
+        if should_sync:
+            os.makedirs(internal_dir, exist_ok=True)
+            # Copy runtime libraries in background or non-blocking to populate _internal
+            def _copy_worker():
+                try:
+                    for item in os.listdir(meipass):
+                        s = os.path.join(meipass, item)
+                        d = os.path.join(internal_dir, item)
+                        if os.path.isdir(s):
+                            if not os.path.exists(d):
+                                shutil.copytree(s, d, dirs_exist_ok=True)
+                        else:
+                            if not os.path.exists(d) or os.path.getsize(s) != os.path.getsize(d):
+                                shutil.copy2(s, d)
+                    with open(stamp_file, 'w', encoding='utf-8') as sf:
+                        sf.write(VERSION)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=_copy_worker, daemon=True).start()
+    except Exception:
+        pass
 
 def global_exception_handler(exctype, value, tb):
     try:
@@ -28,38 +78,61 @@ def global_exception_handler(exctype, value, tb):
 
 sys.excepthook = global_exception_handler
 import tempfile
-import requests
 import threading
 import json
 import shutil
-import zipfile
 import re
-import base64
 import subprocess
-import winreg
 import hashlib
-from collections import deque
-import markdown
+import gc
+from collections import deque, OrderedDict
 import ctypes
 from ctypes import wintypes
-import win32gui
-import win32con
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
-                             QScrollArea, QGraphicsDropShadowEffect, QProgressBar, QTextBrowser, QStackedWidget, 
+                             QScrollArea, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QProgressBar, QTextBrowser, QStackedWidget, 
                              QTabWidget, QDialog, QDialogButtonBox, QLineEdit, QScrollBar, QAbstractSlider, QComboBox, 
-                             QTabBar, QSizePolicy, QFrame, QCheckBox, QFileDialog, QInputDialog, QShortcut)
-from PyQt5.QtGui import QColor, QPixmap, QFont, QPainter, QPainterPath, QPen, QTextOption, QIcon, QCursor, QKeySequence
+                             QTabBar, QSizePolicy, QFrame, QCheckBox, QFileDialog, QInputDialog, QShortcut, QButtonGroup)
+from PyQt5.QtGui import QColor, QPixmap, QFont, QPainter, QPainterPath, QPen, QTextOption, QIcon, QCursor, QKeySequence, QLinearGradient, QRegion
 from PyQt5.QtCore import (Qt, pyqtSignal, QObject, QThread, QTimer, QPropertyAnimation, QEasingCurve, 
-                             QSize, QEvent, QPoint, QRect, pyqtProperty, QFileSystemWatcher, QParallelAnimationGroup)
+                             QSize, QEvent, QPoint, QRect, QRectF, pyqtProperty, QFileSystemWatcher, QParallelAnimationGroup,
+                             QAbstractNativeEventFilter)
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
-from modify_widget import ModifyWidget, CustomMessageBox, GlobalTintWorker, _get_theme_glyph_colors, get_font_icon, set_project_root
-from theme_switcher_widget import ThemeSwitcherWidget
-from theme_editor_widget import ThemeEditorWidget
-from utils import resource_path, safe_file_write, set_window_effect, UnsavedChangesDialog, trigger_shell_reload, terminate_plugin_processes, get_mdl2_icon, global_undo_stack
-from cloud_sync import CloudSyncManager
-from nss_error_monitor import ShellLogMonitor
+
+SINGLE_INSTANCE_MUTEX_NAME = "Local\\iMA_Menu_Launcher_SingleInstance_Mutex"
+SINGLE_INSTANCE_MSG_NAME = "iMA_Menu_Launcher_RestoreAndFocus"
+SINGLE_INSTANCE_MSG_ID = ctypes.windll.user32.RegisterWindowMessageW(SINGLE_INSTANCE_MSG_NAME) if os.name == 'nt' else 0
+_single_instance_mutex = None
+
+class SingleInstanceNativeFilter(QAbstractNativeEventFilter):
+    def __init__(self, target_widget, msg_id):
+        super().__init__()
+        self.target_widget = target_widget
+        self.msg_id = msg_id
+
+    def nativeEventFilter(self, eventType, message):
+        if eventType in (b'windows_generic_MSG', 'windows_generic_MSG'):
+            try:
+                msg = wintypes.MSG.from_address(int(message))
+                if self.msg_id and msg.message == self.msg_id:
+                    if self.target_widget:
+                        self.target_widget.bring_to_focus()
+                    return True, 0
+            except Exception:
+                pass
+        return False, 0
+
+from utils import (resource_path, safe_file_write, set_window_effect, UnsavedChangesDialog, 
+                   trigger_shell_reload, terminate_plugin_processes, get_mdl2_icon, global_undo_stack,
+                   ModernDialog, ModernSwitch, PillProgressBar, FlowLayout, normalize_path,
+                   make_circular_pixmap, make_initial_avatar_pixmap, AccountProfileDialog,
+                   CapsuleActionButton, PillTabButton, PillPushButton)
 from plugin_registry import PluginRegistry, git_blob_sha, version_cmp, atomic_json_write, safe_json_read, delete_to_recycle_bin
+from plugin_workers import (
+    FetchPluginsThread, IconDownloadWorker, InstallationWorker,
+    DetailsFetchWorker, ClickableWidget, DetailsPopup, init_plugin_workers,
+    find_riot_client_path, fetch_ima_switcher_release
+)
 
 # Win32 Constants
 HTLEFT = 10
@@ -72,21 +145,17 @@ HTBOTTOMLEFT = 16
 HTBOTTOMRIGHT = 17
 HTCAPTION = 2
 WM_NCHITTEST = 0x0084
-WM_NCCALCSIZE = 0x0083
-WM_GETMINMAXINFO = 0x0024
-
-APP_REPO = "iMAboud/iMA-Menu-Updater"
+APP_REPO = "iMAboud/iMA-Menu-Plugins"
 _GITHUB_REPO = "iMAboud/iMA-Menu-Plugins"
 GITHUB_PLUGINS_JSON_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/plugins.json"
 GITHUB_API_BASE_URL = f"https://api.github.com/repos/{_GITHUB_REPO}"
 GITHUB_RELEASES_API_URL = f"{GITHUB_API_BASE_URL}/releases/latest"
 APP_LATEST_RELEASE_URL = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
 APP_RELEASES_API_URL = f"https://api.github.com/repos/{APP_REPO}/releases"
-REQUEST_TIMEOUT = 15
+REQUEST_TIMEOUT = 10
 
 import github_client
 from github_client import github_api_get, cdn_get, get_latest_tree_sha
-session = github_client._session
 
 # --- Robust Path Detection & Directory Initialization ---
 def _initialize_app_paths():
@@ -115,7 +184,6 @@ def _initialize_app_paths():
     return base, root
 
 APP_BASE_PATH, PROJECT_ROOT = _initialize_app_paths()
-set_project_root(PROJECT_ROOT)
 
 # Directory Definitions
 PLUGINS_DIR = os.path.join(PROJECT_ROOT, 'plugins')
@@ -169,7 +237,7 @@ def _cleanup_old_executables():
     except Exception:
         pass
 
-_cleanup_old_executables()
+threading.Thread(target=_cleanup_old_executables, daemon=True).start()
 
 def _restore_bundled_assets():
     if not getattr(sys, 'frozen', False): return
@@ -187,25 +255,25 @@ def _restore_bundled_assets():
                     shutil.copy2(src, dst)
     except: pass
 
-_restore_bundled_assets()
-
 def get_app_base_path():
     # Detect flags from arguments
     open_only = "--open-only" in sys.argv
     close_only = "--close-only" in sys.argv
     
     # ALWAYS close any open context menus first to prevent stacking
-    import win32gui, win32con
-    hwnd_menu = win32gui.FindWindow("#32768", None)
-    while hwnd_menu:
-        win32gui.SendMessage(hwnd_menu, win32con.WM_CLOSE, 0, 0)
-        hwnd_menu = win32gui.FindWindow("#32768", None)
+    try:
+        user32 = ctypes.windll.user32
+        WM_CLOSE = 0x0010
+        hwnd_menu = user32.FindWindowW("#32768", None)
+        while hwnd_menu:
+            user32.SendMessageW(hwnd_menu, WM_CLOSE, 0, 0)
+            hwnd_menu = user32.FindWindowW("#32768", None)
+    except Exception:
+        pass
 
-    if not open_only:
-        # Trigger reload using global constants
+    if close_only:
+        # Trigger reload using global constants and exit immediately
         root = PROJECT_ROOT
-        
-        # Touch config files to ensure shell notices changes
         for f in ['shell.nss', 'imports/modify.nss', 'imports/theme.nss']:
             fp = os.path.join(root, f)
             if os.path.exists(fp):
@@ -219,10 +287,13 @@ def get_app_base_path():
                 if key.startswith('_MEI'):
                     clean_environment.pop(key, None)
             subprocess.Popen([exe, '-reload'], env=clean_environment, creationflags=0x08000000)
-        
-        if close_only: sys.exit(0)
+        os._exit(0)
 
     return APP_BASE_PATH
+
+_restore_bundled_assets()
+get_app_base_path()
+_sync_local_runtime()
 
 TEMP_DIR = os.environ.get('TEMP', os.path.expanduser('~'))
 
@@ -249,7 +320,7 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.0.9'
+APP_VERSION = '2.0.23'
 VERSION = APP_VERSION
 
 class UpdateWorker(QObject):
@@ -257,15 +328,22 @@ class UpdateWorker(QObject):
     download_progress = pyqtSignal(int)
     download_finished = pyqtSignal(bool, str)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
+
     def check_for_updates(self, force=False):
         try:
             candidates = []
             parsed_current = _parse_version(VERSION)
 
-            # 1. CDN-based version manifest with cache-buster
-            cdn_url = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/version.json?t={int(time.time())}"
+            # 1. Fast CDN-based version manifest (Instant, 20-100ms, zero rate limit)
+            cdn_url = f"https://raw.githubusercontent.com/{APP_REPO}/main/version.json?t={int(time.time())}"
             try:
-                cdn_res = cdn_get(cdn_url, max_retries=2, timeout=REQUEST_TIMEOUT)
+                cdn_res = cdn_get(cdn_url, max_retries=1, timeout=3)
                 if cdn_res.status_code == 200:
                     cdn_data = cdn_res.json()
                     remote_v = str(cdn_data.get('version', '')).lstrip('vV').strip()
@@ -275,36 +353,51 @@ class UpdateWorker(QObject):
             except Exception:
                 pass
 
-            # 2. GitHub Releases API (query all releases and sort descending)
-            endpoints = [
-                f"https://api.github.com/repos/{_GITHUB_REPO}/releases?per_page=15",
-                f"https://api.github.com/repos/{_GITHUB_REPO}/releases/latest"
-            ]
-            for endpoint in endpoints:
+            # If force=True (Re-install) or CDN already found a newer version, return immediately!
+            if candidates:
+                highest_parsed, highest_v_str, highest_url = candidates[0]
+                if force or highest_parsed > parsed_current:
+                    target_v = highest_v_str if highest_parsed >= parsed_current else VERSION
+                    self.check_finished.emit(True, target_v, highest_url)
+                    return
+
+            # 2. Check GitHub Releases latest API (Fallback for releases not yet in version.json)
+            try:
+                latest_url = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
+                response = github_api_get(latest_url, max_retries=1, timeout=2)
+                if response.status_code == 200:
+                    release_data = response.json()
+                    tag_name = release_data.get('tag_name', '')
+                    remote_version = tag_name.lstrip('vV').strip()
+                    if remote_version:
+                        for asset in release_data.get('assets', []):
+                            asset_name = asset.get('name', '').lower()
+                            if asset_name.endswith('.exe'):
+                                download_url = asset.get('browser_download_url')
+                                candidates.append((_parse_version(remote_version), remote_version, download_url))
+                                break
+            except Exception:
+                pass
+
+            # 3. Multi-release fallback if still no binary candidate found
+            if not candidates:
                 try:
-                    response = github_api_get(endpoint, max_retries=2, timeout=REQUEST_TIMEOUT)
-                    if response.status_code == 200:
-                        raw_data = response.json()
-                        releases_list = raw_data if isinstance(raw_data, list) else [raw_data]
-                        for release_data in releases_list:
-                            tag_name = release_data.get('tag_name', '')
-                            remote_version = tag_name.lstrip('vV').strip()
-                            if not remote_version:
-                                continue
-                            parsed_v = _parse_version(remote_version)
-                            download_url = None
-                            for asset in release_data.get('assets', []):
-                                asset_name = asset.get('name', '').lower()
-                                if asset_name.endswith('.exe'):
-                                    download_url = asset.get('browser_download_url')
-                                    if 'launcher' in asset_name:
-                                        break
-                            if download_url:
-                                candidates.append((parsed_v, remote_version, download_url))
+                    releases_url = f"https://api.github.com/repos/{APP_REPO}/releases"
+                    res = github_api_get(releases_url, max_retries=1, timeout=2)
+                    if res.status_code == 200:
+                        for rel in res.json():
+                            r_tag = rel.get('tag_name', '').lstrip('vV').strip()
+                            for asset in rel.get('assets', []):
+                                a_name = asset.get('name', '').lower()
+                                if a_name.endswith('.exe'):
+                                    candidates.append((_parse_version(r_tag), r_tag, asset.get('browser_download_url')))
+                                    break
+                            if candidates:
+                                break
                 except Exception:
                     pass
 
-            # Sort all candidates to find absolute highest available release
+            # Sort all candidates to find highest available release
             if candidates:
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 highest_parsed, highest_v_str, highest_url = candidates[0]
@@ -315,6 +408,9 @@ class UpdateWorker(QObject):
                 elif force:
                     target_v = highest_v_str if highest_parsed >= parsed_current else VERSION
                     self.check_finished.emit(True, target_v, highest_url)
+                    return
+                else:
+                    self.check_finished.emit(False, highest_v_str, highest_url)
                     return
 
             self.check_finished.emit(False, VERSION, None)
@@ -341,32 +437,26 @@ class UpdateWorker(QObject):
                 try: os.remove(final_destination)
                 except Exception: pass
 
+            if self._is_cancelled:
+                raise ValueError("Download cancelled")
+
             if os.path.exists(target_url) and os.path.isfile(target_url):
                 shutil.copy2(target_url, temp_destination)
                 self.download_progress.emit(100)
             else:
-                response = requests.get(target_url, stream=True, timeout=60, headers={"User-Agent": "iMA-Menu-Updater"})
-                response.raise_for_status()
-                total_bytes = int(response.headers.get('content-length', 0))
-                downloaded_bytes = 0
-                with open(temp_destination, 'wb') as output_file:
-                    for data_chunk in response.iter_content(chunk_size=262144):
-                        if data_chunk:
-                            output_file.write(data_chunk)
-                            downloaded_bytes += len(data_chunk)
-                            if total_bytes > 0:
-                                progress_percentage = min(100, int((downloaded_bytes / total_bytes) * 100))
-                                self.download_progress.emit(progress_percentage)
-                if total_bytes > 0 and downloaded_bytes < total_bytes:
-                    raise IOError(f'Incomplete download: received {downloaded_bytes}/{total_bytes} bytes')
+                from github_client import download_file
+                download_file(target_url, temp_destination, progress_callback=self.download_progress.emit, cancel_check=lambda: self._is_cancelled, timeout=120)
 
-            if not os.path.exists(temp_destination) or os.path.getsize(temp_destination) < 1024 * 100:
+            if self._is_cancelled:
+                raise ValueError("Download cancelled")
+
+            if not os.path.exists(temp_destination) or os.path.getsize(temp_destination) < 1024 * 50:
                 raise ValueError("Downloaded file is invalid or corrupted")
 
             with open(temp_destination, 'rb') as binary_file:
                 magic_bytes = binary_file.read(2)
-                if magic_bytes != b'MZ':
-                    raise ValueError("Downloaded file is not a valid Windows executable")
+                if magic_bytes != b'MZ' and magic_bytes != b'PK':
+                    raise ValueError("Downloaded file is not a valid binary asset")
 
             if os.path.exists(final_destination):
                 try: os.remove(final_destination)
@@ -381,13 +471,12 @@ class UpdateWorker(QObject):
 
 
 class SettingsManager:
+    DEPRECATED_KEYS = ("auto_save", "auto_apply_theme_colors", "auto_preview_context_menu")
+
     def __init__(self):
         self.defaults = {
             "auto_update": False,
-            "auto_check_updates": False,
-            "auto_save": False,
-            "auto_apply_theme_colors": False,
-            "auto_preview_context_menu": False
+            "auto_check_updates": False
         }
         self.settings = self.defaults.copy()
         self.load()
@@ -396,7 +485,17 @@ class SettingsManager:
         if os.path.exists(SETTINGS_FILE):
             try:
                 with open(SETTINGS_FILE, 'r') as f:
-                    self.settings.update(json.load(f))
+                    data = json.load(f)
+                
+                had_deprecated = False
+                for k in self.DEPRECATED_KEYS:
+                    if k in data:
+                        data.pop(k, None)
+                        had_deprecated = True
+                
+                self.settings.update(data)
+                if had_deprecated:
+                    self.save()
             except Exception:
                 pass
         else:
@@ -406,15 +505,21 @@ class SettingsManager:
     def save(self):
         try:
             os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+            for k in self.DEPRECATED_KEYS:
+                self.settings.pop(k, None)
             with open(SETTINGS_FILE, 'w') as f:
                 json.dump(self.settings, f, indent=4)
         except Exception:
             pass
 
-    def get(self, key):
-        return self.settings.get(key, self.defaults.get(key))
+    def get(self, key, default=None):
+        if key in self.DEPRECATED_KEYS:
+            return False
+        return self.settings.get(key, self.defaults.get(key, default))
 
     def set(self, key, value):
+        if key in self.DEPRECATED_KEYS:
+            return
         self.settings[key] = value
         self.save()
 
@@ -440,24 +545,6 @@ def get_plugin_install_path(plugin_data):
         return os.path.join(PLUGINS_DIR, plugin_data['name'])
     return resolve_path(install_path_str)
 
-class ModernSwitch(QWidget):
-    stateChanged = pyqtSignal(bool)
-    def __init__(self, parent=None, checked=False):
-        super().__init__(parent); self.setFixedSize(50, 26); self._checked = checked; self._pos_val = 1.0 if checked else 0.0
-        self._anim = QPropertyAnimation(self, b"pos_val"); self._anim.setDuration(400); self._anim.setEasingCurve(QEasingCurve.OutBack)
-        self.setCursor(Qt.PointingHandCursor)
-    @pyqtProperty(float)
-    def pos_val(self): return self._pos_val
-    @pos_val.setter
-    def pos_val(self, v): self._pos_val = v; self.update()
-    def mousePressEvent(self, e): self._checked = not self._checked; self._anim.setStartValue(self._pos_val); self._anim.setEndValue(1.0 if self._checked else 0.0); self._anim.start(); self.stateChanged.emit(self._checked)
-    def isChecked(self): return self._checked
-    def setChecked(self, v): self._checked = v; self._pos_val = 1.0 if v else 0.0; self.update()
-    def paintEvent(self, e):
-        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing); r = self.rect(); bg = QColor("#dc143c") if self._checked else QColor("#2a2a30")
-        p.setBrush(bg); p.setPen(Qt.NoPen); p.drawRoundedRect(r, r.height()/2, r.height()/2); handle = QColor("#ffffff") if self._checked else QColor("#b0b0b0")
-        p.setBrush(handle); x = 4 + (r.width() - 24) * self._pos_val; p.drawEllipse(int(x), 4, 18, 18)
-
 class ModernTabBar(QTabBar):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -477,42 +564,34 @@ class ModernTabWidget(QTabWidget):
                 background: transparent; 
             }
         """)
-
-class ModernDialog(QDialog):
-    def __init__(self, parent=None, title="Message", text=""):
-        super().__init__(parent); self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog); self.setAttribute(Qt.WA_TranslucentBackground); self.setMinimumWidth(400)
-        l = QVBoxLayout(self); self.f = QFrame(); self.f.setObjectName("modalFrame"); self.f.setStyleSheet("#modalFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }"); l.addWidget(self.f)
-        self.cl = QVBoxLayout(self.f); self.cl.setContentsMargins(30, 30, 30, 30); self.cl.setSpacing(15)
-        self.tl = QLabel(title); self.tl.setStyleSheet("color: white; font-size: 20px; font-weight: bold; border: none;"); self.cl.addWidget(self.tl)
-        self.ml = QLabel(text); self.ml.setStyleSheet("color: #b0b0b0; font-size: 14px; border: none;"); self.ml.setWordWrap(True); self.cl.addWidget(self.ml)
-        self.bl = QHBoxLayout(); self.bl.setSpacing(10); self.cl.addLayout(self.bl)
-        self.add_button("Close", "secondaryButton", self.accept)
-    def add_button(self, text, style_obj, callback):
-        # Remove default button if a new one is added manually
-        if self.bl.count() == 1 and isinstance(self.bl.itemAt(0).widget(), QPushButton) and self.bl.itemAt(0).widget().text() == "Close":
-            w = self.bl.itemAt(0).widget(); self.bl.removeWidget(w); w.hide(); w.setParent(None); w.deleteLater()
-        b = QPushButton(text); b.setFixedHeight(40); b.setCursor(Qt.PointingHandCursor); b.setObjectName(style_obj); b.clicked.connect(callback); self.bl.addWidget(b); return b
-    def mousePressEvent(self, e):
-        if not self.f.geometry().contains(e.pos()): self.reject()
-_crisp_pixmap_cache = {}
+_crisp_pixmap_cache = OrderedDict()
+_MAX_PIXMAP_CACHE_SIZE = 128
 
 def load_crisp_pixmap(icon_path, target_size=96):
     if not icon_path or not os.path.exists(icon_path):
         return QPixmap()
-    cache_key = (icon_path, target_size)
+    norm_path = os.path.normpath(icon_path).lower()
+    cache_key = (norm_path, target_size)
     if cache_key in _crisp_pixmap_cache:
+        _crisp_pixmap_cache.move_to_end(cache_key)
         return _crisp_pixmap_cache[cache_key]
     try:
+        pix = None
         icon = QIcon(icon_path)
         if not icon.isNull():
-            pix = icon.pixmap(target_size, target_size)
-            if not pix.isNull():
-                _crisp_pixmap_cache[cache_key] = pix
-                return pix
-        pix = QPixmap(icon_path)
-        if not pix.isNull():
-            if pix.width() > target_size or pix.height() > target_size:
-                pix = pix.scaled(target_size, target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            p = icon.pixmap(target_size, target_size)
+            if not p.isNull():
+                pix = p
+        if pix is None or pix.isNull():
+            p = QPixmap(icon_path)
+            if not p.isNull():
+                if p.width() > target_size or p.height() > target_size:
+                    pix = p.scaled(target_size, target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                else:
+                    pix = p
+        if pix and not pix.isNull():
+            if len(_crisp_pixmap_cache) >= _MAX_PIXMAP_CACHE_SIZE:
+                _crisp_pixmap_cache.popitem(last=False)
             _crisp_pixmap_cache[cache_key] = pix
             return pix
         return QPixmap()
@@ -785,953 +864,22 @@ def add_to_path(directory):
     except Exception as e:
         print(f"Error adding {directory} to PATH: {e}")
 
-def find_riot_client_path():
-    from pathlib import Path
-    try:
-        key_path = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Riot Game valorant.live'
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
-            loc, _ = winreg.QueryValueEx(key, 'InstallLocation')
-            if loc and os.path.isdir(loc):
-                p = os.path.join(loc, 'RiotClientServices.exe')
-                if os.path.exists(p): return p
-    except Exception: pass
-
-    try:
-        key_path = r'SOFTWARE\Riot Games\Riot Client'
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            p, _ = winreg.QueryValueEx(key, 'ExecutablePath')
-            if p and os.path.exists(p): return p
-    except Exception: pass
-
-    installs_json = Path(os.getenv('ALLUSERSPROFILE', 'C:/ProgramData')) / 'Riot Games' / 'RiotClientInstalls.json'
-    if installs_json.exists():
-        try:
-            with open(installs_json, 'r') as f:
-                data = json.load(f)
-                for k in ('rc_default', 'rc_live', 'associated_client'):
-                    if k in data and os.path.exists(data[k]):
-                        return data[k]
-        except Exception: pass
-
-    common_paths = [
-        r'C:\Riot Games\Riot Client\RiotClientServices.exe',
-        os.path.join(os.getenv('PROGRAMFILES', 'C:/Program Files'), 'Riot Games', 'Riot Client', 'RiotClientServices.exe'),
-        os.path.join(os.getenv('PROGRAMFILES(X86)', 'C:/Program Files (x86)'), 'Riot Games', 'Riot Client', 'RiotClientServices.exe'),
-        r'D:\Riot Games\Riot Client\RiotClientServices.exe',
-        r'E:\Riot Games\Riot Client\RiotClientServices.exe',
-    ]
-    for cp in common_paths:
-        if os.path.exists(cp): return cp
-    return None
-
-def fetch_ima_switcher_release():
-    icon_url = "https://raw.githubusercontent.com/iMAboud/iMA-Switcher/main/Assets/ima.png"
-    try:
-        url = "https://api.github.com/repos/iMAboud/iMA-Switcher/releases/latest"
-        res = github_api_get(url, max_retries=2, timeout=REQUEST_TIMEOUT)
-        if res.status_code == 200:
-            data = res.json()
-            raw_tag = data.get('tag_name', '1.0.29')
-            tag = raw_tag.lstrip('vV')
-            dl_url = None
-            for asset in data.get('assets', []):
-                if asset.get('name', '').lower() == 'ima.switcher.installer.exe':
-                    dl_url = asset.get('browser_download_url')
-                    break
-            if not dl_url:
-                dl_url = f"https://github.com/iMAboud/iMA-Switcher/releases/download/{raw_tag}/iMA.Switcher.Installer.exe"
-            return {
-                "name": "iMA Switcher",
-                "description": "Modern Valorant & Riot Games Account Switcher",
-                "version": tag,
-                "download_url": dl_url,
-                "icon_url": icon_url,
-                "repo": "iMAboud/iMA-Switcher",
-                "custom_repo": True
-            }
-    except Exception:
-        pass
-    return {
-        "name": "iMA Switcher",
-        "description": "Modern Valorant & Riot Games Account Switcher",
-        "version": "1.0.27",
-        "download_url": "https://github.com/iMAboud/iMA-Switcher/releases/download/V1.0.27/iMA.Switcher.Installer.exe",
-        "icon_url": icon_url,
-        "repo": "iMAboud/iMA-Switcher",
-        "custom_repo": True
-    }
-
-class FetchPluginsThread(QObject):
-    finished = pyqtSignal(list, dict)
-    error = pyqtSignal(str)
-
-    def __init__(self, token=None):
-        super().__init__()
-        self.token = token
-
-    def run(self):
-        try:
-            response = cdn_get(GITHUB_PLUGINS_JSON_URL, max_retries=3, timeout=REQUEST_TIMEOUT)
-            plugins = response.json()
-            if not isinstance(plugins, list):
-                raise ValueError("Manifest response is not a valid list")
-
-            try:
-                atomic_json_write(PLUGINS_CACHE_FILE, plugins)
-            except Exception:
-                pass
-
-            switcher_info = fetch_ima_switcher_release()
-            found_switcher = False
-            for p in plugins:
-                if isinstance(p, dict) and p.get('name', '').lower() in ('ima switcher', 'ima-switcher', 'switcher'):
-                    p['version'] = switcher_info['version']
-                    p['download_url'] = switcher_info['download_url']
-                    p['custom_repo'] = True
-                    found_switcher = True
-                    break
-            if not found_switcher:
-                plugins.append(switcher_info)
-
-            tree_data = None
-            try:
-                root_tree_sha = get_latest_tree_sha(repo=_GITHUB_REPO, branch="main", timeout=REQUEST_TIMEOUT)
-
-                if os.path.exists(GIT_TREE_CACHE_FILE):
-                    try:
-                        cache_data = safe_json_read(GIT_TREE_CACHE_FILE)
-                        if cache_data and cache_data.get('sha') == root_tree_sha:
-                            tree_data = cache_data.get('tree')
-                    except Exception:
-                        tree_data = None
-
-                if tree_data is None and root_tree_sha:
-                    trees_api_url = f"{GITHUB_API_BASE_URL}/git/trees/{root_tree_sha}?recursive=true"
-                    tree_res = github_api_get(trees_api_url, max_retries=3, timeout=REQUEST_TIMEOUT)
-                    tree_data = tree_res.json()
-                    try:
-                        atomic_json_write(GIT_TREE_CACHE_FILE, {'sha': root_tree_sha, 'tree': tree_data})
-                    except Exception:
-                        pass
-            except Exception as tree_err:
-                print(f"Non-critical tree fetch error (falling back to CDN/archive): {tree_err}")
-                tree_data = {}
-
-            self.finished.emit(plugins, tree_data or {})
-        except requests.exceptions.RequestException as e:
-            self.error.emit(f"Network error: {e}")
-        except Exception as e:
-            self.error.emit(f"Error checking plugins: {e}")
-
-class PillProgressBar(QWidget):
-    def __init__(self, parent=None, height=20):
-        super().__init__(parent); self.setFixedHeight(height); self.value = 0
-        self.setMinimumWidth(120)
-        self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.groove = QFrame(); self.groove.setObjectName("pillGroove")
-        self.groove.setStyleSheet(f"QFrame#pillGroove {{ background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: {height//2}px; }}")
-        self.fill = QFrame(self.groove); self.fill.setObjectName("pillFill")
-        self.fill.setStyleSheet(f"QFrame#pillFill {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #dc143c, stop:1 #ff2a55); border-radius: {max(2, (height-4)//2)}px; }}")
-        self.fill.setGeometry(2, 2, 0, height - 4); self.main_layout.addWidget(self.groove)
-    def setValue(self, val):
-        self.value = max(0, min(100, val))
-        if self.value <= 0: self.fill.hide(); return
-        self.fill.show()
-        max_w = self.groove.width() - 4
-        if max_w <= 0: return
-        new_w = max(2, int(max_w * (self.value / 100)))
-        self.fill.setGeometry(2, 2, new_w, self.height() - 4)
-    def resizeEvent(self, e): super().resizeEvent(e); self.setValue(self.value)
-    def setVisible(self, v): super().setVisible(v)
-
-class IconDownloadWorker(QObject):
-    finished = pyqtSignal(str, QPixmap)
-    error = pyqtSignal(str)
-
-    def __init__(self, plugin_name, url, save_path):
-        super().__init__()
-        self.plugin_name = plugin_name
-        self.url = url
-        self.save_path = save_path
-
-    def run(self):
-        pixmap = None
-        try:
-            response = cdn_get(self.url, max_retries=2, timeout=REQUEST_TIMEOUT)
-            pixmap = QPixmap()
-            pixmap.loadFromData(response.content)
-            if not pixmap.isNull():
-                pixmap.save(self.save_path)
-            self.finished.emit(self.plugin_name, pixmap)
-        except requests.exceptions.RequestException as e:
-            print(f"Error downloading icon for {self.plugin_name}: {e}")
-            pixmap = None
-            self.error.emit(str(e))
-        except Exception as e:
-            print(f"Error processing icon for {self.plugin_name}: {e}")
-            pixmap = None
-            self.error.emit(str(e))
-
-class InstallationWorker(QObject):
-    progress = pyqtSignal(str, int)
-    finished = pyqtSignal(str, str, dict, int)
-    error = pyqtSignal(str, str, str)
-
-    def __init__(self, plugin_data):
-        super().__init__()
-        self.plugin_data = plugin_data
-        self.plugin_name = plugin_data['name']
-        self._is_cancelled = False
-        self.files_to_download = []
-
-    def install_ima_switcher(self):
-        try:
-            target_dir = os.path.join(os.getenv('LOCALAPPDATA', ''), 'iMA Switcher')
-            os.makedirs(target_dir, exist_ok=True)
-
-            dl_url = self.plugin_data.get('download_url') or "https://github.com/iMAboud/iMA-Switcher/releases/download/V1.0.27/iMA.Switcher.Installer.exe"
-            
-            self.progress.emit(self.plugin_name, 10)
-            res = cdn_get(dl_url, max_retries=3, timeout=45, stream=True)
-
-            temp_installer = os.path.join(target_dir, "iMA_Switcher_Update.exe")
-            target_exe = os.path.join(target_dir, "iMA Switcher.exe")
-
-            total_size = int(res.headers.get('content-length', 0))
-            downloaded = 0
-
-            with open(temp_installer, 'wb') as f:
-                for chunk in res.iter_content(chunk_size=262144):
-                    if self._is_cancelled:
-                        if os.path.exists(temp_installer):
-                            try: os.remove(temp_installer)
-                            except OSError: pass
-                        self.finished.emit(self.plugin_name, "cancelled", {}, 0)
-                        return
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total_size > 0:
-                            pct = int((downloaded / total_size) * 80) + 10
-                            self.progress.emit(self.plugin_name, pct)
-
-            if os.path.exists(target_exe):
-                try: os.remove(target_exe)
-                except OSError: pass
-
-            shutil.copy2(temp_installer, target_exe)
-            try: os.remove(temp_installer)
-            except OSError: pass
-
-            version_str = self.plugin_data.get('version', '1.0.27')
-            with open(os.path.join(target_dir, 'version.txt'), 'w', encoding='utf-8') as f:
-                f.write(version_str)
-
-            riot_exe = find_riot_client_path()
-            if riot_exe:
-                config_file = os.path.join(target_dir, 'config.json')
-                cfg = {}
-                if os.path.exists(config_file):
-                    try: cfg = json.load(open(config_file, 'r', encoding='utf-8'))
-                    except Exception: cfg = {}
-                cfg['riot_client_services_path'] = riot_exe
-                atomic_json_write(config_file, cfg)
-
-            app_nss = os.path.join(target_dir, 'valo.nss')
-            imports_nss = os.path.join(PROJECT_ROOT, 'imports', 'valo.nss')
-            if os.path.exists(app_nss) or os.path.exists(imports_nss):
-                try:
-                    add_nss_import({'nss_path': 'imports', 'nss_file': 'valo.nss'}, os.path.join(PROJECT_ROOT, 'shell.nss'))
-                except Exception:
-                    pass
-
-            self.progress.emit(self.plugin_name, 100)
-            self.finished.emit(self.plugin_name, "installed", {}, 1)
-        except Exception as e:
-            self.error.emit(self.plugin_name, "failed", str(e))
-
-    def _install_from_repo_archive(self, staging_dir, file_hashes):
-        """
-        Fallback installation using direct repository ZIP download.
-        Bypasses GitHub REST API rate limits.
-        """
-        zip_urls = [
-            f"https://codeload.github.com/{_GITHUB_REPO}/zip/refs/heads/main",
-            f"https://github.com/{_GITHUB_REPO}/archive/refs/heads/main.zip",
-        ]
-        
-        last_error = None
-        zip_bytes = None
-        for url in zip_urls:
-            if self._is_cancelled:
-                return False
-            try:
-                self.progress.emit(self.plugin_name, 15)
-                res = cdn_get(url, max_retries=2, timeout=45, stream=True)
-                total_size = int(res.headers.get('content-length', 0))
-                chunks = []
-                downloaded = 0
-                for chunk in res.iter_content(chunk_size=262144):
-                    if self._is_cancelled:
-                        return False
-                    if chunk:
-                        chunks.append(chunk)
-                        downloaded += len(chunk)
-                        if total_size > 0:
-                            pct = 15 + int((downloaded / total_size) * 45)
-                            self.progress.emit(self.plugin_name, min(pct, 60))
-                zip_bytes = b"".join(chunks)
-                if zip_bytes:
-                    break
-            except Exception as e:
-                last_error = e
-                continue
-
-        if not zip_bytes:
-            raise Exception(f"Failed to download repository archive: {last_error}")
-
-        self.progress.emit(self.plugin_name, 65)
-        import io
-        extracted_any = False
-        target_name_lower = self.plugin_name.strip().lower()
-
-        with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zf:
-            namelist = zf.namelist()
-            matching_prefix = None
-            for item in namelist:
-                parts = item.replace('\\', '/').split('/')
-                if len(parts) >= 2 and parts[1].strip().lower() == target_name_lower:
-                    matching_prefix = f"{parts[0]}/{parts[1]}/"
-                    break
-
-            if not matching_prefix:
-                for item in namelist:
-                    parts = item.replace('\\', '/').split('/')
-                    if len(parts) >= 1 and parts[0].strip().lower() == target_name_lower:
-                        matching_prefix = f"{parts[0]}/"
-                        break
-
-            if not matching_prefix:
-                raise Exception(f"Could not find folder for plugin '{self.plugin_name}' in repository archive.")
-
-            for member in zf.infolist():
-                if self._is_cancelled:
-                    return False
-                member_path = member.filename.replace('\\', '/')
-                if member_path.startswith(matching_prefix) and not member.is_dir():
-                    rel_path = member_path[len(matching_prefix):].strip('/')
-                    if not rel_path:
-                        continue
-                    dest_path = os.path.join(staging_dir, rel_path)
-                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                    with zf.open(member) as src_f, open(dest_path, 'wb') as dst_f:
-                        content = src_f.read()
-                        dst_f.write(content)
-                    file_hashes[rel_path] = git_blob_sha(dest_path)
-                    extracted_any = True
-
-        if not extracted_any:
-            raise Exception(f"No files extracted for plugin '{self.plugin_name}' from repository archive.")
-
-        self.progress.emit(self.plugin_name, 80)
-        return True
-
-    def run(self):
-        if self.plugin_name.lower() in ('ima switcher', 'ima-switcher', 'switcher', 'valo'):
-            self.install_ima_switcher()
-            return
-
-        staging_dir = os.path.join(PLUGINS_DIR, f".staging_{self.plugin_name}")
-        backup_dir = os.path.join(PLUGINS_DIR, f".backup_{self.plugin_name}")
-        target_plugin_dir = get_plugin_install_path(self.plugin_data)
-        file_hashes = {}
-
-        try:
-            tree_data = self.plugin_data.get('_tree_data')
-            
-            if tree_data is None and os.path.exists(GIT_TREE_CACHE_FILE):
-                try:
-                    cache_age = time.time() - os.path.getmtime(GIT_TREE_CACHE_FILE)
-                    cache_data = safe_json_read(GIT_TREE_CACHE_FILE)
-                    if cache_data and isinstance(cache_data, dict) and cache_age < 300:
-                        tree_data = cache_data.get('tree')
-                except Exception:
-                    tree_data = None
-
-            if tree_data is None:
-                try:
-                    root_tree_sha = get_latest_tree_sha(repo=_GITHUB_REPO, branch="main", timeout=REQUEST_TIMEOUT)
-                    if root_tree_sha:
-                        trees_api_url = f"{GITHUB_API_BASE_URL}/git/trees/{root_tree_sha}?recursive=true"
-                        tree_res = github_api_get(trees_api_url, max_retries=3, timeout=REQUEST_TIMEOUT)
-                        tree_data = tree_res.json()
-                        try:
-                            atomic_json_write(GIT_TREE_CACHE_FILE, {'sha': root_tree_sha, 'tree': tree_data})
-                        except Exception:
-                            pass
-                except Exception as e:
-                    print(f"Git trees resolution failed, will attempt archive download fallback: {e}")
-                    tree_data = None
-
-            if tree_data and isinstance(tree_data, dict) and 'tree' in tree_data:
-                plugin_path_prefix = f"{self.plugin_name}/"
-                base_download_url = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main"
-
-                for item in tree_data['tree']:
-                    if self._is_cancelled:
-                        if os.path.exists(staging_dir): shutil.rmtree(staging_dir)
-                        self.finished.emit(self.plugin_name, "cancelled", {}, 0)
-                        return
-                    if item.get('type') == 'blob' and item['path'].startswith(plugin_path_prefix):
-                        relative_path = item['path'][len(plugin_path_prefix):]
-                        download_url = f"{base_download_url}/{item['path']}"
-                        self.files_to_download.append({'url': download_url, 'path': relative_path, 'sha': item.get('sha')})
-
-            if self._is_cancelled:
-                if os.path.exists(staging_dir): shutil.rmtree(staging_dir)
-                self.finished.emit(self.plugin_name, "cancelled", {}, 0)
-                return
-
-            if os.path.exists(staging_dir):
-                shutil.rmtree(staging_dir)
-
-            if self.files_to_download:
-                self.download_files(staging_dir, file_hashes)
-            else:
-                # Fallback to repo archive ZIP download
-                success = self._install_from_repo_archive(staging_dir, file_hashes)
-                if not success and self._is_cancelled:
-                    if os.path.exists(staging_dir): shutil.rmtree(staging_dir)
-                    self.finished.emit(self.plugin_name, "cancelled", {}, 0)
-                    return
-
-            if self._is_cancelled:
-                if os.path.exists(staging_dir): shutil.rmtree(staging_dir)
-                self.finished.emit(self.plugin_name, "cancelled", {}, 0)
-                return
-
-            if 'dependencies' in self.plugin_data:
-                self.progress.emit(self.plugin_name, 0)
-                self.download_dependencies(self.plugin_data['dependencies'])
-                add_to_path(LIB_DIR)
-
-            version_file_path = os.path.join(staging_dir, 'version')
-            with open(version_file_path, 'w', encoding='utf-8') as f:
-                f.write(self.plugin_data.get('version', '1.0.0'))
-
-            terminate_plugin_processes(target_plugin_dir)
-            import gc
-            gc.collect()
-            time.sleep(0.1)
-
-            if os.path.exists(backup_dir):
-                try: shutil.rmtree(backup_dir, ignore_errors=True)
-                except Exception: pass
-
-            if os.path.exists(target_plugin_dir):
-                try:
-                    os.rename(target_plugin_dir, backup_dir)
-                except OSError:
-                    time.sleep(0.2)
-                    try:
-                        os.rename(target_plugin_dir, backup_dir)
-                    except OSError:
-                        # Fallback: copy staging into target and clean staging
-                        try: shutil.rmtree(backup_dir, ignore_errors=True)
-                        except Exception: pass
-
-            if os.path.exists(staging_dir):
-                if os.path.exists(target_plugin_dir):
-                    try:
-                        shutil.rmtree(target_plugin_dir, ignore_errors=True)
-                    except Exception:
-                        pass
-                try:
-                    os.rename(staging_dir, target_plugin_dir)
-                except OSError:
-                    # Fallback copy if rename fails
-                    shutil.copytree(staging_dir, target_plugin_dir, dirs_exist_ok=True)
-                    shutil.rmtree(staging_dir, ignore_errors=True)
-
-            if os.path.exists(backup_dir):
-                try: shutil.rmtree(backup_dir, ignore_errors=True)
-                except Exception: pass
-
-            if self.plugin_data.get('launch') and self.plugin_data.get('launch_file'):
-                launch_file_path = os.path.join(target_plugin_dir, self.plugin_data['launch_file'])
-                if os.path.exists(launch_file_path):
-                    try:
-                        os.startfile(launch_file_path)
-                    except Exception as e:
-                        print(f"Failed to auto-launch {launch_file_path}: {e}")
-
-            add_nss_import(self.plugin_data, os.path.join(PROJECT_ROOT, 'shell.nss'))
-            self.finished.emit(self.plugin_name, "installed", file_hashes, len(file_hashes))
-        except Exception as e:
-            if self._is_cancelled:
-                if os.path.exists(staging_dir):
-                    try: shutil.rmtree(staging_dir)
-                    except Exception: pass
-                self.finished.emit(self.plugin_name, "cancelled", {}, 0)
-                return
-            if os.path.exists(staging_dir):
-                try: shutil.rmtree(staging_dir)
-                except Exception: pass
-            if os.path.exists(backup_dir) and not os.path.exists(target_plugin_dir):
-                try: os.rename(backup_dir, target_plugin_dir)
-                except Exception: pass
-            self.error.emit(self.plugin_name, "failed", str(e))
-
-    def download_files(self, target_plugin_dir, file_hashes):
-        os.makedirs(target_plugin_dir, exist_ok=True)
-        total_files = len(self.files_to_download)
-        for i, file_info in enumerate(self.files_to_download):
-            if self._is_cancelled:
-                return
-
-            relative_path = file_info['path']
-            local_path = os.path.join(target_plugin_dir, relative_path)
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-
-            download_success = False
-            last_err = None
-            for attempt in range(3):
-                if self._is_cancelled:
-                    return
-                try:
-                    response = cdn_get(file_info['url'], max_retries=2, timeout=REQUEST_TIMEOUT)
-                    with open(local_path, 'wb') as f:
-                        f.write(response.content)
-                    file_hashes[relative_path] = file_info.get('sha') or git_blob_sha(local_path)
-                    download_success = True
-                    break
-                except Exception as e:
-                    last_err = e
-                    time.sleep(1.0 * (attempt + 1))
-            
-            if not download_success:
-                raise last_err
-
-            progress_val = int(((i + 1) / total_files) * 100)
-            self.progress.emit(self.plugin_name, progress_val)
-
-    def download_dependencies(self, dependencies):
-        self.progress.emit(self.plugin_name, 0)
-        total_dependencies = len(dependencies)
-        for i, dep_info in enumerate(dependencies):
-            if self._is_cancelled:
-                return
-            dep_name = dep_info['name']
-            dep_path = os.path.join(LIB_DIR, dep_name)
-
-            if os.path.exists(dep_path):
-                print(f"Dependency {dep_name} already exists. Skipping download.")
-                self.progress.emit(self.plugin_name, int(((i + 1) / total_dependencies) * 100))
-                continue
-
-            try:
-                # Search through all releases for the dependency
-                response = github_api_get(f"https://api.github.com/repos/{_GITHUB_REPO}/releases", max_retries=3, timeout=REQUEST_TIMEOUT)
-                releases = response.json()
-
-                asset_url = None
-                for release in releases:
-                    for asset in release.get('assets', []):
-                        if asset['name'] == dep_name:
-                            asset_url = asset['browser_download_url']
-                            break
-                    if asset_url: break
-                
-                if not asset_url:
-                    raise Exception(f"Dependency {dep_name} not found in any release assets.")
-
-                dep_response = cdn_get(asset_url, max_retries=3, timeout=REQUEST_TIMEOUT, stream=True)
-
-                os.makedirs(LIB_DIR, exist_ok=True)
-                with open(dep_path, 'wb') as f:
-                    for chunk in dep_response.iter_content(chunk_size=262144):
-                        if chunk:
-                            f.write(chunk)
-                print(f"Downloaded dependency: {dep_name}")
-            except Exception as e:
-                print(f"Error downloading dependency {dep_name}: {e}")
-            self.progress.emit(self.plugin_name, int(((i + 1) / total_dependencies) * 100))
-
-    def cancel(self):
-        self._is_cancelled = True
-
-class DetailsFetchWorker(QObject):
-    finished = pyqtSignal(str)
-    error = pyqtSignal(str)
-
-    def __init__(self, plugin_name):
-        super().__init__()
-        self.plugin_name = plugin_name
-
-    def run(self):
-        try:
-            temp_html_path = os.path.join(CACHE_DIR, f"{self.plugin_name}_details.html")
-            temp_md_path = os.path.join(CACHE_DIR, f"{self.plugin_name}_details.md")
-
-            # Priority 1: Check local installed plugin folder
-            plugin_dir = os.path.join(PLUGINS_DIR, self.plugin_name)
-            if not os.path.isdir(plugin_dir) and os.path.exists(PLUGINS_DIR):
-                for d in os.listdir(PLUGINS_DIR):
-                    if d.lower() == self.plugin_name.lower():
-                        plugin_dir = os.path.join(PLUGINS_DIR, d)
-                        break
-
-            if os.path.isdir(plugin_dir):
-                for candidate in ('details.md', 'README.md', 'readme.md', 'DETAILS.md'):
-                    local_path = os.path.join(plugin_dir, candidate)
-                    if os.path.exists(local_path):
-                        try:
-                            with open(local_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                markdown_content = f.read()
-                            if markdown_content.strip():
-                                html_content = self.markdown_to_html_with_images(markdown_content)
-                                self.finished.emit(html_content)
-                                return
-                        except Exception:
-                            pass
-
-            # Priority 2: Check cached HTML
-            if os.path.exists(temp_html_path):
-                try:
-                    with open(temp_html_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        cached_html = f.read()
-                    if cached_html.strip():
-                        self.finished.emit(cached_html)
-                        return
-                except Exception:
-                    pass
-
-            # Priority 3: Check cached Markdown
-            if os.path.exists(temp_md_path):
-                try:
-                    with open(temp_md_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        cached_md = f.read()
-                    if cached_md.strip():
-                        html_content = self.markdown_to_html_with_images(cached_md)
-                        try:
-                            safe_file_write(temp_html_path, html_content)
-                        except Exception:
-                            pass
-                        self.finished.emit(html_content)
-                        return
-                except Exception:
-                    pass
-
-            # Priority 4: Network fetch with cache saving
-            if self.plugin_name.lower() in ('ima switcher', 'ima-switcher', 'switcher', 'valo'):
-                details_urls = [
-                    "https://raw.githubusercontent.com/iMAboud/iMA-Switcher/main/README.md",
-                    "https://raw.githubusercontent.com/iMAboud/iMA-Switcher/master/README.md"
-                ]
-            else:
-                details_urls = [
-                    f"https://raw.githubusercontent.com/iMAboud/iMA-Menu-Plugins/main/{self.plugin_name}/README.md",
-                    f"https://raw.githubusercontent.com/iMAboud/iMA-Menu-Plugins/main/{self.plugin_name}/readme.md",
-                    f"https://raw.githubusercontent.com/iMAboud/iMA-Menu-Plugins/main/{self.plugin_name}/details.md",
-                ]
-
-            markdown_content = None
-            for url in details_urls:
-                try:
-                    res = cdn_get(url, max_retries=2, timeout=REQUEST_TIMEOUT)
-                    if res.status_code == 200 and res.text.strip():
-                        markdown_content = res.text
-                        break
-                except Exception:
-                    pass
-
-            if markdown_content:
-                try:
-                    safe_file_write(temp_md_path, markdown_content)
-                except Exception:
-                    pass
-                html_content = self.markdown_to_html_with_images(markdown_content)
-                try:
-                    safe_file_write(temp_html_path, html_content)
-                except Exception:
-                    pass
-                self.finished.emit(html_content)
-            else:
-                # Generate clean synthetic overview from local NSS file or plugin metadata if present
-                fallback_md = f"# {self.plugin_name}\n\nPlugin overview for **{self.plugin_name}**."
-                if os.path.isdir(plugin_dir):
-                    nss_files = [f for f in os.listdir(plugin_dir) if f.endswith('.nss')]
-                    if nss_files:
-                        fallback_md += f"\n\n### Script Files\n- `{nss_files[0]}`"
-                html_content = self.markdown_to_html_with_images(fallback_md)
-                self.finished.emit(html_content)
-        except Exception as e:
-            self.error.emit(str(e))
-
-    def markdown_to_html_with_images(self, markdown_content):
-        try:
-            html_content = markdown.markdown(markdown_content, extensions=['tables', 'fenced_code', 'codehilite', 'nl2br', 'sane_lists'])
-        except Exception:
-            html_content = markdown.markdown(markdown_content)
-
-        def replace_markdown_img(match):
-            alt_text = match.group(1)
-            src_url = match.group(2)
-            if src_url and not src_url.startswith('data:'):
-                try:
-                    response = cdn_get(src_url, max_retries=2, timeout=REQUEST_TIMEOUT)
-                    if response.status_code == 200:
-                        encoded_img = base64.b64encode(response.content).decode('utf-8')
-                        mime_type = response.headers.get('Content-Type', 'image/png')
-                        data_uri = f"data:{mime_type};base64,{encoded_img}"
-                        return f'<img alt="{alt_text}" src="{data_uri}">' 
-                except Exception as e:
-                    print(f"Failed to download or embed image {src_url}: {e}")
-            return match.group(0)
-
-        html_content = re.sub(r'!\((.*?)\)\((.*?)\)', replace_markdown_img, html_content)
-
-        def replace_img_src(match):
-            full_tag = match.group(0)
-            src_url = match.group(1)
-            if src_url and not src_url.startswith('data:'):
-                try:
-                    response = cdn_get(src_url, max_retries=2, timeout=REQUEST_TIMEOUT)
-                    if response.status_code == 200:
-                        encoded_img = base64.b64encode(response.content).decode('utf-8')
-                        mime_type = response.headers.get('Content-Type', 'image/png')
-                        data_uri = f"data:{mime_type};base64,{encoded_img}"
-                        return full_tag.replace(src_url, data_uri)
-                except Exception as e:
-                    print(f"Failed to download or embed image {src_url}: {e}")
-            return full_tag
-        
-        html_content = re.sub(r'<img[^>]+src="(.*?)"[^>]*>', replace_img_src, html_content)
-
-        return f'''
-        <html><head><style>
-            body {{ color: #e6e6e6; background-color: transparent; overflow-x: hidden; margin: 0; padding: 12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 13px; line-height: 1.6; }}
-            h1, h2, h3, h4, h5, h6 {{ color: #ffffff; margin-top: 1.2em; margin-bottom: 0.6em; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; }}
-            h1 {{ font-size: 20px; color: #dc143c; }}
-            h2 {{ font-size: 16px; }}
-            h3 {{ font-size: 14px; }}
-            p {{ margin-bottom: 1em; color: #d0d0d0; }}
-            a {{ color: #dc143c; text-decoration: none; font-weight: bold; }}
-            a:hover {{ text-decoration: underline; }}
-            img {{ max-width: 90%; max-height: 380px; height: auto; display: block; margin: 12px auto; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); }}
-            ul, ol {{ margin-bottom: 1em; padding-left: 24px; color: #d0d0d0; }}
-            li {{ margin-bottom: 4px; }}
-            code {{ background: rgba(255,255,255,0.08); color: #ff7b72; padding: 2px 6px; border-radius: 6px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }}
-            pre {{ background: #1a1a20; border: 1px solid #2a2a30; border-radius: 10px; padding: 12px; overflow-x: auto; color: #e6e6e6; }}
-            pre code {{ background: transparent; padding: 0; color: inherit; }}
-            blockquote {{ border-left: 4px solid #dc143c; background: rgba(220,20,60,0.08); margin: 0 0 1em 0; padding: 8px 16px; border-radius: 0 8px 8px 0; color: #cccccc; }}
-            table {{ border-collapse: collapse; width: 100%; margin-bottom: 1em; background: rgba(255,255,255,0.02); border-radius: 8px; overflow: hidden; }}
-            th, td {{ border: 1px solid #2a2a30; padding: 8px 12px; text-align: left; }}
-            th {{ background: rgba(255,255,255,0.06); color: #ffffff; font-weight: bold; }}
-            tr:nth-child(even) {{ background: rgba(255,255,255,0.02); }}
-        </style></head><body>{html_content}</body></html>
-        '''
-
-class ClickableWidget(QWidget):
-    plugin_card_clicked = pyqtSignal(str, QWidget)
-
-    def __init__(self, plugin_name, parent=None):
-        super().__init__(parent)
-        self.plugin_name = plugin_name
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setMouseTracking(True)
-
-    def mousePressEvent(self, event):
-        self.plugin_card_clicked.emit(self.plugin_name, self)
-        super().mousePressEvent(event)
-
-class DetailsPopup(QWidget):
-    def __init__(self, plugin_data, parent=None, start_geom=None):
-        super().__init__(parent)
-        self.plugin_data = plugin_data
-        self.start_geom = start_geom
-        self._is_closing = False
-        self.setWindowFlags(Qt.SubWindow | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setObjectName("detailsPopup")
-        self.setWindowOpacity(0.0)
-
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(20, 20, 20, 20)
-
-        title_bar = QWidget()
-        title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-
-        icon_label = QLabel()
-        icon_label.setFixedSize(40, 40)
-        icon_label.setScaledContents(True)
-        icon_pixmap = QPixmap()
-        if self.plugin_data['name'].lower() in ('ima switcher', 'ima-switcher', 'switcher', 'valo'):
-            switcher_appdata = os.path.join(os.getenv('LOCALAPPDATA', ''), 'iMA Switcher')
-            candidates = [
-                os.path.join(switcher_appdata, 'Assets', 'ima.png'),
-                os.path.join(switcher_appdata, 'ima.png'),
-                os.path.join(PROJECT_ROOT, 'iMA Switcher 1', 'Assets', 'ima.png'),
-            ]
-            for c in candidates:
-                if os.path.exists(c):
-                    icon_pixmap = load_crisp_pixmap(c, 128)
-                    if not icon_pixmap.isNull():
-                        break
-        install_path = os.path.join(PLUGINS_DIR, self.plugin_data['name'])
-        if icon_pixmap.isNull() and os.path.isdir(install_path):
-            try:
-                for fname in os.listdir(install_path):
-                    if fname.lower().endswith(('.png', '.ico', '.jpg', '.svg')):
-                        icon_pixmap = load_crisp_pixmap(os.path.join(install_path, fname), 128)
-                        if not icon_pixmap.isNull():
-                            break
-            except Exception:
-                pass
-        if icon_pixmap.isNull():
-            for cname in (f"{self.plugin_data['name']}.png", f"{self.plugin_data['name'].lower()}.png"):
-                icon_pixmap = load_crisp_pixmap(os.path.join(ICONS_CACHE_DIR, cname), 128)
-                if not icon_pixmap.isNull():
-                    break
-        if icon_pixmap.isNull():
-            icon_pixmap = QPixmap(DEFAULT_ICON_PATH)
-        icon_label.setPixmap(icon_pixmap)
-        title_layout.addWidget(icon_label)
-
-        title_label = QLabel(self.plugin_data['name'])
-        title_label.setFont(QFont('Segoe UI Variable Display', 18, QFont.Bold))
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
-
-        # Add Open Folder & Edit Item/Menu buttons if plugin is installed
-        plugin_dir = get_plugin_install_path(self.plugin_data)
-        if os.path.exists(plugin_dir):
-            self.folder_button = QPushButton()
-            self.folder_button.setIcon(QIcon(resource_path('icons/Open.png')))
-            self.folder_button.setIconSize(QSize(18, 18))
-            self.folder_button.setFixedSize(32, 32)
-            self.folder_button.setToolTip("Open Plugin Directory")
-            self.folder_button.setCursor(Qt.PointingHandCursor)
-            self.folder_button.setStyleSheet("QPushButton { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; } QPushButton:hover { background: rgba(220,20,60,0.2); border-color: #dc143c; }")
-            self.folder_button.clicked.connect(lambda _, p=plugin_dir: os.startfile(p))
-            title_layout.addWidget(self.folder_button)
-
-            self.edit_button = QPushButton()
-            self.edit_button.setIcon(QIcon(resource_path('icons/modify.png')))
-            self.edit_button.setIconSize(QSize(18, 18))
-            self.edit_button.setFixedSize(32, 32)
-            self.edit_button.setToolTip("Edit Item/Menu (.nss)")
-            self.edit_button.setCursor(Qt.PointingHandCursor)
-            self.edit_button.setStyleSheet("QPushButton { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; } QPushButton:hover { background: rgba(220,20,60,0.2); border-color: #dc143c; }")
-            self.edit_button.clicked.connect(self._open_plugin_nss_editor)
-            title_layout.addWidget(self.edit_button)
-
-        close_button = QPushButton()
-        close_button.setIcon(QIcon(resource_path('icons/x.png')))
-        close_button.setIconSize(QSize(24, 24))
-        close_button.setFixedSize(30, 30)
-        close_button.setObjectName("iconButton")
-        close_button.clicked.connect(self.close)
-        title_layout.addWidget(close_button)
-        self.layout.addWidget(title_bar)
-        self._setup_body()
-
-    def _open_plugin_nss_editor(self):
-        plugin_dir = get_plugin_install_path(self.plugin_data)
-        if not os.path.exists(plugin_dir):
-            return
-        from modify_widget import find_items_and_menus, ImportEditorDialog, MultiItemEditDialog, save_imported_item, read_file
-        nss_files = []
-        for r, _, files in os.walk(plugin_dir):
-            for f in files:
-                if f.endswith('.nss'):
-                    nss_files.append(os.path.join(r, f))
-        
-        items = []
-        for fp in nss_files:
-            try:
-                content = read_file(fp)
-                if content:
-                    find_items_and_menus.current_file = fp
-                    for m in find_items_and_menus(content):
-                        m['file'] = fp
-                        items.append(m)
-            except Exception:
-                pass
-
-        if not items:
-            for fp in nss_files:
-                os.startfile(fp)
-            return
-
-        if len(items) == 1:
-            dlg = ImportEditorDialog(items[0], self)
-            if dlg.exec_():
-                save_imported_item(items[0], dlg.get_props())
-        else:
-            dlg = MultiItemEditDialog(items, self)
-            if dlg.exec_():
-                dlg.save_all()
-
-    def _setup_body(self):
-        description_label = QLabel(self.plugin_data.get('description', 'No description available.'))
-        description_label.setWordWrap(True)
-        self.layout.addWidget(description_label)
-
-        self.details_browser = QTextBrowser()
-        self.details_browser.setOpenExternalLinks(True)
-        self.details_browser.setObjectName("detailsBrowser")
-        self.details_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.details_browser.setWordWrapMode(QTextOption.WordWrap)
-        self.layout.addWidget(self.details_browser)
-
-        self.action_button = QPushButton("Install")
-        self.action_button.setObjectName("installButton")
-        font = self.action_button.font()
-        font.setBold(True)
-        self.action_button.setFont(font)
-        self.layout.addWidget(self.action_button, alignment=Qt.AlignRight)
-
-    def set_details_content(self, content):
-        self.details_browser.setHtml(content)
-
-    def closeEvent(self, event):
-        if self.start_geom and not self._is_closing:
-            event.ignore()
-            self._is_closing = True
-
-            self.close_anim_group = QParallelAnimationGroup(self)
-            
-            geo_anim = QPropertyAnimation(self, b"geometry")
-            geo_anim.setDuration(200)
-            geo_anim.setStartValue(self.geometry())
-            geo_anim.setEndValue(self.start_geom)
-            geo_anim.setEasingCurve(QEasingCurve.OutQuint)
-            self.close_anim_group.addAnimation(geo_anim)
-
-            opac_anim = QPropertyAnimation(self, b"windowOpacity")
-            opac_anim.setDuration(180)
-            opac_anim.setStartValue(self.windowOpacity())
-            opac_anim.setEndValue(0.0)
-            opac_anim.setEasingCurve(QEasingCurve.OutQuad)
-            self.close_anim_group.addAnimation(opac_anim)
-
-            self.close_anim_group.finished.connect(self.close_actual)
-            self.close_anim_group.start()
-        else:
-            super().closeEvent(event)
-
-    def close_actual(self):
-        super().close()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(22, 22, 26, 245))
-        painter.setPen(QPen(QColor(255, 255, 255, 30), 1))
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 16, 16)
+init_plugin_workers(
+    project_root=PROJECT_ROOT,
+    plugins_dir=PLUGINS_DIR,
+    cache_dir=CACHE_DIR,
+    icons_cache_dir=ICONS_CACHE_DIR,
+    lib_dir=LIB_DIR,
+    default_icon_path=DEFAULT_ICON_PATH,
+    request_timeout=REQUEST_TIMEOUT,
+    github_repo=_GITHUB_REPO,
+    git_tree_cache_file=GIT_TREE_CACHE_FILE,
+    plugins_cache_file=PLUGINS_CACHE_FILE,
+    load_crisp_pixmap_fn=load_crisp_pixmap,
+    get_plugin_install_path_fn=get_plugin_install_path,
+    add_nss_import_fn=add_nss_import,
+    add_directory_to_system_path_fn=add_to_path
+)
 
 class PluginLogic(QObject):
     plugins_fetched = pyqtSignal(list)
@@ -1750,6 +898,14 @@ class PluginLogic(QObject):
         self.installation_queue = deque()
         self.current_installing_plugin = None
         self.all_plugins_data = {}
+        self._cached_icon_urls = {}
+        self._downloading_icons = set()
+        icon_urls_file = os.path.join(ICONS_CACHE_DIR, '_icon_urls.json')
+        if os.path.exists(icon_urls_file):
+            try:
+                self._cached_icon_urls = safe_json_read(icon_urls_file) or {}
+            except Exception:
+                self._cached_icon_urls = {}
 
         self.registry = PluginRegistry(PLUGIN_REGISTRY_FILE, PLUGINS_DIR)
         self.registry.load()
@@ -1846,6 +1002,9 @@ class PluginLogic(QObject):
     def load_icon(self, plugin):
         plugin_name = plugin['name']
 
+        if plugin_name in self._downloading_icons:
+            return
+
         if plugin_name.lower() in ('ima switcher', 'ima-switcher', 'switcher', 'valo'):
             switcher_appdata = os.path.join(os.getenv('LOCALAPPDATA', ''), 'iMA Switcher')
             candidates = [
@@ -1860,6 +1019,12 @@ class PluginLogic(QObject):
                         self.icon_loaded.emit(plugin_name, pix)
                         return
 
+        # Resolve icon_url if missing from local plugin data
+        if not plugin.get('icon_url') and hasattr(self.registry, 'get_remote_plugin'):
+            remote_info = self.registry.get_remote_plugin(plugin_name)
+            if remote_info and remote_info.get('icon_url'):
+                plugin['icon_url'] = remote_info['icon_url']
+
         # 1. Check local plugin directory if present on disk
         install_path = plugin.get('_install_path') or os.path.join(PLUGINS_DIR, plugin_name)
         if not os.path.isdir(install_path):
@@ -1872,23 +1037,25 @@ class PluginLogic(QObject):
                         icon_path = os.path.join(install_path, fname)
                         pix = load_crisp_pixmap(icon_path, 128)
                         if not pix.isNull():
+                            # Auto-cache locally so icon survives uninstallation
+                            cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
+                            if not os.path.exists(cached_icon_path):
+                                try:
+                                    pix.save(cached_icon_path, "PNG")
+                                except Exception:
+                                    pass
                             self.icon_loaded.emit(plugin_name, pix)
                             return
             except Exception:
                 pass
 
-        # 2. Check ICONS_CACHE_DIR (case-insensitive) — but invalidate if icon_url changed
+        # 2. Check ICONS_CACHE_DIR (case-insensitive) — but invalidate ONLY if recorded icon_url changed
         icon_url = plugin.get('icon_url', '')
         cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
         icon_urls_file = os.path.join(ICONS_CACHE_DIR, '_icon_urls.json')
-        cached_urls = {}
-        if os.path.exists(icon_urls_file):
-            try:
-                cached_urls = json.loads(open(icon_urls_file, 'r', encoding='utf-8').read())
-            except Exception:
-                cached_urls = {}
+        prev_url = self._cached_icon_urls.get(plugin_name)
 
-        url_changed = bool(icon_url and cached_urls.get(plugin_name) != icon_url)
+        url_changed = bool(icon_url and prev_url is not None and prev_url != icon_url)
         if url_changed and os.path.exists(cached_icon_path):
             try:
                 os.remove(cached_icon_path)
@@ -1912,24 +1079,37 @@ class PluginLogic(QObject):
                 if os.path.exists(cpath):
                     pix = load_crisp_pixmap(cpath, 128)
                     if not pix.isNull():
+                        if icon_url and prev_url != icon_url:
+                            self._cached_icon_urls[plugin_name] = icon_url
+                            try: atomic_json_write(icon_urls_file, self._cached_icon_urls)
+                            except Exception: pass
                         self.icon_loaded.emit(plugin_name, pix)
                         return
 
         def handle_icon_error(e):
+            self._downloading_icons.discard(plugin_name)
+            cached_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
+            if os.path.exists(cached_path):
+                pix = load_crisp_pixmap(cached_path, 128)
+                if not pix.isNull():
+                    self.icon_loaded.emit(plugin_name, pix)
+                    return
             fallback_pix = self._extract_nss_fallback_icon(plugin_name, install_path)
             self.icon_loaded.emit(plugin_name, fallback_pix if fallback_pix else QPixmap(DEFAULT_ICON_PATH))
 
         def handle_icon_success(p_name, pix):
+            self._downloading_icons.discard(p_name)
             if pix and not pix.isNull() and icon_url:
                 try:
-                    cached_urls[p_name] = icon_url
-                    atomic_json_write(icon_urls_file, cached_urls)
+                    self._cached_icon_urls[p_name] = icon_url
+                    atomic_json_write(icon_urls_file, self._cached_icon_urls)
                 except Exception:
                     pass
             self.icon_loaded.emit(p_name, pix if (pix and not pix.isNull()) else (self._extract_nss_fallback_icon(p_name, install_path) or QPixmap(DEFAULT_ICON_PATH)))
 
         # 3. Download from icon_url if provided
         if plugin.get('icon_url'):
+            self._downloading_icons.add(plugin_name)
             local_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
             thread = QThread(self)
             worker = IconDownloadWorker(plugin_name, plugin['icon_url'], local_icon_path)
@@ -2067,6 +1247,19 @@ class PluginLogic(QObject):
 
             target_plugin_dir = os.path.abspath(get_plugin_install_path(plugin_data))
             if os.path.exists(target_plugin_dir):
+                # Ensure icon is cached locally before deleting the plugin folder
+                cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
+                if not os.path.exists(cached_icon_path) and os.path.isdir(target_plugin_dir):
+                    try:
+                        for fname in os.listdir(target_plugin_dir):
+                            if fname.lower().endswith(('.png', '.ico', '.jpg', '.svg')):
+                                src_icon = os.path.join(target_plugin_dir, fname)
+                                p = load_crisp_pixmap(src_icon, 128)
+                                if not p.isNull():
+                                    p.save(cached_icon_path, "PNG")
+                                    break
+                    except Exception:
+                        pass
                 terminate_plugin_processes(target_plugin_dir)
                 import gc, time
                 gc.collect()
@@ -2122,6 +1315,7 @@ class PluginLogic(QObject):
         if key in self.active_threads:
             thread, worker = self.active_threads.pop(key)
             thread.quit()
+            thread.deleteLater()
 
     def stop_all_threads(self):
         for key, (thread, worker) in list(self.active_threads.items()):
@@ -2130,27 +1324,184 @@ class PluginLogic(QObject):
             thread.quit()
             if not thread.wait(100):
                 thread.terminate()
+            thread.deleteLater()
+
+class AutoHideScrollManager(QObject):
+    """Universal auto-hiding scrollbar manager.
+    Keeps scrollbars hidden (0.0 opacity) until user scrolls, displays them for 500ms (0.5s),
+    and smoothly fades them out. Keeps them visible while hovered/dragged."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._scrollbars = {}
+
+    def attach(self, scrollbar: QScrollBar):
+        if not scrollbar or not isinstance(scrollbar, QScrollBar) or scrollbar in self._scrollbars:
+            return
+        
+        effect = QGraphicsOpacityEffect(scrollbar)
+        effect.setOpacity(0.0)
+        scrollbar.setGraphicsEffect(effect)
+        
+        timer = QTimer(scrollbar)
+        timer.setSingleShot(True)
+        timer.setInterval(500)  # 0.5s
+        
+        anim = QPropertyAnimation(effect, b"opacity", scrollbar)
+        anim.setDuration(200)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        
+        def fade_out():
+            if scrollbar.underMouse():
+                timer.start(500)
+                return
+            anim.stop()
+            anim.setStartValue(effect.opacity())
+            anim.setEndValue(0.0)
+            anim.start()
+            
+        timer.timeout.connect(fade_out)
+        
+        def show_scrollbar(*args):
+            if scrollbar.maximum() > scrollbar.minimum():
+                anim.stop()
+                effect.setOpacity(1.0)
+                timer.start(500)
+            
+        scrollbar.valueChanged.connect(show_scrollbar)
+        scrollbar.sliderMoved.connect(show_scrollbar)
+        scrollbar.installEventFilter(self)
+        
+        self._scrollbars[scrollbar] = (effect, timer, anim)
+
+    def attach_all(self, widget: QWidget):
+        if not widget:
+            return
+        from PyQt5.QtWidgets import QAbstractScrollArea
+        if isinstance(widget, QAbstractScrollArea):
+            self.attach(widget.verticalScrollBar())
+            self.attach(widget.horizontalScrollBar())
+        if hasattr(widget, 'findChildren'):
+            for sa in widget.findChildren(QAbstractScrollArea):
+                self.attach(sa.verticalScrollBar())
+                self.attach(sa.horizontalScrollBar())
+            for sb in widget.findChildren(QScrollBar):
+                self.attach(sb)
+
+    def eventFilter(self, obj, event):
+        if isinstance(obj, QScrollBar) and obj in self._scrollbars:
+            effect, timer, anim = self._scrollbars[obj]
+            if event.type() in (QEvent.Enter, QEvent.MouseMove, QEvent.MouseButtonPress):
+                anim.stop()
+                effect.setOpacity(1.0)
+                timer.stop()
+            elif event.type() in (QEvent.Leave, QEvent.MouseButtonRelease):
+                timer.start(500)
+        elif event.type() == QEvent.Show:
+            if isinstance(obj, QScrollBar):
+                self.attach(obj)
+            elif hasattr(obj, 'findChildren'):
+                for sb in obj.findChildren(QScrollBar):
+                    self.attach(sb)
+        elif event.type() == QEvent.Wheel:
+            if hasattr(obj, 'verticalScrollBar'):
+                self.attach(obj.verticalScrollBar())
+                if obj.verticalScrollBar() in self._scrollbars:
+                    effect, timer, anim = self._scrollbars[obj.verticalScrollBar()]
+                    if obj.verticalScrollBar().maximum() > obj.verticalScrollBar().minimum():
+                        anim.stop()
+                        effect.setOpacity(1.0)
+                        timer.start(500)
+            if hasattr(obj, 'horizontalScrollBar'):
+                self.attach(obj.horizontalScrollBar())
+                if obj.horizontalScrollBar() in self._scrollbars:
+                    effect, timer, anim = self._scrollbars[obj.horizontalScrollBar()]
+                    if obj.horizontalScrollBar().maximum() > obj.horizontalScrollBar().minimum():
+                        anim.stop()
+                        effect.setOpacity(1.0)
+                        timer.start(500)
+        return super().eventFilter(obj, event)
+
+
+class NavTabButton(QPushButton):
+    def __init__(self, icon_name, label_text, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setFixedSize(66, 68)
+        self.setCursor(Qt.PointingHandCursor)
+        self.label_text = label_text
+        self.icon_pix = load_crisp_pixmap(resource_path(f'icons/{icon_name}'), 28)
+        self.setObjectName("navTabButton")
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        r = self.rect()
+
+        is_checked = self.isChecked()
+        is_hovered = self.underMouse()
+
+        if is_checked:
+            # Glassy container with gradient sheen
+            grad = QLinearGradient(0, 0, r.width(), r.height())
+            grad.setColorAt(0.0, QColor(231, 130, 132, 55))
+            grad.setColorAt(0.45, QColor(202, 158, 230, 38))
+            grad.setColorAt(1.0, QColor(140, 170, 238, 28))
+            p.setBrush(grad)
+            p.setPen(QPen(QColor(255, 255, 255, 45), 1.0))
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 14, 14)
+        elif is_hovered:
+            p.setBrush(QColor(255, 255, 255, 12))
+            p.setPen(QPen(QColor(255, 255, 255, 22), 1.0))
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 14, 14)
+
+        # Draw icon
+        if not self.icon_pix.isNull():
+            p.setOpacity(1.0 if is_checked else (0.85 if is_hovered else 0.55))
+            ix = (r.width() - 26) // 2
+            p.drawPixmap(ix, 10, 26, 26, self.icon_pix)
+            p.setOpacity(1.0)
+
+        # Draw text
+        font = QFont('Segoe UI Variable Display', 10, QFont.Bold if is_checked else QFont.Normal)
+        p.setFont(font)
+        text_color = QColor(255, 255, 255) if is_checked else (QColor(198, 208, 245) if is_hovered else QColor(140, 146, 164))
+        p.setPen(text_color)
+        p.drawText(0, 40, r.width(), 22, Qt.AlignCenter, self.label_text)
+
 
 class PluginManager(QWidget):
+    _corner_radius = 28
+
     def __init__(self):
+        self._corner_radius = 28
         super().__init__()
         self.setWindowTitle("iMA Menu")
         self.setMinimumSize(750, 500)
-        self.resize(1002, 648)
+        self.resize(1112, 750)
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self._apply_rounded_mask()
         
         self.setWindowIcon(QIcon(resource_path('icons/icon.ico')))
         self.setup_cache_dirs()
         
+        # Universal Auto-Hide Scrollbar Manager
+        self.scroll_manager = AutoHideScrollManager(self)
+        QApplication.instance().installEventFilter(self.scroll_manager)
+        self.scroll_manager.attach_all(self)
+
         self.settings_manager = SettingsManager()
         self.plugin_logic = PluginLogic()
-        sync_tools_menu(PROJECT_ROOT, self.plugin_logic.registry)
-        self.sync_manager = CloudSyncManager(PROJECT_ROOT)
-        self.sync_manager.auth_finished.connect(self.on_sync_auth_finished)
-        self.sync_manager.sync_progress.connect(self.on_sync_progress)
-        self.sync_manager.sync_finished.connect(self.on_sync_finished)
-        
+        self.sync_manager = None
         self.error_monitor = None
         
         # Debounced reload timer
@@ -2169,6 +1520,7 @@ class PluginManager(QWidget):
         self.plugin_description_labels = {}
         self.plugin_icon_labels = {}
         self.icons_loaded = set()
+        self._pixmap_cache = {}
         self.details_popup = None
         self.ignore_next_click = False
         self._active_tint_threads = []
@@ -2223,76 +1575,14 @@ class PluginManager(QWidget):
         self.plugins_layout.setContentsMargins(10, 10, 10, 10)
         self.plugins_layout.setSpacing(10)
 
-        # Dynamic Top Navigation Bar (Store / Local)
-        self.current_plugins_tab = "store"
-        self.plugins_tab_container = QWidget()
-        self.plugins_tab_container.setObjectName("pluginsTabContainer")
-        self.plugins_tab_container.setAttribute(Qt.WA_StyledBackground, True)
-        self.plugins_tab_container.setStyleSheet("""
-            QWidget#pluginsTabContainer {
-                background-color: #121215;
-                border-radius: 18px;
-                padding: 4px;
-            }
-            QWidget#pluginsTabContainer QPushButton {
-                background-color: transparent;
-                color: #b0b0b0;
-                border: none;
-                border-radius: 14px;
-                padding: 6px 20px;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            QWidget#pluginsTabContainer QPushButton:hover {
-                color: white;
-                background-color: rgba(255, 255, 255, 0.05);
-                border: none;
-            }
-            QWidget#pluginsTabContainer QPushButton:checked {
-                background-color: #25252b;
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-        """)
-        pt_lay = QHBoxLayout(self.plugins_tab_container)
-        pt_lay.setContentsMargins(0, 0, 0, 0); pt_lay.setSpacing(2)
-
-        self.store_tab_btn = QPushButton("Store")
-        self.store_tab_btn.setCheckable(True); self.store_tab_btn.setChecked(True)
-        self.store_tab_btn.setCursor(Qt.PointingHandCursor)
-        self.store_tab_btn.clicked.connect(lambda: self.switch_plugins_tab("store"))
-
-        self.local_tab_btn = QPushButton("Local")
-        self.local_tab_btn.setCheckable(True)
-        self.local_tab_btn.setCursor(Qt.PointingHandCursor)
-        self.local_tab_btn.clicked.connect(lambda: self.switch_plugins_tab("local"))
-
-        from PyQt5.QtWidgets import QButtonGroup
-        self.plugins_tab_group = QButtonGroup(self)
-        self.plugins_tab_group.setExclusive(True)
-        self.plugins_tab_group.addButton(self.store_tab_btn)
-        self.plugins_tab_group.addButton(self.local_tab_btn)
-
-        pt_lay.addWidget(self.store_tab_btn)
-        pt_lay.addWidget(self.local_tab_btn)
-
-        self.top_pt_widget = QWidget()
-        top_pt_lay = QHBoxLayout(self.top_pt_widget)
-        top_pt_lay.setContentsMargins(0, 0, 0, 5)
-        top_pt_lay.addStretch()
-        top_pt_lay.addWidget(self.plugins_tab_container)
-        top_pt_lay.addStretch()
-
-        self.plugins_layout.addWidget(self.top_pt_widget)
-        self.plugins_tab_container.hide()
-
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setObjectName("scrollArea")
         self.scroll_content = QWidget()
         self.grid_layout = QGridLayout(self.scroll_content)
+        self.grid_layout.setAlignment(Qt.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
-        self.scroll_area.setStyleSheet("border: 0px;")
+        self.scroll_area.setStyleSheet("#scrollArea { border: 0px; background: transparent; }")
         self.plugins_layout.addWidget(self.scroll_area)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.debounce_check_visible_cards)
         self.stacked_widget.addWidget(self.plugins_page)
@@ -2307,6 +1597,7 @@ class PluginManager(QWidget):
 
         self.tint_backups = {}
         self._active_tint_threads = []
+        self._default_icon_pixmap = QPixmap(DEFAULT_ICON_PATH)
 
 
         self.loading_label = QLabel("Loading plugins...", self)
@@ -2331,16 +1622,40 @@ class PluginManager(QWidget):
         # 1. Immediately render local cached plugins for instant UI display
         self.load_cached_plugins_immediately()
 
-        # 2. Schedule background pre-warming of remaining tabs & network/watcher tasks
-        QTimer.singleShot(50, self._start_error_monitor)
-        QTimer.singleShot(100, self._prewarm_secondary_pages)
-        QTimer.singleShot(200, self._setup_file_watcher)
-        QTimer.singleShot(400, self.fetch_plugins_list)
-        QTimer.singleShot(1000, self._take_global_nss_snapshot)
+        # 2. Schedule non-blocking background synchronization tasks in idle intervals
+        QTimer.singleShot(400, self._async_sync_tools_menu)
+        self.scroll_manager.attach_all(self)
+        
+        QTimer.singleShot(800, self._setup_file_watcher)
+        QTimer.singleShot(1200, self.fetch_plugins_list)
+        QTimer.singleShot(1800, self._start_error_monitor)
+        QTimer.singleShot(2500, self._take_global_nss_snapshot)
+
+    def _init_sync_manager(self):
+        if self.sync_manager is None:
+            from cloud_sync import CloudSyncManager
+            self.sync_manager = CloudSyncManager(PROJECT_ROOT)
+            self.sync_manager.auth_finished.connect(self.on_sync_auth_finished)
+            self.sync_manager.sync_progress.connect(self.on_sync_progress)
+            self.sync_manager.sync_finished.connect(self.on_sync_finished)
+            self.sync_manager.profile_updated.connect(self._update_sync_ui_state)
+            avatar_file = os.path.join(PROJECT_ROOT, 'cache', 'profile_avatar.png')
+            if self.sync_manager.access_token and (not self.sync_manager.user_name or not os.path.exists(avatar_file)):
+                self.sync_manager.fetch_user_profile(background=True)
+        return self.sync_manager
+
+    def _async_sync_tools_menu(self):
+        def worker():
+            try:
+                sync_tools_menu(PROJECT_ROOT, self.plugin_logic.registry)
+            except Exception:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
 
     def load_cached_plugins_immediately(self):
         local_plugins = self.plugin_logic.registry.get_local_plugins_for_ui()
-        if len(local_plugins) > 0:
+        is_plugins_page = (self.stacked_widget.currentWidget() == self.plugins_page) if hasattr(self, 'stacked_widget') else True
+        if len(local_plugins) > 0 and is_plugins_page:
             self.plugins_tab_container.show()
         else:
             self.plugins_tab_container.hide()
@@ -2349,21 +1664,9 @@ class PluginManager(QWidget):
 
         self.render_current_plugins_tab()
 
-    def _prewarm_secondary_pages(self):
-        # Pre-instantiate remaining tabs in background idle slices so tab switches are 0ms instant
-        def step1():
-            if not self._is_shutting_down: self.get_modify_page()
-        def step2():
-            if not self._is_shutting_down: self.get_theme_page()
-        def step3():
-            if not self._is_shutting_down: self.get_settings_page()
-
-        QTimer.singleShot(10, step1)
-        QTimer.singleShot(150, step2)
-        QTimer.singleShot(300, step3)
-
     def _start_error_monitor(self):
         try:
+            from nss_error_monitor import ShellLogMonitor
             self.error_monitor = ShellLogMonitor(PROJECT_ROOT, self)
             self.error_monitor.manual_fix_required.connect(self._on_manual_fix_required)
             self.error_monitor.start()
@@ -2443,21 +1746,21 @@ class PluginManager(QWidget):
     def save_theme_and_update_status(self):
         self._is_internal_change = True
         try:
-            editor_saved = self.theme_editor_page.save_theme()
-            switcher_saved = self.theme_switcher_page.save_theme()
+            editor_saved = self.theme_editor_page.save_theme() if getattr(self, 'theme_editor_page', None) else False
+            switcher_saved = self.theme_switcher_page.save_theme() if getattr(self, 'theme_switcher_page', None) else False
             
             if editor_saved or switcher_saved:
                 self.commit_tinted_icons()
                 self.update_snapshot(os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'))
                 self.reload_shell()
                 self.theme_status_label.setText("Theme Saved")
-                self.theme_status_label.setStyleSheet("color: #dc143c;")
+                self.theme_status_label.setStyleSheet("color: #e78284;")
                 QTimer.singleShot(3000, self.theme_status_label.clear)
         finally:
             self._is_internal_change = False
 
     def reset_theme_and_update_status(self):
-        if self.theme_editor_page.reset_theme():
+        if getattr(self, 'theme_editor_page', None) and self.theme_editor_page.reset_theme():
             self.revert_tinted_icons()
             self.theme_status_label.setText("Reset to Default")
             self.theme_status_label.setStyleSheet("color: #ffffff;")
@@ -2515,7 +1818,7 @@ class PluginManager(QWidget):
             return
 
         # 1. Pre-validation: check if there's an existing error we should fix first
-        if hasattr(self, 'error_monitor') and self.error_monitor._enabled:
+        if hasattr(self, 'error_monitor') and self.error_monitor and getattr(self.error_monitor, '_enabled', False):
              if not self.error_monitor.pre_reload_check():
                  # Monitor found errors and is likely fixing them. 
                  # Let the monitor trigger the reload when done.
@@ -2523,33 +1826,10 @@ class PluginManager(QWidget):
 
         # 2. Trigger the actual reload (non-blocking)
         trigger_shell_reload(close_only=True)
-        
-        # 1000ms is the sweet spot for the CTRL+Click reload mechanism
-        if self.settings_manager.get('auto_preview_context_menu'):
-            QTimer.singleShot(1000, self._check_and_open_preview)
-
-    def _check_and_open_preview(self):
-        if hasattr(self, 'error_monitor'):
-            if not self.error_monitor.check_log_clean_after_reload():
-                return
-        self._open_shell_preview()
 
     def _on_manual_fix_required(self, filename, line, message):
         # User requested no popup. Logging the error instead.
         print(f"ERROR: Syntax error in {filename}:{line} - {message}")
-
-    def _open_shell_preview(self):
-        # Calculate position to show menu next to the app
-        geom = self.geometry()
-        pos = (geom.right() + 10, geom.top())
-        
-        # Determine scenario based on current tab or active selection
-        scenario = 'reload' # Default for theme changes
-        if hasattr(self, 'theme_switcher_page'):
-            scenario = self.theme_switcher_page.active_scenario
-            
-        from utils import trigger_shell_reload
-        trigger_shell_reload(pos=pos, open_only=True, scenario=scenario)
 
     def _update_nss_icon_paths(self):
         # Match 'icons' followed by any number of slashes, then 'preview', then any number of slashes
@@ -2603,7 +1883,7 @@ class PluginManager(QWidget):
         if '/.staging_' in norm or '/.backup_' in norm or norm.endswith('.tmp'):
             return
         self._pending_sync_paths.add(path)
-        self.file_sync_timer.start(500) # 500ms debounce to prevent lag
+        self.file_sync_timer.start(800) # 800ms debounce to prevent lag
 
     def _handle_file_sync(self):
         if not self._pending_sync_paths or self._is_internal_change or self._is_shutting_down: 
@@ -2628,9 +1908,9 @@ class PluginManager(QWidget):
             
             # Core Theme
             elif clean_path.endswith('/theme.nss'):
-                if hasattr(self, 'theme_editor_page'):
+                if getattr(self, 'theme_editor_page', None):
                     self.theme_editor_page.reload_theme()
-                if hasattr(self, 'theme_switcher_page'):
+                if getattr(self, 'theme_switcher_page', None):
                     self.theme_switcher_page.selected_theme = self.theme_switcher_page._get_current_theme_from_file()
                     self.theme_switcher_page._highlight_current_theme()
                 self.show_sync_status("Synced Theme")
@@ -2638,12 +1918,15 @@ class PluginManager(QWidget):
             # Shell or Imports directory (Plugin changes)
             elif clean_path.endswith('/shell.nss') or '/imports/' in clean_path or clean_path.endswith('/imports'):
                 if hasattr(self, 'modify_page') and hasattr(self.modify_page, 'imports_pg'):
-                    self.modify_page.imports_pg.refresh()
+                    if getattr(self.modify_page, 'tab', None) and self.modify_page.tab.currentIndex() == 1:
+                        self.modify_page.imports_pg.refresh()
+                    else:
+                        self.modify_page.imports_pg._is_loaded = False
                 self.show_sync_status("Synced Imports")
             
             # Theme directory (New/Removed theme files)
             elif '/theme/' in clean_path or clean_path.endswith('/theme'):
-                if hasattr(self, 'theme_switcher_page'):
+                if getattr(self, 'theme_switcher_page', None):
                     self.theme_switcher_page.refresh_list()
                 self.show_sync_status("Synced Themes")
 
@@ -2673,9 +1956,9 @@ class PluginManager(QWidget):
                     self.modify_page.imports_pg.refresh()
                 
             # 2. Reload Themes
-            if hasattr(self, 'theme_editor_page'):
+            if getattr(self, 'theme_editor_page', None):
                 self.theme_editor_page.reload_theme()
-            if hasattr(self, 'theme_switcher_page'):
+            if getattr(self, 'theme_switcher_page', None):
                 self.theme_switcher_page.refresh_list()
                 self.theme_switcher_page.selected_theme = self.theme_switcher_page._get_current_theme_from_file()
                 self.theme_switcher_page._highlight_current_theme()
@@ -2687,10 +1970,14 @@ class PluginManager(QWidget):
             self._is_internal_change = False
 
     def show_sync_status(self, text):
-        if hasattr(self, 'theme_status_label'):
+        if hasattr(self, 'title_status_label') and self.title_status_label:
+            self.title_status_label.setText(text)
+            self.title_status_label.setStyleSheet("color: #ff6b81; font-size: 13px; font-weight: bold; background: transparent;")
+            QTimer.singleShot(2500, self.title_status_label.clear)
+        elif hasattr(self, 'theme_status_label') and self.theme_status_label:
             self.theme_status_label.setText(text)
-            self.theme_status_label.setStyleSheet("color: #dc143c;")
-            QTimer.singleShot(2000, self.theme_status_label.clear)
+            self.theme_status_label.setStyleSheet("color: #e78284;")
+            QTimer.singleShot(2500, self.theme_status_label.clear)
 
     def setup_cache_dirs(self):
         # Folders are now initialized at startup globally
@@ -2704,6 +1991,8 @@ class PluginManager(QWidget):
         title_bar = QWidget()
         title_bar.setFixedHeight(42)
         title_layout = QHBoxLayout(title_bar)
+        title_layout.setContentsMargins(10, 0, 10, 0)
+        title_layout.setSpacing(6)
 
         app_icon_label = QLabel()
         app_icon_pixmap = QPixmap(resource_path('icons/icon.ico'))
@@ -2713,54 +2002,140 @@ class PluginManager(QWidget):
         title_label = QLabel("iMA Menu")
         title_label.setFont(QFont('Segoe UI Variable Display', 16, QFont.Bold))
         title_label.setObjectName("titleLabel")
+        title_layout.addWidget(title_label)
 
+        title_layout.addStretch(1)
+
+        self.title_status_label = QLabel("")
+        self.title_status_label.setObjectName("titleStatusLabel")
+        self.title_status_label.setAlignment(Qt.AlignCenter)
+        self.title_status_label.setStyleSheet("color: #ff6b81; font-size: 13px; font-weight: bold; background: transparent;")
+        title_layout.addWidget(self.title_status_label, 2)
+
+        title_layout.addStretch(1)
+
+        # Dynamic Top Navigation Bar (Store / Local) in title bar left of open folder
+        self.current_plugins_tab = "store"
+        self.plugins_tab_container = QFrame()
+        self.plugins_tab_container.setObjectName("pluginsTabContainer")
+        self.plugins_tab_container.setFixedHeight(32)
+        self.plugins_tab_container.setStyleSheet("""
+            QFrame#pluginsTabContainer {
+                background-color: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+            }
+        """)
+        pt_lay = QHBoxLayout(self.plugins_tab_container)
+        pt_lay.setContentsMargins(2, 2, 2, 2)
+        pt_lay.setSpacing(2)
+
+        self.store_tab_btn = PillTabButton("Store", height=28)
+        self.store_tab_btn.setChecked(True)
+        self.store_tab_btn.clicked.connect(lambda: self.switch_plugins_tab("store"))
+
+        self.local_tab_btn = PillTabButton("Local", height=28)
+        self.local_tab_btn.clicked.connect(lambda: self.switch_plugins_tab("local"))
+
+        from PyQt5.QtWidgets import QButtonGroup
+        self.plugins_tab_group = QButtonGroup(self)
+        self.plugins_tab_group.setExclusive(True)
+        self.plugins_tab_group.addButton(self.store_tab_btn)
+        self.plugins_tab_group.addButton(self.local_tab_btn)
+
+        pt_lay.addWidget(self.store_tab_btn)
+        pt_lay.addWidget(self.local_tab_btn)
+
+        title_layout.addWidget(self.plugins_tab_container, 0, Qt.AlignVCenter)
+
+        floating_icon_btn_style = """
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                padding: 3px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.08);
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 0.15);
+            }
+        """
         open_folder_button = QPushButton()
         open_folder_button.setIcon(QIcon(resource_path('icons/open.png')))
-        open_folder_button.setIconSize(QSize(24, 24))
+        open_folder_button.setIconSize(QSize(22, 22))
         open_folder_button.setFixedSize(30, 30)
-        open_folder_button.setObjectName("iconButton")
+        open_folder_button.setCursor(Qt.PointingHandCursor)
+        open_folder_button.setStyleSheet(floating_icon_btn_style)
         open_folder_button.clicked.connect(self.open_root_folder)
 
         self.refresh_button = QPushButton()
         self.refresh_button.setIcon(QIcon(resource_path('icons/refresh.png')))
-        self.refresh_button.setIconSize(QSize(24, 24))
+        self.refresh_button.setIconSize(QSize(22, 22))
         self.refresh_button.setFixedSize(30, 30)
         self.refresh_button.setCursor(Qt.PointingHandCursor)
-        self.refresh_button.setObjectName("iconButton")
-        self.refresh_button.clicked.connect(self.refresh_plugins)
+        self.refresh_button.setStyleSheet(floating_icon_btn_style)
+        self.refresh_button.clicked.connect(self.handle_global_refresh)
 
-        chrome_btn_style = """
-            QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 8px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 10px; }
-            QPushButton:hover { background: rgba(255,255,255,0.12); color: #ffffff; }
-        """
+        # Single pill-shaped container for minimize, maximize, and close
+        window_controls_pill = QFrame()
+        window_controls_pill.setObjectName("windowControlsPill")
+        window_controls_pill.setFixedHeight(28)
+        window_controls_pill.setStyleSheet("""
+            QFrame#windowControlsPill {
+                background-color: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 14px;
+            }
+            QPushButton.windowControlBtn {
+                background: transparent;
+                border: none;
+                border-radius: 11px;
+                color: #8c92a4;
+                font-family: 'Segoe MDL2 Assets';
+                font-size: 10px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 22px;
+                max-height: 22px;
+            }
+            QPushButton.windowControlBtn:hover {
+                background: rgba(255, 255, 255, 0.08);
+                color: #ffffff;
+            }
+            QPushButton#closeControlBtn:hover {
+                background: #e78284;
+                color: #ffffff;
+            }
+        """)
+        wc_layout = QHBoxLayout(window_controls_pill)
+        wc_layout.setContentsMargins(2, 2, 2, 2)
+        wc_layout.setSpacing(1)
+
         minimize_button = QPushButton("\uE921")
-        minimize_button.setFixedSize(32, 32)
+        minimize_button.setProperty("class", "windowControlBtn")
         minimize_button.setCursor(Qt.PointingHandCursor)
-        minimize_button.setStyleSheet(chrome_btn_style)
         minimize_button.clicked.connect(self.showMinimized)
 
         self.maximize_button = QPushButton("\uE922")
-        self.maximize_button.setFixedSize(32, 32)
+        self.maximize_button.setProperty("class", "windowControlBtn")
         self.maximize_button.setCursor(Qt.PointingHandCursor)
-        self.maximize_button.setStyleSheet(chrome_btn_style)
         self.maximize_button.clicked.connect(self.toggle_maximize)
 
         close_button = QPushButton("\uE8BB")
-        close_button.setFixedSize(32, 32)
+        close_button.setObjectName("closeControlBtn")
+        close_button.setProperty("class", "windowControlBtn")
         close_button.setCursor(Qt.PointingHandCursor)
-        close_button.setStyleSheet("""
-            QPushButton { background: rgba(255,42,85,0.1); border: none; border-radius: 8px; color: #dc143c; font-family: 'Segoe MDL2 Assets'; font-size: 10px; }
-            QPushButton:hover { background: #dc143c; color: #ffffff; }
-        """)
         close_button.clicked.connect(self.close)
-        
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
+
+        wc_layout.addWidget(minimize_button)
+        wc_layout.addWidget(self.maximize_button)
+        wc_layout.addWidget(close_button)
+
         title_layout.addWidget(open_folder_button)
         title_layout.addWidget(self.refresh_button)
-        title_layout.addWidget(minimize_button)
-        title_layout.addWidget(self.maximize_button)
-        title_layout.addWidget(close_button)
+        title_layout.addWidget(window_controls_pill)
         return title_bar
 
     def toggle_maximize(self):
@@ -2772,10 +2147,101 @@ class PluginManager(QWidget):
             self.maximize_button.setText("\uE923")
 
     def update_refresh_btn_visibility(self, index):
-        # Index 0 is plugins_page
-        self.refresh_button.setVisible(index == 0)
+        # Refresh button is always persistent across all tabs
+        self.refresh_button.setVisible(True)
+        if hasattr(self, 'plugins_tab_container'):
+            self.plugins_tab_container.setVisible(index == 0)
+        
+        # Keep matching side panel button checked
+        if hasattr(self, 'side_plugins_btn'):
+            cur_w = self.stacked_widget.currentWidget()
+            if cur_w == self.plugins_page:
+                self.side_plugins_btn.setChecked(True)
+            elif hasattr(self, '_modify_page_widget') and cur_w == self._modify_page_widget and self._modify_page_widget is not None:
+                self.side_modify_btn.setChecked(True)
+            elif hasattr(self, '_theme_page_widget') and cur_w == self._theme_page_widget and self._theme_page_widget is not None:
+                self.side_theme_btn.setChecked(True)
+            elif hasattr(self, '_settings_page_widget') and cur_w == self._settings_page_widget and self._settings_page_widget is not None:
+                self.side_settings_btn.setChecked(True)
+
+    def handle_global_refresh(self):
+        cur_w = self.stacked_widget.currentWidget()
+        if cur_w == self.plugins_page:
+            self.refresh_plugins()
+        elif hasattr(self, '_modify_page_widget') and cur_w == self._modify_page_widget and self._modify_page_widget is not None:
+            self._modify_page_widget.load_and_init_ui()
+            self.show_sync_status("Rules Refreshed")
+        elif hasattr(self, '_theme_page_widget') and cur_w == self._theme_page_widget and self._theme_page_widget is not None:
+            if hasattr(self, 'theme_stacked_widget'):
+                active_idx = self.theme_stacked_widget.currentIndex()
+                if active_idx == 0 and getattr(self, 'theme_switcher_page', None):
+                    self.theme_switcher_page.refresh_list()
+                elif active_idx == 1 and getattr(self, 'theme_editor_page', None):
+                    self.theme_editor_page.reload_theme()
+                elif active_idx == 2 and getattr(self, 'cursor_page', None):
+                    self.cursor_page.refresh_list()
+            self.show_sync_status("Theme Refreshed")
+        elif hasattr(self, '_settings_page_widget') and cur_w == self._settings_page_widget and self._settings_page_widget is not None:
+            self.setup_settings_page()
+            self.show_sync_status("Settings Refreshed")
+        else:
+            self.refresh_plugins()
+
+    def bring_to_focus(self):
+        try:
+            if self.isMinimized():
+                self.showNormal()
+            self.show()
+            self.raise_()
+            self.activateWindow()
+
+            hwnd = int(self.winId())
+            if hwnd and os.name == 'nt':
+                user32 = ctypes.windll.user32
+                SW_RESTORE = 9
+                user32.ShowWindow(hwnd, SW_RESTORE)
+                user32.BringWindowToTop(hwnd)
+
+                fore_hwnd = user32.GetForegroundWindow()
+                fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
+                app_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+                if fore_thread and fore_thread != app_thread:
+                    user32.AttachThreadInput(fore_thread, app_thread, True)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.AttachThreadInput(fore_thread, app_thread, False)
+                else:
+                    user32.SetForegroundWindow(hwnd)
+
+                user32.SwitchToThisWindow(hwnd, True)
+
+                # Flash taskbar icon
+                class FLASHWINFO(ctypes.Structure):
+                    _fields_ = [
+                        ('cbSize', wintypes.UINT),
+                        ('hwnd', wintypes.HWND),
+                        ('dwFlags', wintypes.DWORD),
+                        ('uCount', wintypes.UINT),
+                        ('dwTimeout', wintypes.DWORD)
+                    ]
+                FLASHW_ALL = 0x00000003
+                FLASHW_TIMERNOFG = 0x0000000C
+                fwi = FLASHWINFO()
+                fwi.cbSize = ctypes.sizeof(FLASHWINFO)
+                fwi.hwnd = hwnd
+                fwi.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG
+                fwi.uCount = 4
+                fwi.dwTimeout = 0
+                user32.FlashWindowEx(ctypes.byref(fwi))
+        except Exception:
+            pass
+        try:
+            QApplication.alert(self, 0)
+        except Exception:
+            pass
+
 
     def resizeEvent(self, event):
+        self._apply_rounded_mask()
         super().resizeEvent(event)
         self.resize_timer.start(50)
         if hasattr(self, 'details_popup') and self.details_popup and self.details_popup.isVisible():
@@ -2785,32 +2251,32 @@ class PluginManager(QWidget):
         if not hasattr(self, 'grid_layout') or not self.plugin_cards:
             return
             
-        available_width = self.scroll_area.viewport().width() - 20
-        if available_width <= 0:
-            available_width = self.scroll_area.width() - 20
+        self.scroll_content.setUpdatesEnabled(False)
+        try:
+            while self.grid_layout.count():
+                self.grid_layout.takeAt(0)
+
+            cols = 2
+            self.grid_layout.setAlignment(Qt.AlignTop)
+            self.grid_layout.setContentsMargins(16, 12, 16, 20)
+            self.grid_layout.setHorizontalSpacing(14)
+            self.grid_layout.setVerticalSpacing(12)
+            self.grid_layout.setColumnStretch(0, 1)
+            self.grid_layout.setColumnStretch(1, 1)
             
-        card_width = 180 + 15
-        max_cols = 5
-        cols = max(1, min(max_cols, available_width // card_width))
-        
-        total_grid_width = cols * card_width
-        left_margin = max(15, (available_width - total_grid_width) // 2)
-        
-        self.grid_layout.setContentsMargins(left_margin, 10, left_margin, 20)
-        self.grid_layout.setHorizontalSpacing(15)
-        self.grid_layout.setVerticalSpacing(15)
-        
-        for i, (plugin_name, card) in enumerate(self.plugin_cards.items()):
-            row, col = i // cols, i % cols
-            if self.grid_layout.indexOf(card) != -1:
-                self.grid_layout.removeWidget(card)
-            self.grid_layout.addWidget(card, row, col)
-            card.show()
+            for i, (plugin_name, card) in enumerate(self.plugin_cards.items()):
+                row, col = i // cols, i % cols
+                self.grid_layout.addWidget(card, row, col)
+                card.show()
+        finally:
+            self.scroll_content.setUpdatesEnabled(True)
         
         QTimer.singleShot(50, self.check_visible_cards)
 
     def get_modify_page(self):
         if self._modify_page_widget is None:
+            from modify_widget import ModifyWidget, set_project_root
+            set_project_root(PROJECT_ROOT)
             self.modify_page = ModifyWidget(os.path.join(PROJECT_ROOT, 'imports', 'modify.nss'), os.path.join(PROJECT_ROOT, 'shell.nss'), PROJECT_ROOT)
             self._modify_page_widget = self.modify_page
             self.modify_page.reload_requested.connect(self.reload_shell)
@@ -2822,73 +2288,164 @@ class PluginManager(QWidget):
 
     def get_theme_page(self):
         if self._theme_page_widget is None:
+            from theme_switcher_widget import ThemeSwitcherWidget
+            from cursor_widget import CursorGalleryWidget
+            from theme_editor_widget import ThemeEditorWidget
+
             self.theme_page = QWidget()
             self._theme_page_widget = self.theme_page
             self.theme_layout = QVBoxLayout(self.theme_page)
-            self.theme_tab_widget = ModernTabWidget()
-            self.theme_layout.addWidget(self.theme_tab_widget)
+            self.theme_layout.setContentsMargins(0, 0, 0, 0)
+            self.theme_layout.setSpacing(0)
 
-            corner_widget = QWidget()
-            corner_layout = QHBoxLayout(corner_widget)
-            corner_layout.setContentsMargins(0, 0, 10, 0)
-            corner_layout.setSpacing(10)
-            corner_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            # 1. Pill-shaped Segmented Main Tabs Container (Themes / Editor / Mouse)
+            self.theme_main_tab_container = QFrame()
+            self.theme_main_tab_container.setObjectName("pillTabContainer")
+            self.theme_main_tab_container.setStyleSheet("background-color: transparent; border: none; padding: 0px;")
+            theme_main_tab_lay = QHBoxLayout(self.theme_main_tab_container)
+            theme_main_tab_lay.setContentsMargins(0, 0, 0, 0)
+            theme_main_tab_lay.setSpacing(4)
 
-            self.theme_status_label = QLabel("")
-            self.theme_status_label.setObjectName("themeStatusLabel")
-            self.theme_status_label.setMinimumWidth(120)
-            self.theme_status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            corner_layout.addWidget(self.theme_status_label)
+            self.themes_tab_btn = PillTabButton(" Themes", 0xE790, height=30)
+            self.themes_tab_btn.setChecked(True)
+            self.themes_tab_btn.clicked.connect(lambda: switch_theme_page_tab(0))
 
-            self.theme_save_button = QPushButton("Save")
-            self.theme_save_button.setObjectName("themeSaveButton")
-            self.theme_reset_button = QPushButton("Reset")
-            self.theme_reset_button.setObjectName("themeResetButton")
-            self.sync_container = QFrame(); self.sync_container.setObjectName("syncContainer")
-            self.sync_container.setStyleSheet("QFrame#syncContainer { background: rgba(255, 255, 255, 0.05); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); }")
-            sync_cl = QHBoxLayout(self.sync_container); sync_cl.setContentsMargins(15, 0, 8, 0); sync_cl.setSpacing(10)
+            self.editor_tab_btn = PillTabButton(" Editor", 0xE104, height=30)
+            self.editor_tab_btn.clicked.connect(lambda: switch_theme_page_tab(1))
 
-            sync_label = QLabel("Sync colors now"); sync_label.setStyleSheet("color: white; font-weight: 500; font-size: 11px; background: transparent; border: none;")
-            self.theme_sync_button = QPushButton("\uE117"); self.theme_sync_button.setFont(QFont('Segoe MDL2 Assets', 12))
-            self.theme_sync_button.setFixedSize(30, 30); self.theme_sync_button.setCursor(QCursor(Qt.PointingHandCursor))
-            self.theme_sync_button.setStyleSheet("QPushButton { color: white; background: rgba(255,255,255,0.1); border: none; border-radius: 15px; } QPushButton:hover { background: rgba(255,255,255,0.2); }")
-            self.theme_sync_button.clicked.connect(lambda: self.trigger_global_tint(force=True))
+            self.mouse_tab_btn = PillTabButton(" Mouse", 0xE962, height=30)
+            self.mouse_tab_btn.clicked.connect(lambda: switch_theme_page_tab(2))
 
-            sync_cl.addWidget(sync_label); sync_cl.addWidget(self.theme_sync_button)
+            self.theme_main_tab_group = QButtonGroup(self)
+            self.theme_main_tab_group.setExclusive(True)
+            self.theme_main_tab_group.addButton(self.themes_tab_btn)
+            self.theme_main_tab_group.addButton(self.editor_tab_btn)
+            self.theme_main_tab_group.addButton(self.mouse_tab_btn)
 
-            self.add_theme_btn = QPushButton("Add Theme")
-            self.add_theme_btn.setObjectName("addThemeBtn")
-            self.add_theme_btn.setStyleSheet("QPushButton#addThemeBtn { background: rgba(255,255,255,0.05); color: white; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); padding: 6px 20px; font-weight: bold; } QPushButton#addThemeBtn:hover { background: rgba(255,255,255,0.1); }")
-            self.add_theme_btn.setCursor(QCursor(Qt.PointingHandCursor))
-
-            corner_layout.addWidget(self.add_theme_btn)
-            corner_layout.addWidget(self.sync_container)
-            corner_layout.addWidget(self.theme_save_button)
-            corner_layout.addWidget(self.theme_reset_button)
-
-            self.theme_tab_widget.setCornerWidget(corner_widget, Qt.TopRightCorner)
+            theme_main_tab_lay.addWidget(self.themes_tab_btn)
+            theme_main_tab_lay.addWidget(self.editor_tab_btn)
+            theme_main_tab_lay.addWidget(self.mouse_tab_btn)
 
             self.theme_switcher_page = ThemeSwitcherWidget(
                 theme_dir=os.path.join(PROJECT_ROOT, 'theme'),
                 theme_nss_path=os.path.join(PROJECT_ROOT, 'imports', 'theme.nss')
             )
-            self.theme_editor_page = ThemeEditorWidget(
-                theme_path=os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'),
-                theme_dir=os.path.join(PROJECT_ROOT, 'theme')
-            )
+            self.cursor_page = None
+            self.theme_editor_page = None
+            self._theme_editor_initialized = False
+            self._cursor_page_initialized = False
+            self.editor_placeholder = QWidget()
+            self.mouse_placeholder = QWidget()
 
-            self.add_theme_btn.clicked.connect(self.theme_switcher_page._add_current_theme)
-            self.theme_switcher_page.status_message_requested.connect(self.theme_status_label.setText)
+            self.theme_save_button = PillPushButton("Save", "primary", height=30)
+            self.theme_save_button.setFixedWidth(70)
+            self.theme_reset_button = PillPushButton("Reset", "reset", height=30)
+            self.theme_reset_button.setFixedWidth(70)
+            self.sync_container = QFrame(); self.sync_container.setObjectName("syncContainer")
+            self.sync_container.setStyleSheet("QFrame#syncContainer { background: rgba(255, 255, 255, 0.05); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); }")
+            sync_cl = QHBoxLayout(self.sync_container); sync_cl.setContentsMargins(15, 0, 8, 0); sync_cl.setSpacing(10)
 
-            self.theme_save_button.clicked.connect(self.save_theme_and_update_status)
-            self.theme_reset_button.clicked.connect(self.reset_theme_and_update_status)
-            self.theme_switcher_page.theme_selected.connect(self.theme_editor_page.reload_theme)
+            self.sync_label = QLabel("Sync Colors"); self.sync_label.setStyleSheet("color: white; font-weight: 500; font-size: 11px; background: transparent; border: none;")
+            self.theme_sync_button = QPushButton("\uE117"); self.theme_sync_button.setFont(QFont('Segoe MDL2 Assets', 12))
+            self.theme_sync_button.setFixedSize(30, 30); self.theme_sync_button.setCursor(QCursor(Qt.PointingHandCursor))
+            self.theme_sync_button.setStyleSheet("QPushButton { color: white; background: rgba(255,255,255,0.1); border: none; border-radius: 15px; } QPushButton:hover { background: rgba(255,255,255,0.2); }")
+            self.theme_sync_button.clicked.connect(lambda: self.trigger_global_tint(force=True))
+
+            sync_cl.addWidget(self.sync_label); sync_cl.addWidget(self.theme_sync_button)
+
+            top_header_layout = QHBoxLayout()
+            top_header_layout.setContentsMargins(15, 10, 15, 8)
+            top_header_layout.addWidget(self.theme_main_tab_container)
+            top_header_layout.addStretch(1)
+
+            right_controls = QHBoxLayout()
+            right_controls.setContentsMargins(0, 0, 0, 0)
+            right_controls.setSpacing(10)
+            right_controls.addWidget(self.theme_switcher_page.tab_container)
+            right_controls.addWidget(self.sync_container)
+            right_controls.addWidget(self.theme_save_button)
+            right_controls.addWidget(self.theme_reset_button)
+
+            top_header_layout.addLayout(right_controls)
+            self.theme_layout.addLayout(top_header_layout)
+
+            self.theme_stacked_widget = QStackedWidget()
+            self.theme_stacked_widget.setObjectName("themeStackedWidget")
+            self.theme_stacked_widget.setStyleSheet("QStackedWidget#themeStackedWidget { background-color: #121212; border: none; }")
+            self.theme_stacked_widget.addWidget(self.theme_switcher_page)
+            self.theme_stacked_widget.addWidget(self.editor_placeholder)
+            self.theme_stacked_widget.addWidget(self.mouse_placeholder)
+            self.theme_layout.addWidget(self.theme_stacked_widget)
+
+            self.theme_switcher_page.status_message_requested.connect(self.show_sync_status)
+
+            def on_save_clicked():
+                if hasattr(self, 'theme_switcher_page') and self.theme_switcher_page:
+                    self.theme_switcher_page.save_selection()
+                if getattr(self, '_theme_editor_initialized', False) and self.theme_editor_page:
+                    self.theme_editor_page.save_theme()
+                if getattr(self, '_cursor_page_initialized', False) and self.cursor_page:
+                    self.cursor_page.save_selection()
+                self.commit_tinted_icons()
+                self.update_snapshot(os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'))
+                self.show_sync_status("Changes Saved")
+
+            def on_reset_clicked():
+                if hasattr(self, 'theme_switcher_page') and self.theme_switcher_page:
+                    self.theme_switcher_page.revert_selection()
+                if getattr(self, '_theme_editor_initialized', False) and self.theme_editor_page:
+                    self.theme_editor_page.revert_theme()
+                if getattr(self, '_cursor_page_initialized', False) and self.cursor_page:
+                    self.cursor_page.revert_selection()
+                self.revert_tinted_icons()
+                self.show_sync_status("Changes Reverted")
+
+            self.theme_save_button.clicked.connect(on_save_clicked)
+            self.theme_reset_button.clicked.connect(on_reset_clicked)
             self.theme_switcher_page.theme_applied.connect(self.trigger_global_tint)
             self.theme_switcher_page.reload_requested.connect(self.reload_shell)
-            self.theme_editor_page.reload_requested.connect(self.reload_shell)
 
-            self.theme_tab_widget.addTab(self.theme_switcher_page, get_mdl2_icon(0xE790, 36), "Themes")
-            self.theme_tab_widget.addTab(self.theme_editor_page, get_mdl2_icon(0xE104, 36), "Editor")
+            def switch_theme_page_tab(idx):
+                if idx == 0:
+                    self.themes_tab_btn.setChecked(True)
+                elif idx == 1:
+                    self.editor_tab_btn.setChecked(True)
+                    if not self._theme_editor_initialized:
+                        self._theme_editor_initialized = True
+                        self.theme_editor_page = ThemeEditorWidget(
+                            theme_path=os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'),
+                            theme_dir=os.path.join(PROJECT_ROOT, 'theme')
+                        )
+                        self.theme_stacked_widget.removeWidget(self.editor_placeholder)
+                        self.editor_placeholder.deleteLater()
+                        self.theme_stacked_widget.insertWidget(1, self.theme_editor_page)
+                        self.theme_switcher_page.theme_selected.connect(self.theme_editor_page.reload_theme)
+                        self.theme_editor_page.reload_requested.connect(self.reload_shell)
+                        self._update_widgets_autosave()
+                elif idx == 2:
+                    self.mouse_tab_btn.setChecked(True)
+                    if not self._cursor_page_initialized:
+                        self._cursor_page_initialized = True
+                        self.cursor_page = CursorGalleryWidget(
+                            cursor_dir=os.path.join(PROJECT_ROOT, 'cursor')
+                        )
+                        self.theme_stacked_widget.removeWidget(self.mouse_placeholder)
+                        self.mouse_placeholder.deleteLater()
+                        self.theme_stacked_widget.insertWidget(2, self.cursor_page)
+                        right_controls.insertWidget(1, self.cursor_page.tab_container)
+                        self.cursor_page.status_message_requested.connect(self.show_sync_status)
+
+                self.theme_stacked_widget.setCurrentIndex(idx)
+                self.theme_switcher_page.tab_container.setVisible(idx == 0)
+                self.sync_container.setVisible(idx in (0, 1))
+                if self._cursor_page_initialized and self.cursor_page:
+                    self.cursor_page.tab_container.setVisible(idx == 2)
+                self.theme_save_button.setVisible(idx != 2)
+                self.theme_reset_button.setVisible(idx != 2)
+                if self.theme_stacked_widget.currentWidget():
+                    self.theme_stacked_widget.currentWidget().update()
+
+            switch_theme_page_tab(0)
 
             self.stacked_widget.addWidget(self._theme_page_widget)
             self._update_widgets_autosave()
@@ -2910,44 +2467,44 @@ class PluginManager(QWidget):
     def create_side_panel(self):
         side_panel = QFrame()
         side_panel.setObjectName("sidePanel")
-        side_panel.setStyleSheet("#sidePanel { background-color: #121212; border-right: 1px solid #2a2a30; border-top-left-radius: 15px; border-bottom-left-radius: 15px; }")
-        side_panel.setFixedWidth(84)
+        side_panel.setStyleSheet("#sidePanel { background-color: transparent; border-right: none; }")
+        side_panel.setFixedWidth(82)
         side_panel_layout = QVBoxLayout(side_panel)
-        side_panel_layout.setContentsMargins(6, 12, 6, 12)
-        side_panel_layout.setSpacing(16)
+        side_panel_layout.setContentsMargins(8, 12, 8, 12)
+        side_panel_layout.setSpacing(14)
         side_panel_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
 
+        self.side_btn_group = QButtonGroup(self)
+        self.side_btn_group.setExclusive(True)
+
+        def _switch_to_page(page_getter, btn):
+            while QApplication.overrideCursor():
+                QApplication.restoreOverrideCursor()
+            self.unsetCursor()
+            btn.setChecked(True)
+            w = page_getter()
+            self.stacked_widget.setCurrentWidget(w)
+
         def create_nav_item(icon_name, label_text, page_getter):
-            w = QWidget()
-            w_layout = QVBoxLayout(w)
-            w_layout.setContentsMargins(0, 0, 0, 0)
-            w_layout.setSpacing(4)
-            w_layout.setAlignment(Qt.AlignCenter)
+            btn = NavTabButton(icon_name, label_text)
+            self.side_btn_group.addButton(btn)
+            btn.clicked.connect(lambda: _switch_to_page(page_getter, btn))
+            return btn
 
-            btn = QPushButton()
-            btn.setObjectName("sideButton")
-            btn.setIcon(QIcon(resource_path(f'icons/{icon_name}')))
-            btn.setIconSize(QSize(36, 36))
-            btn.setFixedSize(54, 54)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(page_getter()))
-            self._apply_shadow_effect(btn)
+        self.side_plugins_btn = create_nav_item('plugins.png', 'Plugins', lambda: self.plugins_page)
+        self.side_modify_btn = create_nav_item('modify.png', 'Modify', lambda: self.get_modify_page())
+        self.side_theme_btn = create_nav_item('theme.png', 'Theme', lambda: self.get_theme_page())
+        self.side_settings_btn = create_nav_item('Settings.png', 'Settings', lambda: self.get_settings_page())
 
-            lbl = QLabel(label_text)
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("color: #b0b0b0; font-size: 11px; font-weight: 600; background: transparent;")
+        self.side_plugins_btn.setChecked(True)
 
-            w_layout.addWidget(btn, 0, Qt.AlignCenter)
-            w_layout.addWidget(lbl, 0, Qt.AlignCenter)
-            return w
-
-        side_panel_layout.addWidget(create_nav_item('plugins.png', 'Plugins', lambda: self.plugins_page))
-        side_panel_layout.addWidget(create_nav_item('modify.png', 'Modify', lambda: self.get_modify_page()))
-        side_panel_layout.addWidget(create_nav_item('theme.png', 'Theme', lambda: self.get_theme_page()))
+        side_panel_layout.addWidget(self.side_plugins_btn)
+        side_panel_layout.addWidget(self.side_modify_btn)
+        side_panel_layout.addWidget(self.side_theme_btn)
 
         side_panel_layout.addStretch()
 
-        side_panel_layout.addWidget(create_nav_item('settings.png', 'Settings', lambda: self.get_settings_page()))
+        side_panel_layout.addWidget(self.side_settings_btn)
 
         return side_panel
 
@@ -2990,7 +2547,8 @@ class PluginManager(QWidget):
 
     def on_plugins_fetched(self, plugins):
         local_plugins = self.plugin_logic.registry.get_local_plugins_for_ui()
-        if len(local_plugins) > 0:
+        is_plugins_page = (self.stacked_widget.currentWidget() == self.plugins_page) if hasattr(self, 'stacked_widget') else True
+        if len(local_plugins) > 0 and is_plugins_page:
             self.plugins_tab_container.show()
         else:
             self.plugins_tab_container.hide()
@@ -3029,7 +2587,9 @@ class PluginManager(QWidget):
             for p_name in list(self.plugin_cards.keys()):
                 if p_name not in valid_names:
                     card = self.plugin_cards.pop(p_name)
+                    card.hide()
                     card.deleteLater()
+                    self.icons_loaded.discard(p_name)
                     self.plugin_progress_bars.pop(p_name, None)
                     self.plugin_buttons.pop(p_name, None)
                     self.plugin_update_buttons.pop(p_name, None)
@@ -3078,64 +2638,70 @@ class PluginManager(QWidget):
         plugin_name = plugin['name']
         card = ClickableWidget(plugin_name)
         card.setObjectName("plugin_card")
-        card.setFixedSize(180, 250)
-        layout = QVBoxLayout(card)
-        layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(10)
+        card.setFixedHeight(84)
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        card.setMinimumWidth(260)
+        card.setCursor(Qt.PointingHandCursor)
+
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 5, 16, 5)
+        layout.setSpacing(14)
+        layout.setAlignment(Qt.AlignVCenter)
 
         card.plugin_card_clicked.connect(self.show_details_popup)
 
-        title = QLabel(plugin_name)
-        title.setFont(QFont('Segoe UI Variable Display', 14, QFont.Bold))
-        title.setAlignment(Qt.AlignCenter)
-        title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        layout.addWidget(title)
-
-        icon_container = QWidget()
-        icon_container.setObjectName("iconContainer")
-        icon_container.setFixedSize(80, 80)
-        icon_layout = QVBoxLayout(icon_container)
-        icon_layout.setContentsMargins(0,0,0,0)
-        icon_layout.setAlignment(Qt.AlignCenter)
+        # Floating icon (no background box)
         icon = QLabel()
-        icon.setFixedSize(70, 70)
+        icon.setFixedSize(54, 54)
         icon.setScaledContents(True)
         icon.setObjectName("iconLabel")
+        icon.setStyleSheet("background: transparent; border: none;")
         icon.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.plugin_icon_labels[plugin_name] = icon
-        icon.setPixmap(QPixmap(DEFAULT_ICON_PATH))
-        self.load_icon(plugin)
-        self.icons_loaded.add(plugin_name)
-        icon_layout.addWidget(icon)
-        layout.addWidget(icon_container, alignment=Qt.AlignCenter)
+        
+        # Immediately use cached pixmap if already in memory
+        if plugin_name in self._pixmap_cache and not self._pixmap_cache[plugin_name].isNull():
+            icon.setPixmap(self._pixmap_cache[plugin_name])
+            self.icons_loaded.add(plugin_name)
+        else:
+            self.icons_loaded.discard(plugin_name)
+            icon.setPixmap(self._default_icon_pixmap)
+        layout.addWidget(icon, 0, Qt.AlignVCenter)
+
+        # Text column (Title + Description)
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(3)
+        text_layout.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+
+        title = QLabel(plugin_name)
+        title.setFont(QFont('Segoe UI Variable Display', 12, QFont.Bold))
+        title.setStyleSheet("color: #ffffff; background: transparent;")
+        title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        text_layout.addWidget(title)
 
         description = QLabel(plugin.get('description', 'No description available.'))
+        description.setFont(QFont('Segoe UI Variable Text', 10))
+        description.setStyleSheet("color: #8c92a4; background: transparent;")
         description.setWordWrap(True)
-        description.setAlignment(Qt.AlignCenter)
+        description.setMaximumHeight(38)
         description.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        layout.addWidget(description)
+        text_layout.addWidget(description)
 
-        layout.addStretch()
+        layout.addLayout(text_layout, 1)
 
-        progress_bar = PillProgressBar(height=16)
-        progress_bar.setFixedWidth(140)
-        progress_bar.setVisible(False)
-        self.plugin_progress_bars[plugin_name] = progress_bar
-        layout.addWidget(progress_bar, alignment=Qt.AlignCenter)
+        # Action layout (vertical so update button sits below main action)
+        action_layout = QVBoxLayout()
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(3)
+        action_layout.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        layout.addLayout(action_layout, 0)
 
-        action_layout = QHBoxLayout()
-        action_layout.setContentsMargins(0, 10, 0, 0)
-        action_layout.setSpacing(10)
-        action_layout.setAlignment(Qt.AlignCenter)
-        layout.addLayout(action_layout)
-
-        action_button = QPushButton()
-        action_button.setObjectName("installButton")
-        action_button.setCursor(Qt.PointingHandCursor)
+        action_button = CapsuleActionButton('install')
         action_layout.addWidget(action_button)
 
         self.plugin_cards[plugin_name] = card
-        self.plugin_progress_bars[plugin_name] = progress_bar
+        self.plugin_progress_bars[plugin_name] = action_button
         self.plugin_buttons[plugin_name] = action_button
         self.plugin_action_layouts[plugin_name] = action_layout
         self.plugin_description_labels[plugin_name] = description
@@ -3144,10 +2710,38 @@ class PluginManager(QWidget):
         self.apply_card_style(card)
         return card
 
-    def show_details_popup(self, plugin_name, card):
+    def debounce_check_visible_cards(self):
+        self.visible_check_timer.start(50)
+
+    def check_visible_cards(self):
+        if not hasattr(self, 'scroll_area') or not self.scroll_area.isVisible():
+            return
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        viewport_top = scroll_bar.value()
+        viewport_bottom = viewport_top + self.scroll_area.viewport().height()
+
+        for plugin_name, card in list(self.plugin_cards.items()):
+            if plugin_name in self.icons_loaded:
+                continue
+            card_top = card.y()
+            card_bottom = card_top + card.height()
+            if card_bottom >= viewport_top - 200 and card_top <= viewport_bottom + 200:
+                self.icons_loaded.add(plugin_name)
+                if plugin_name in self._pixmap_cache and not self._pixmap_cache[plugin_name].isNull():
+                    if plugin_name in self.plugin_icon_labels:
+                        self.plugin_icon_labels[plugin_name].setPixmap(self._pixmap_cache[plugin_name])
+                else:
+                    plugin_data = self.all_plugins_data.get(plugin_name)
+                    if plugin_data:
+                        self.load_icon(plugin_data)
+
+    def show_details_popup(self, plugin_name, card=None):
         if self.details_popup:
             self.details_popup.close()
 
+        if card is None:
+            card = self.plugin_cards.get(plugin_name)
+        if not card: return
         plugin_data = self.all_plugins_data.get(plugin_name)
         if not plugin_data:
             state = self.plugin_logic.registry.get_plugin_state(plugin_name)
@@ -3239,26 +2833,35 @@ class PluginManager(QWidget):
 
     def update_popup_button(self, plugin_name):
         if not self.details_popup: return
+        if getattr(self.details_popup, 'plugin_data', {}).get('name') != plugin_name: return
         plugin_info = self.all_plugins_data.get(plugin_name, {})
         state = self.plugin_logic.registry.get_plugin_state(plugin_name)
         status = state.get('status', 'not_installed')
         is_local = plugin_info.get('_is_local') or status == 'local'
+        is_installing = (self.plugin_logic.current_installing_plugin == plugin_name)
+        is_queued = plugin_name in [p['name'] for p in self.plugin_logic.installation_queue]
 
-        if is_local:
-            self.details_popup.action_button.setText("Delete")
-            self.details_popup.action_button.setObjectName("uninstallButton")
+        try: self.details_popup.action_button.clicked.disconnect()
+        except TypeError: pass
+
+        if is_installing:
+            self.details_popup.action_button.set_state('installing')
+            self.details_popup.action_button.clicked.connect(lambda: self.cancel_operation(plugin_name))
+        elif is_queued:
+            self.details_popup.action_button.set_state('queued')
+            self.details_popup.action_button.clicked.connect(lambda: self.cancel_operation(plugin_name))
+        elif is_local:
+            self.details_popup.action_button.set_state('delete')
+            self.details_popup.action_button.clicked.connect(lambda: self.confirm_delete_local_plugin(plugin_name))
         elif status == 'update_available':
-            self.details_popup.action_button.setText("Update")
-            self.details_popup.action_button.setObjectName("updateButton")
+            self.details_popup.action_button.set_state('update')
+            self.details_popup.action_button.clicked.connect(lambda: self.add_to_installation_queue(plugin_name))
         elif status in ('installed', 'delisted'):
-            self.details_popup.action_button.setText("Uninstall")
-            self.details_popup.action_button.setObjectName("uninstallButton")
+            self.details_popup.action_button.set_state('uninstall')
+            self.details_popup.action_button.clicked.connect(lambda: self.uninstall_plugin(plugin_name))
         else:
-            self.details_popup.action_button.setText("Install")
-            self.details_popup.action_button.setObjectName("installButton")
-        
-        self.details_popup.action_button.style().unpolish(self.details_popup.action_button)
-        self.details_popup.action_button.style().polish(self.details_popup.action_button)
+            self.details_popup.action_button.set_state('install')
+            self.details_popup.action_button.clicked.connect(lambda: self.add_to_installation_queue(plugin_name))
 
     def debounce_check_visible_cards(self):
         self.visible_check_timer.start(100)
@@ -3319,9 +2922,7 @@ class PluginManager(QWidget):
         action_layout = self.plugin_action_layouts.get(plugin_name)
         if not action_layout: return
 
-        font = action_button.font()
-        font.setBold(True)
-        action_button.setFont(font)
+        action_button.setVisible(True)
 
         if self.plugin_update_buttons.get(plugin_name):
             button_to_remove = self.plugin_update_buttons.pop(plugin_name)
@@ -3345,90 +2946,84 @@ class PluginManager(QWidget):
         if has_update and self.settings_manager.get('auto_update') and not is_queued and not is_installing:
              self.add_to_installation_queue(plugin_name)
              return
-        
-        if plugin_name in self.plugin_progress_bars:
-            self.plugin_progress_bars[plugin_name].setVisible(is_installing)
 
         if is_installing:
-            action_button.setText(" Cancel")
-            action_button.setIcon(get_mdl2_icon(0xE711, 20, '#ffffff'))
-            action_button.setIconSize(QSize(14, 14))
-            action_button.setObjectName("textButton")
+            action_button.set_height(34)
+            action_button.set_compact(False)
+            action_button.set_state('installing')
             action_button.setEnabled(True)
             action_button.clicked.connect(lambda: self.cancel_operation(plugin_name))
         elif is_queued:
-            action_button.setText(" Queued")
-            action_button.setIcon(get_mdl2_icon(0xE825, 20, '#ffffff'))
-            action_button.setIconSize(QSize(14, 14))
-            action_button.setObjectName("textButton")
+            action_button.set_height(34)
+            action_button.set_compact(False)
+            action_button.set_state('queued')
             action_button.setEnabled(True)
             action_button.clicked.connect(lambda: self.cancel_operation(plugin_name))
         elif is_local:
-            action_button.setText(" Delete")
-            action_button.setIcon(get_mdl2_icon(0xE74D, 20, '#ffffff'))
-            action_button.setIconSize(QSize(14, 14))
-            action_button.setObjectName("uninstallButton")
+            action_button.set_state('delete')
             action_button.setEnabled(True)
             action_button.clicked.connect(lambda: self.confirm_delete_local_plugin(plugin_name))
 
             plugin_dir = os.path.join(PLUGINS_DIR, plugin_name)
             nss_enabled = is_plugin_nss_enabled(plugin_name, plugin_dir)
             if nss_enabled is not None:
-                toggle_btn = QPushButton(" Disable" if nss_enabled else " Enable")
-                toggle_btn.setIcon(get_mdl2_icon(0xE711 if nss_enabled else 0xE73E, 20, '#ffffff'))
-                toggle_btn.setIconSize(QSize(14, 14))
-                toggle_btn.setObjectName("secondaryButton" if nss_enabled else "updateButton")
-                toggle_btn.setCursor(Qt.PointingHandCursor)
-                font = toggle_btn.font(); font.setBold(True); toggle_btn.setFont(font)
+                toggle_btn = CapsuleActionButton('disable' if nss_enabled else 'enable', height=34)
+                action_button.set_height(34)
+                action_button.set_compact(False)
+                toggle_btn.set_compact(False)
                 if nss_enabled:
                     toggle_btn.clicked.connect(lambda: self.disable_local_plugin(plugin_name))
                 else:
                     toggle_btn.clicked.connect(lambda: self.enable_local_plugin(plugin_name))
                 action_layout.addWidget(toggle_btn)
                 self.plugin_update_buttons[plugin_name] = toggle_btn
+            else:
+                action_button.set_height(34)
+                action_button.set_compact(False)
         elif is_delisted:
-            action_button.setText(" Uninstall")
-            action_button.setIcon(get_mdl2_icon(0xE74D, 20, '#ffffff'))
-            action_button.setIconSize(QSize(14, 14))
-            action_button.setObjectName("uninstallButton")
+            action_button.set_height(34)
+            action_button.set_compact(False)
+            action_button.set_state('uninstall')
             action_button.setEnabled(True)
             action_button.clicked.connect(lambda: self.uninstall_plugin(plugin_name))
         elif is_installed:
-            action_button.setText(" Uninstall")
-            action_button.setIcon(get_mdl2_icon(0xE74D, 20, '#ffffff'))
-            action_button.setIconSize(QSize(14, 14))
-            action_button.setObjectName("uninstallButton")
+            action_button.set_state('uninstall')
             action_button.setEnabled(True)
             action_button.clicked.connect(lambda: self.uninstall_plugin(plugin_name))
             
             if has_update:
-                update_button = QPushButton(" Update")
-                update_button.setIcon(get_mdl2_icon(0xE895, 20, '#ffffff'))
-                update_button.setIconSize(QSize(14, 14))
-                update_button.setObjectName("updateButton")
-                update_button.setCursor(Qt.PointingHandCursor)
-                font = update_button.font(); font.setBold(True); update_button.setFont(font)
+                update_button = CapsuleActionButton('update', height=34)
+                action_button.set_height(34)
+                action_button.set_compact(False)
+                update_button.set_compact(False)
                 update_button.clicked.connect(lambda: self.add_to_installation_queue(plugin_name))
                 action_layout.addWidget(update_button)
                 self.plugin_update_buttons[plugin_name] = update_button
+            else:
+                action_button.set_height(34)
+                action_button.set_compact(False)
         else:
-            action_button.setText(" Install")
-            action_button.setIcon(get_mdl2_icon(0xE896, 20, '#ffffff'))
-            action_button.setIconSize(QSize(14, 14))
-            action_button.setObjectName("installButton")
+            action_button.set_height(34)
+            action_button.set_compact(False)
+            action_button.set_state('install')
             action_button.setEnabled(True)
             action_button.clicked.connect(lambda: self.add_to_installation_queue(plugin_name))
-        
-        action_button.style().unpolish(action_button)
-        action_button.style().polish(action_button)
+
+        if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+            self.update_popup_button(plugin_name)
 
     def on_icon_loaded(self, plugin_name, pixmap):
+        is_default = bool(self._default_icon_pixmap and pixmap and pixmap.cacheKey() == self._default_icon_pixmap.cacheKey())
+        if pixmap and not pixmap.isNull() and not is_default:
+            self._pixmap_cache[plugin_name] = pixmap
         if plugin_name in self.plugin_icon_labels:
             label = self.plugin_icon_labels[plugin_name]
-            if pixmap and not pixmap.isNull():
+            if plugin_name in self._pixmap_cache and not self._pixmap_cache[plugin_name].isNull():
+                label.setPixmap(self._pixmap_cache[plugin_name])
+            elif pixmap and not pixmap.isNull():
                 label.setPixmap(pixmap)
             else:
-                label.setPixmap(QPixmap(DEFAULT_ICON_PATH))
+                label.setPixmap(self._default_icon_pixmap)
 
     def load_icon(self, plugin):
         self.plugin_logic.load_icon(plugin)
@@ -3439,46 +3034,57 @@ class PluginManager(QWidget):
             
         self.plugin_logic.add_to_installation_queue(plugin_name)
         self.update_card_ui(plugin_name)
+        if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+            self.update_popup_button(plugin_name)
 
     def on_install_progress(self, plugin_name, value):
         if plugin_name == self.plugin_logic.current_installing_plugin:
-            self.plugin_progress_bars[plugin_name].setValue(value)
-            progress_bar = self.plugin_progress_bars[plugin_name]
-            if not progress_bar.isVisible():
-                progress_bar.setVisible(True)
-
+            if plugin_name in self.plugin_buttons:
+                self.plugin_buttons[plugin_name].setValue(value)
+            if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+                self.details_popup.action_button.setValue(value)
 
     def on_operation_error(self, plugin_name, status, error_message):
         print(f"Operation error for {plugin_name}: {error_message}")
-        if plugin_name in self.plugin_progress_bars:
-            self.plugin_progress_bars[plugin_name].setVisible(False)
+        if plugin_name in self.plugin_buttons:
+            self.plugin_buttons[plugin_name].setValue(0)
+            self.plugin_buttons[plugin_name].setVisible(True)
 
         self.update_card_ui(plugin_name)
 
-        if self.details_popup and self.details_popup.plugin_data['name'] == plugin_name:
+        if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+            self.details_popup.action_button.setValue(0)
+            self.update_popup_button(plugin_name)
             self.details_popup.set_details_content(f"<font color='red'>Error: {error_message}</font>")
         elif not getattr(self, '_error_dialog_visible', False):
             self._error_dialog_visible = True
-            msgBox = CustomMessageBox(self)
-            msgBox.setText(f"Error for {plugin_name}")
-            msgBox.setInformativeText(error_message)
+            msgBox = ModernDialog(self, title=f"Error for {plugin_name}", text=error_message)
+            msgBox.add_button("OK", "installButton", msgBox.accept)
             msgBox.finished.connect(lambda: setattr(self, '_error_dialog_visible', False))
             msgBox.show()
 
     def on_operation_finished(self, plugin_name, status):
-        if status == "cancelled_from_queue":
-            self.update_card_ui(plugin_name)
-            return
-
-        if plugin_name in self.plugin_progress_bars:
-            self.plugin_progress_bars[plugin_name].setVisible(False)
+        if plugin_name in self.plugin_buttons:
+            self.plugin_buttons[plugin_name].setValue(0)
+            self.plugin_buttons[plugin_name].setVisible(True)
 
         self.update_card_ui(plugin_name)
+        if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+            self.details_popup.action_button.setValue(0)
+            self.update_popup_button(plugin_name)
+
         if status == "installed" or status == "uninstalled":
             self.reload_shell()
 
     def cancel_operation(self, plugin_name):
         self.plugin_logic.cancel_operation(plugin_name)
+        if plugin_name in self.plugin_buttons:
+            self.plugin_buttons[plugin_name].setValue(0)
+            self.plugin_buttons[plugin_name].setVisible(True)
+        self.update_card_ui(plugin_name)
+        if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+            self.details_popup.action_button.setValue(0)
+            self.update_popup_button(plugin_name)
 
     def uninstall_plugin(self, plugin_name):
         self._is_internal_change = True
@@ -3497,52 +3103,91 @@ class PluginManager(QWidget):
         finally:
             self._is_internal_change = False
         self.plugin_logic.uninstall_plugin(plugin_name)
+        self.update_card_ui(plugin_name)
+        if self.details_popup and getattr(self.details_popup, 'plugin_data', {}).get('name') == plugin_name:
+            self.update_popup_button(plugin_name)
 
     def apply_card_style(self, card):
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(15)
-        shadow.setColor(QColor(0, 0, 0, 160))
-        shadow.setOffset(5, 5)
-        card.setGraphicsEffect(shadow)
+        card.setStyleSheet("""
+            QFrame#plugin_card {
+                background-color: rgba(255, 255, 255, 0.035);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+            }
+            QFrame#plugin_card:hover {
+                background-color: rgba(255, 255, 255, 0.065);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+            }
+        """)
 
     def nativeEvent(self, event_type, message):
         if event_type == "windows_generic_MSG":
             msg = wintypes.MSG.from_address(message.__int__())
-            if msg.message == win32con.WM_NCHITTEST:
+            WM_NCHITTEST = 0x0084
+            WM_NCCALCSIZE = 0x0083
+            HTCAPTION = 2
+            HTLEFT = 10
+            HTRIGHT = 11
+            HTTOP = 12
+            HTTOPLEFT = 13
+            HTTOPRIGHT = 14
+            HTBOTTOM = 15
+            HTBOTTOMLEFT = 16
+            HTBOTTOMRIGHT = 17
+
+            if msg.message == WM_NCHITTEST:
                 x, y = msg.pt.x, msg.pt.y
                 pos = self.mapFromGlobal(QPoint(x, y))
                 lx, ly = pos.x(), pos.y()
                 w, h = self.width(), self.height()
 
-                border = 15
-                
-                if lx < border:
-                    if ly < border: return True, win32con.HTTOPLEFT
-                    if ly > h - border: return True, win32con.HTBOTTOMLEFT
-                    return True, win32con.HTLEFT
-                if lx > w - border:
-                    if ly < border: return True, win32con.HTTOPRIGHT
-                    if ly > h - border: return True, win32con.HTBOTTOMRIGHT
-                    return True, win32con.HTRIGHT
-                if ly < border: return True, win32con.HTTOP
-                if ly > h - border: return True, win32con.HTBOTTOM
-                
-                if ly < 50:
+                # Sizing borders: NEVER return resize hit codes when maximized!
+                if not self.isMaximized():
                     child = self.childAt(lx, ly)
-                    if child and (child.inherits("QPushButton") or child.inherits("QTabBar") or child.inherits("QLineEdit") or child.objectName() == "tabBar"):
-                        return False, 0
-                    return True, win32con.HTCAPTION
-                
-                if lx < 80:
+                    is_interactive = False
+                    curr = child
+                    while curr and curr is not self:
+                        if (curr.inherits("QAbstractButton") or 
+                            curr.inherits("QLineEdit") or 
+                            curr.inherits("QComboBox") or 
+                            curr.inherits("QTabBar") or 
+                            curr.inherits("QSlider") or 
+                            curr.inherits("QScrollBar") or
+                            curr.objectName() in ("navTabButton", "pillTabContainer", "sidePanel")):
+                            is_interactive = True
+                            break
+                        curr = curr.parentWidget()
+
+                    if not is_interactive:
+                        border = 8
+                        if lx < border:
+                            if ly < border: return True, HTTOPLEFT
+                            if ly > h - border: return True, HTBOTTOMLEFT
+                            return True, HTLEFT
+                        if lx > w - border:
+                            if ly < border: return True, HTTOPRIGHT
+                            if ly > h - border: return True, HTBOTTOMRIGHT
+                            return True, HTRIGHT
+                        if ly < border: return True, HTTOP
+                        if ly > h - border: return True, HTBOTTOM
+
+                # Title bar drag: only at the top and never over interactive controls
+                if ly < 45:
                     child = self.childAt(lx, ly)
-                    # If clicking on a button or something interactive inside the sidebar, don't drag
-                    if child and (child.inherits("QPushButton") or child.inherits("QTabBar") or child.inherits("QLineEdit") or "sideButton" in child.objectName()):
-                        return False, 0
-                    return True, win32con.HTCAPTION
+                    curr = child
+                    while curr and curr is not self:
+                        if (curr.inherits("QAbstractButton") or 
+                            curr.inherits("QLineEdit") or 
+                            curr.inherits("QComboBox") or 
+                            curr.inherits("QTabBar") or
+                            curr.objectName() in ("navTabButton", "windowControlsPill")):
+                            return False, 0
+                        curr = curr.parentWidget()
+                    return True, HTCAPTION
 
                 return False, 0
 
-            elif msg.message == win32con.WM_NCCALCSIZE:
+            elif msg.message == WM_NCCALCSIZE:
                 return True, 0
 
             elif msg.message == 0x02E0:  # WM_DPICHANGED
@@ -3557,7 +3202,6 @@ class PluginManager(QWidget):
                             hwnd = int(wid)
                             ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, w, h, 0x0004 | 0x0020)
                             self.setGeometry(x, y, w, h)
-                            set_window_effect(hwnd, effect="acrylic")
                 except Exception:
                     pass
                 self.update()
@@ -3567,7 +3211,6 @@ class PluginManager(QWidget):
                     wid = self.winId()
                     if wid:
                         hwnd = int(wid)
-                        set_window_effect(hwnd, effect="acrylic")
                         ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0004 | 0x0020)
                 except Exception:
                     pass
@@ -3576,74 +3219,41 @@ class PluginManager(QWidget):
         return super().nativeEvent(event_type, message)
 
     def showEvent(self, event):
+        self._apply_rounded_mask()
         super().showEvent(event)
-        if not getattr(self, '_window_initialized', False):
-            self._window_initialized = True
-            try:
-                wid = self.winId()
-                if wid:
-                    hwnd = int(wid)
-                    try:
-                        DWMWCP_ROUND = 2
-                        DWMWA_WINDOW_CORNER_PREFERENCE = 33
-                        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(ctypes.c_int(DWMWCP_ROUND)), 4)
-                    except Exception:
-                        pass
-
-                    try:
-                        style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-                        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style | win32con.WS_THICKFRAME | win32con.WS_CAPTION | win32con.WS_MINIMIZEBOX | win32con.WS_MAXIMIZEBOX | win32con.WS_SYSMENU)
-                    except Exception:
-                        pass
-
-                    try:
-                        set_window_effect(hwnd, effect="acrylic")
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-    def moveEvent(self, event):
-        super().moveEvent(event)
-        try:
-            wid = self.winId()
-            if wid:
-                hwnd = int(wid)
-                set_window_effect(hwnd, effect="acrylic")
-        except Exception:
-            pass
 
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() in (QEvent.WindowStateChange, QEvent.StyleChange):
-            try:
-                wid = self.winId()
-                if wid:
-                    hwnd = int(wid)
-                    set_window_effect(hwnd, effect="acrylic")
-                    ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0004 | 0x0020)
-            except Exception:
-                pass
+            self._apply_rounded_mask()
             self.update()
 
-
-
-
-
-
+    def _apply_rounded_mask(self):
+        """Clip window to rounded rect at OS level when not maximized."""
+        if self.isMaximized():
+            self.clearMask()
+            return
+        radius = getattr(self, '_corner_radius', 28)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), radius, radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(30, 32, 48, 150))
+        painter.setBrush(QColor("#121212"))
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(self.rect(), 15, 15)
+        if self.isMaximized():
+            painter.drawRect(self.rect())
+        else:
+            radius = getattr(self, '_corner_radius', 28)
+            painter.drawRoundedRect(self.rect(), radius, radius)
 
     def closeEvent(self, event):
         self._is_shutting_down = True
-        has_editor_dirty = hasattr(self, 'theme_editor_page') and getattr(self.theme_editor_page, 'is_dirty', False)
-        has_switcher_dirty = hasattr(self, 'theme_switcher_page') and getattr(self.theme_switcher_page, 'is_dirty', False)
-        has_modify_dirty = hasattr(self, 'modify_page') and getattr(self.modify_page, 'is_dirty', False)
+        has_editor_dirty = getattr(self, 'theme_editor_page', None) and getattr(self.theme_editor_page, 'is_dirty', False)
+        has_switcher_dirty = getattr(self, 'theme_switcher_page', None) and getattr(self.theme_switcher_page, 'is_dirty', False)
+        has_modify_dirty = getattr(self, 'modify_page', None) and getattr(self.modify_page, 'is_dirty', False)
 
         if has_editor_dirty or has_switcher_dirty or has_modify_dirty:
             from utils import UnsavedChangesDialog
@@ -3661,39 +3271,44 @@ class PluginManager(QWidget):
             res = dialog.exec_()
             
             if res == 1: # Yes
-                if hasattr(self, 'theme_editor_page'): self.theme_editor_page.save_theme()
-                if hasattr(self, 'theme_switcher_page'): self.theme_switcher_page.save_theme()
+                if getattr(self, 'theme_editor_page', None): self.theme_editor_page.save_theme()
+                if getattr(self, 'theme_switcher_page', None): self.theme_switcher_page.save_theme()
                 self.commit_tinted_icons()
                 if has_modify_dirty:
                     self.modify_page.save_all_modifications()
                     self.modify_page.save_ids()
             elif res == 0: # No
-                # Fast Revert: Only revert files that actually changed
+                # Synchronously revert each dirty widget back to last saved state
+                if has_switcher_dirty and getattr(self, 'theme_switcher_page', None):
+                    self.theme_switcher_page.revert_changes()
+                if has_editor_dirty and getattr(self, 'theme_editor_page', None):
+                    self.theme_editor_page.revert_theme()
+                self.revert_tinted_icons()
+                if has_modify_dirty and getattr(self, 'modify_page', None):
+                    self.modify_page.revert_changes()
+
+                # Synchronously restore any other modified files from global snapshot
                 snapshot = getattr(self, 'nss_snapshot', {})
-                def revert_worker():
-                    from utils import safe_file_write
-                    for fp, content in snapshot.items():
-                        if os.path.exists(fp):
-                            try:
-                                with open(fp, 'r', encoding='utf-8') as f:
-                                    current = f.read()
-                                if current != content:
-                                    safe_file_write(fp, content)
-                            except: pass
-                    
-                    # Async cleanup
-                    prev_dir = os.path.join(PROJECT_ROOT, 'imports', 'icons', 'preview')
-                    if os.path.exists(prev_dir):
-                        try: shutil.rmtree(prev_dir)
+                from utils import safe_file_write
+                for fp, content in snapshot.items():
+                    if os.path.exists(fp):
+                        try:
+                            with open(fp, 'r', encoding='utf-8') as f:
+                                current = f.read()
+                            if current != content:
+                                safe_file_write(fp, content)
                         except: pass
-                    from modify_widget import cleanup_orphan_icons
-                    cleanup_orphan_icons(PROJECT_ROOT)
                 
-                threading.Thread(target=revert_worker, daemon=True).start()
+                prev_dir = os.path.join(PROJECT_ROOT, 'imports', 'icons', 'preview')
+                if os.path.exists(prev_dir):
+                    try: shutil.rmtree(prev_dir)
+                    except: pass
+                from modify_widget import cleanup_orphan_icons
+                cleanup_orphan_icons(PROJECT_ROOT)
                 
-                if hasattr(self, 'theme_editor_page'): self.theme_editor_page.is_dirty = False
-                if hasattr(self, 'theme_switcher_page'): self.theme_switcher_page.is_dirty = False
-                if hasattr(self, 'modify_page'): self.modify_page.is_dirty = False
+                if getattr(self, 'theme_editor_page', None): self.theme_editor_page.is_dirty = False
+                if getattr(self, 'theme_switcher_page', None): self.theme_switcher_page.is_dirty = False
+                if getattr(self, 'modify_page', None): self.modify_page.is_dirty = False
 
             else: # Cancel (2) or any other value
                 event.ignore()
@@ -3723,7 +3338,7 @@ class PluginManager(QWidget):
                                 with open(fp, 'r', encoding='utf-8') as file: self.tint_backups[fp] = file.read()
                             except: pass
 
-        from modify_widget import scan_nss_items, _extract_glyph_codes, _extract_all_colors, ManualSyncConflictDialog
+        from modify_widget import scan_nss_items, _extract_glyph_codes, _extract_all_colors, ManualSyncConflictDialog, GlobalTintWorker
         items = scan_nss_items(PROJECT_ROOT)
         manual_items = []
         for i in items:
@@ -3750,26 +3365,73 @@ class PluginManager(QWidget):
                                 self.tint_backups[fp] = f_obj.read()
                         except: pass
 
-        theme_c = _get_theme_glyph_colors()[0]
-        self.tint_overlay = QFrame(self); self.tint_overlay.setGeometry(self.rect())
-        self.tint_overlay.setStyleSheet("background: rgba(15, 17, 26, 230); border-radius: 15px;")
-        vl = QVBoxLayout(self.tint_overlay); vl.setAlignment(Qt.AlignCenter); vl.setSpacing(15)
-        
-        self.tint_progress = PillProgressBar(self.tint_overlay, height=20); self.tint_progress.setFixedWidth(320)
-        vl.addWidget(self.tint_progress)
-        
-        self.tint_label = QLabel("Syncing theme colors to all icons...")
-        self.tint_label.setStyleSheet("color: #b0b0b0; font-size: 14px; font-weight: bold; background: transparent;")
-        self.tint_label.setAlignment(Qt.AlignCenter); vl.addWidget(self.tint_label)
-        self.tint_overlay.show()
-        
-        thread = QThread(); worker = GlobalTintWorker(PROJECT_ROOT, theme_c, skip_manual_keys); worker.moveToThread(thread)
-        thread.started.connect(worker.run); worker.progress.connect(lambda v, t: self.tint_progress.setValue(int(v/t*100)))
-        worker.status.connect(lambda msg: self.tint_label.setText(msg))
-        worker.finished.connect(thread.quit); worker.finished.connect(self.tint_overlay.deleteLater); worker.finished.connect(lambda: self.modify_page.refresh_ui())
-        worker.finished.connect(lambda: self._active_tint_threads.remove((thread, worker)))
+        # Determine current theme image config (mode, colors)
+        theme_nss = os.path.join(PROJECT_ROOT, 'imports', 'theme.nss')
+        mode = "gradient"
+        colors = ["#ffffff", "#ffffff"]
+        try:
+            theme_data = getattr(self.theme_editor_page, 'theme_data', {}) if getattr(self, 'theme_editor_page', None) else {}
+            raw_c = theme_data.get('image.color')
+            raw_eff = str(theme_data.get('image.effect', '0')).strip().lower()
+            
+            if not raw_c and os.path.exists(theme_nss):
+                with open(theme_nss, 'r', encoding='utf-8-sig', errors='replace') as f:
+                    content = f.read()
+                m_c = re.search(r'image\.color\s*=\s*\[?\s*(#[0-9A-Fa-f]{3,8})\s*(?:,\s*(#[0-9A-Fa-f]{3,8}))?\s*\]?', content)
+                if m_c:
+                    colors = [m_c.group(1)]
+                    if m_c.group(2): colors.append(m_c.group(2))
+                m_eff = re.search(r'image\.effect\s*=\s*([0-9a-zA-Z]+)', content)
+                if m_eff:
+                    raw_eff = m_eff.group(1).lower()
+            elif raw_c:
+                c_matches = re.findall(r'#[0-9A-Fa-f]{3,8}', raw_c)
+                if c_matches:
+                    colors = c_matches
+                    
+            if raw_eff in ('2', 'rainbow') or any('rainbow' in str(c).lower() for c in colors):
+                mode = 'rainbow'
+            elif raw_eff in ('1', 'gradient') or (len(colors) >= 2 and colors[0].lower() != colors[1].lower()):
+                mode = 'gradient'
+            else:
+                mode = 'solid'
+        except Exception:
+            pass
+
+        if hasattr(self, 'sync_label'):
+            self.sync_label.setText("Syncing...")
+        if hasattr(self, 'theme_sync_button'):
+            self.theme_sync_button.setEnabled(False)
+        self.show_sync_status(f"Syncing {mode.title()} colors...")
+
+        thread = QThread()
+        worker = GlobalTintWorker(PROJECT_ROOT, mode, colors, skip_manual_keys)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+
+        def on_tint_progress(v, t):
+            if hasattr(self, 'sync_label'):
+                self.sync_label.setText(f"Syncing {v}/{t}")
+            if hasattr(self, 'title_status_label'):
+                self.title_status_label.setText(f"Syncing {mode.title()} colors ({v}/{t})...")
+
+        def on_tint_finished():
+            if hasattr(self, 'sync_label'):
+                self.sync_label.setText("Sync Colors")
+            if hasattr(self, 'theme_sync_button'):
+                self.theme_sync_button.setEnabled(True)
+            self.show_sync_status("Colors Synced")
+            if hasattr(self, 'modify_page'):
+                self.modify_page.refresh_ui()
+
+        worker.progress.connect(on_tint_progress)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(on_tint_finished)
+        worker.finished.connect(lambda: self._active_tint_threads.remove((thread, worker)) if (thread, worker) in self._active_tint_threads else None)
         worker.finished.connect(self.reload_shell)
-        thread.finished.connect(thread.deleteLater); self._active_tint_threads.append((thread, worker)); thread.start()
+        thread.finished.connect(thread.deleteLater)
+        self._active_tint_threads.append((thread, worker))
+        thread.start()
 
     def setup_settings_page(self):
         layout = QVBoxLayout(self.settings_page)
@@ -3787,9 +3449,9 @@ class PluginManager(QWidget):
         self.ver_label.setStyleSheet("color: #b0b0b0; font-size: 14px; font-weight: bold; border: none; background: transparent;")
         header.addWidget(self.ver_label)
         
-        self.update_btn = QPushButton("Check for Update"); self.update_btn.setFixedSize(140, 36); self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn = PillPushButton("Check for Update", "primary", height=34)
+        self.update_btn.setFixedWidth(140)
         self.update_btn.setFocusPolicy(Qt.NoFocus)
-        self.update_btn.setStyleSheet("QPushButton { background-color: #dc143c !important; border-radius: 12px !important; color: #1e2030 !important; font-weight: bold !important; border: none !important; } QPushButton:hover { background-color: #f53155 !important; }")
         self.update_btn.clicked.connect(lambda: self.check_app_update(manual=True))
         header.addWidget(self.update_btn)
         layout.addLayout(header)
@@ -3797,9 +3459,6 @@ class PluginManager(QWidget):
 
         self.auto_update_sw = self._create_setting_row(layout, "Auto Update Plugins", "Automatically install updates on startup", "auto_update")
         self.auto_check_sw = self._create_setting_row(layout, "Auto Check Updates", "Show notification when updates are available", "auto_check_updates")
-        self.auto_save_sw = self._create_setting_row(layout, "Auto Save Changes", "Commit changes immediately in all editors", "auto_save")
-        self.auto_tint_sw = self._create_setting_row(layout, "Auto Apply Theme Colors", "Sync local icons with Image 1/2 theme colors", "auto_apply_theme_colors")
-        self.auto_preview_sw = self._create_setting_row(layout, "Auto Preview Context Menu", "Show preview automatically. If disabled, use (Left + Right Click or Ctrl + Right Click) manually", "auto_preview_context_menu")
         
         self._create_import_row(layout)
         self._create_sync_section(layout)
@@ -3854,6 +3513,7 @@ class PluginManager(QWidget):
         thread.started.connect(lambda: worker.check_for_updates(force=force))
         worker.check_finished.connect(lambda h, v, u: self.on_check_finished(h, v, u, manual, force))
         worker.check_finished.connect(thread.quit)
+        worker.check_finished.connect(worker.deleteLater)
         thread.finished.connect(_cleanup)
         thread.finished.connect(thread.deleteLater)
         thread.start()
@@ -3867,9 +3527,12 @@ class PluginManager(QWidget):
             if download_url:
                 self._update_dialog_active = True
                 self.latest_app_version = latest_version
-                self.ver_label.setText(f"Current: {VERSION} | <span style='color: #dc143c;'>Latest: {latest_version}</span>")
-                dialog = ModernDialog(self, 'Update Available', f"A new version of iMA Menu Launcher is available: <b>v{latest_version}</b><br><br>Would you like to download and install it now?")
-                dialog.add_button('Update Now', 'installButton', lambda: dialog.done(1))
+                self.ver_label.setText(f"Current: {VERSION} | <span style='color: #e78284;'>Latest: {latest_version}</span>")
+                title = 'Re-install Launcher' if force else 'Update Available'
+                msg = f"Re-install iMA Menu Launcher <b>v{latest_version}</b> now?" if force else f"A new version of iMA Menu Launcher is available: <b>v{latest_version}</b><br><br>Would you like to download and install it now?"
+                btn_txt = 'Re-install Now' if force else 'Update Now'
+                dialog = ModernDialog(self, title, msg)
+                dialog.add_button(btn_txt, 'installButton', lambda: dialog.done(1))
                 dialog.add_button('Later', 'sideButton', dialog.reject)
                 dialog_result = dialog.exec_()
                 self._update_dialog_active = False
@@ -3885,7 +3548,10 @@ class PluginManager(QWidget):
             up_to_date_dialog.add_button('Re-install', 'installButton', lambda: up_to_date_dialog.done(2))
             dialog_result = up_to_date_dialog.exec_()
             if dialog_result == 2:
-                self.check_app_update(manual=True, force=True)
+                if download_url:
+                    self.on_check_finished(True, latest_version or VERSION, download_url, manual=True, force=True)
+                else:
+                    self.check_app_update(manual=True, force=True)
 
     def start_app_download(self, download_url):
         self.dl_msg = ModernDialog(self, "Downloading Update", "Please wait while the new version is being downloaded...")
@@ -3904,8 +3570,14 @@ class PluginManager(QWidget):
         progress_layout.addWidget(self.percent_label)
         
         self.dl_msg.cl.insertWidget(2, progress_container)
-        self.dl_msg.add_button("Cancel", "uninstallButton", self.dl_msg.reject)
-        
+
+        def _on_cancel():
+            if hasattr(self, 'dl_worker') and self.dl_worker:
+                self.dl_worker.cancel()
+            self.dl_msg.reject()
+
+        self.dl_msg.add_button("Cancel", "uninstallButton", _on_cancel)
+
         self.dl_thread = QThread(self)
         self.dl_worker = UpdateWorker()
         self.dl_worker.moveToThread(self.dl_thread)
@@ -3914,6 +3586,7 @@ class PluginManager(QWidget):
         self.dl_worker.download_finished.connect(self.on_download_finished)
         self.dl_worker.download_finished.connect(self.dl_thread.quit)
         self.dl_thread.finished.connect(self.dl_thread.deleteLater)
+        self.dl_thread.finished.connect(self.dl_worker.deleteLater)
         self.dl_thread.start()
         self.dl_msg.exec_()
 
@@ -3923,10 +3596,14 @@ class PluginManager(QWidget):
         QApplication.processEvents()
 
     def on_download_finished(self, success, result):
+        if hasattr(self, 'dl_worker') and self.dl_worker and getattr(self.dl_worker, '_is_cancelled', False):
+            return
+        if not self.dl_msg.isVisible():
+            return
         self.dl_msg.accept()
         if success:
             self.apply_app_update(result)
-        else:
+        elif "cancelled" not in str(result).lower():
             error_dialog = ModernDialog(self, "Download Failed", f"An error occurred while downloading the update:<br>{result}")
             error_dialog.add_button("OK", "installButton", error_dialog.accept)
             error_dialog.exec_()
@@ -3989,6 +3666,10 @@ class PluginManager(QWidget):
                 app_dir,
                 0
             )
+            self.hide()
+            self.plugin_logic.stop_all_threads()
+            QApplication.closeAllWindows()
+            QApplication.quit()
             os._exit(0)
         except Exception as launch_error:
             error_dialog = ModernDialog(self, 'Update Error', f'Could not launch updater:<br>{launch_error}')
@@ -4008,9 +3689,9 @@ class PluginManager(QWidget):
 
     def _update_widgets_autosave(self):
         enabled = self.settings_manager.get('auto_save')
-        if hasattr(self, 'modify_page'): self.modify_page.auto_save = enabled
-        if hasattr(self, 'theme_switcher_page'): self.theme_switcher_page.auto_save = enabled
-        if hasattr(self, 'theme_editor_page'): self.theme_editor_page.auto_save = enabled
+        if getattr(self, 'modify_page', None): self.modify_page.auto_save = enabled
+        if getattr(self, 'theme_switcher_page', None): self.theme_switcher_page.auto_save = enabled
+        if getattr(self, 'theme_editor_page', None): self.theme_editor_page.auto_save = enabled
 
     def _create_import_row(self, layout):
         row = QFrame(); row.setStyleSheet("QFrame { background: rgba(255,255,255,0.04); border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); } QFrame:hover { background: rgba(255,255,255,0.06); }")
@@ -4021,11 +3702,12 @@ class PluginManager(QWidget):
         
         edit_btn = QPushButton("\uE104"); edit_btn.setFixedSize(36, 36); edit_btn.setCursor(Qt.PointingHandCursor)
         edit_btn.setFont(QFont('Segoe MDL2 Assets', 14))
-        edit_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(220, 20, 60, 0.2); border: 1px solid #dc143c; color: white; }")
+        edit_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(231, 130, 132, 0.2); border: 1px solid #e78284; color: white; }")
         edit_btn.clicked.connect(self.show_imports_manager)
         
-        btn = QPushButton("Import"); btn.setFixedSize(100, 36); btn.setCursor(Qt.PointingHandCursor); btn.clicked.connect(self.import_nss_files)
-        btn.setStyleSheet("QPushButton { background-color: #dc143c !important; border-radius: 12px !important; color: #1e2030 !important; font-weight: bold !important; border: none !important; } QPushButton:hover { background-color: #f53155 !important; }")
+        btn = PillPushButton("Import", "primary", height=34)
+        btn.setFixedWidth(100)
+        btn.clicked.connect(self.import_nss_files)
         rl.addWidget(edit_btn); rl.addWidget(btn); layout.addWidget(row)
 
     def show_imports_manager(self):
@@ -4060,7 +3742,7 @@ class PluginManager(QWidget):
                 open_btn.clicked.connect(lambda _, p=path: os.startfile(os.path.join(PROJECT_ROOT, p)) if os.path.exists(os.path.join(PROJECT_ROOT, p)) else None)
                 
                 del_btn = QPushButton("\uE107"); del_btn.setFixedSize(30, 30); del_btn.setFont(QFont('Segoe MDL2 Assets', 14))
-                del_btn.setStyleSheet("QPushButton { background: transparent; border: none; color: #b0b0b0; } QPushButton:hover { color: #dc143c; }")
+                del_btn.setStyleSheet("QPushButton { background: transparent; border: none; color: #b0b0b0; } QPushButton:hover { color: #e78284; }")
                 del_btn.clicked.connect(lambda _, s=imp: self.remove_import_from_shell(s, refresh_list))
                 
                 il.addWidget(open_btn); il.addWidget(del_btn); cl.addWidget(item)
@@ -4108,45 +3790,104 @@ class PluginManager(QWidget):
 
 
     def _create_sync_section(self, layout):
+        self._init_sync_manager()
         row = QFrame(); row.setStyleSheet("QFrame { background: rgba(255,255,255,0.04); border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); } QFrame:hover { background: rgba(255,255,255,0.06); }")
         rl = QHBoxLayout(row); rl.setContentsMargins(20, 15, 20, 15)
         v = QVBoxLayout(); t = QLabel("Google Drive Sync"); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
-        self.sync_status_label = QLabel("Not logged in" if not self.sync_manager.user_email else f"Logged in as {self.sync_manager.user_email}")
+        user_email = self.sync_manager.user_email if self.sync_manager else ""
+        self.sync_status_label = QLabel("Not logged in" if not user_email else f"Logged in as {user_email}")
         self.sync_status_label.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
         v.addWidget(t); v.addWidget(self.sync_status_label); rl.addLayout(v); rl.addStretch()
         
-        self.sync_login_btn = QPushButton("Login"); self.sync_login_btn.setFixedSize(100, 36); self.sync_login_btn.setCursor(Qt.PointingHandCursor)
-        self.sync_login_btn.setStyleSheet("QPushButton { background-color: #dc143c !important; border-radius: 12px !important; color: #1e2030 !important; font-weight: bold !important; border: none !important; } QPushButton:hover { background-color: #f53155 !important; }")
-        self.sync_login_btn.clicked.connect(self.sync_manager.login)
+        self.sync_login_btn = PillPushButton("Login", "primary", height=34)
+        self.sync_login_btn.setFixedWidth(100)
+        self.sync_login_btn.clicked.connect(lambda: self._init_sync_manager().login())
         
-        self.sync_backup_btn = QPushButton("Backup"); self.sync_backup_btn.setFixedSize(100, 36); self.sync_backup_btn.setCursor(Qt.PointingHandCursor)
-        self.sync_backup_btn.setStyleSheet("QPushButton { background-color: #4AE290 !important; border-radius: 12px !important; color: #121212 !important; font-weight: bold !important; border: 2px solid #2a2a30 !important; } QPushButton:hover { background-color: #60F2A5 !important; }")
-        self.sync_backup_btn.clicked.connect(self.sync_manager.backup)
+        self.sync_backup_btn = PillPushButton("Backup", "backup", height=34)
+        self.sync_backup_btn.setFixedWidth(100)
+        self.sync_backup_btn.clicked.connect(lambda: self._init_sync_manager().backup())
         
-        self.sync_restore_btn = QPushButton("Restore"); self.sync_restore_btn.setFixedSize(100, 36); self.sync_restore_btn.setCursor(Qt.PointingHandCursor)
-        self.sync_restore_btn.setStyleSheet("QPushButton { background-color: #4A90E2 !important; border-radius: 12px !important; color: #121212 !important; font-weight: bold !important; border: 2px solid #2a2a30 !important; } QPushButton:hover { background-color: #5D9CEB !important; }")
-        self.sync_restore_btn.clicked.connect(self.sync_manager.restore)
+        self.sync_restore_btn = PillPushButton("Restore", "restore", height=34)
+        self.sync_restore_btn.setFixedWidth(100)
+        self.sync_restore_btn.clicked.connect(lambda: self._init_sync_manager().restore())
         
         self.sync_logout_btn = QPushButton("\uE77B"); self.sync_logout_btn.setFixedSize(36, 36); self.sync_logout_btn.setCursor(Qt.PointingHandCursor)
         self.sync_logout_btn.setFont(QFont('Segoe MDL2 Assets', 14))
-        self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(255, 42, 85, 0.2); border: 1px solid #dc143c; color: white; }")
-        self.sync_logout_btn.clicked.connect(self._handle_sync_logout)
+        self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #e78284; color: white; }")
+        self.sync_logout_btn.clicked.connect(self.show_account_profile_popup)
         
         rl.addWidget(self.sync_login_btn); rl.addWidget(self.sync_backup_btn); rl.addWidget(self.sync_restore_btn); rl.addWidget(self.sync_logout_btn)
         layout.addWidget(row)
         self._update_sync_ui_state()
 
+    def _get_profile_pixmap(self, size=36):
+        if not self.sync_manager:
+            return None
+        avatar_path = os.path.join(PROJECT_ROOT, 'cache', 'profile_avatar.png')
+        if os.path.exists(avatar_path):
+            pix = QPixmap(avatar_path)
+            if not pix.isNull():
+                return make_circular_pixmap(pix, size)
+        
+        if self.sync_manager.access_token:
+            if hasattr(self.sync_manager, 'fetch_user_profile'):
+                self.sync_manager.fetch_user_profile(background=True)
+            init_char = (self.sync_manager.user_name or self.sync_manager.user_email or "U")[:1]
+            return make_initial_avatar_pixmap(init_char, size)
+        return None
+
+    def show_account_profile_popup(self):
+        if not self.sync_manager or not self.sync_manager.access_token:
+            return
+        user_name = self.sync_manager.user_name or ""
+        user_email = self.sync_manager.user_email or ""
+        if not user_name and user_email:
+            user_name = user_email.split('@')[0]
+        avatar_pix = self._get_profile_pixmap(size=76)
+        dlg = AccountProfileDialog(self, user_name, user_email, avatar_pix)
+        if dlg.exec_() == 1:
+            self._handle_sync_logout()
+
     def _handle_sync_logout(self):
-        self.sync_manager.logout()
+        if self._init_sync_manager():
+            self.sync_manager.logout()
         self._update_sync_ui_state()
 
     def _update_sync_ui_state(self):
+        if not hasattr(self, 'sync_login_btn') or self.sync_manager is None:
+            return
         logged_in = self.sync_manager.access_token is not None
         self.sync_login_btn.setVisible(not logged_in)
         self.sync_backup_btn.setVisible(logged_in)
         self.sync_restore_btn.setVisible(logged_in)
         self.sync_logout_btn.setVisible(logged_in)
-        self.sync_status_label.setText("Not logged in" if not logged_in else f"Logged in as {self.sync_manager.user_email}")
+        
+        if logged_in:
+            user_name = self.sync_manager.user_name or ""
+            user_email = self.sync_manager.user_email or ""
+            display_str = f"Logged in as {user_name} ({user_email})" if user_name and user_email else f"Logged in as {user_email or user_name}"
+            self.sync_status_label.setText(display_str)
+            
+            avatar_pix = self._get_profile_pixmap(size=36)
+            if avatar_pix and not avatar_pix.isNull():
+                self.sync_logout_btn.setText("")
+                self.sync_logout_btn.setIcon(QIcon(avatar_pix))
+                self.sync_logout_btn.setIconSize(QSize(36, 36))
+                self.sync_logout_btn.setStyleSheet("QPushButton { background: transparent; border-radius: 18px; border: 1.5px solid rgba(255,255,255,0.25); padding: 0px; } QPushButton:hover { border: 1.5px solid #e78284; }")
+            else:
+                self.sync_logout_btn.setIcon(QIcon())
+                self.sync_logout_btn.setText("\uE77B")
+                self.sync_logout_btn.setFont(QFont('Segoe MDL2 Assets', 14))
+                self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #e78284; color: white; }")
+            
+            tip = f"{user_name}\n{user_email}".strip() if user_name else user_email
+            self.sync_logout_btn.setToolTip(tip or "Google Account Profile")
+        else:
+            self.sync_status_label.setText("Not logged in")
+            self.sync_logout_btn.setIcon(QIcon())
+            self.sync_logout_btn.setText("\uE77B")
+            self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #e78284; color: white; }")
+            self.sync_logout_btn.setToolTip("")
 
     def on_sync_auth_finished(self, success, message):
         if success:
@@ -4159,7 +3900,7 @@ class PluginManager(QWidget):
         if not hasattr(self, 'sync_dl_msg') or not self.sync_dl_msg.isVisible():
             self.sync_dl_msg = ModernDialog(self, "Cloud Sync", status)
             self.sync_bar = PillProgressBar(height=20)
-            self.sync_perc = QLabel("0%"); self.sync_perc.setStyleSheet("color: #dc143c; font-size: 12px; font-weight: bold; background: transparent;"); self.sync_perc.setAlignment(Qt.AlignCenter)
+            self.sync_perc = QLabel("0%"); self.sync_perc.setStyleSheet("color: #e78284; font-size: 12px; font-weight: bold; background: transparent;"); self.sync_perc.setAlignment(Qt.AlignCenter)
             self.sync_dl_msg.cl.insertWidget(2, self.sync_bar)
             self.sync_dl_msg.cl.insertWidget(3, self.sync_perc)
             self.sync_dl_msg.show()
@@ -4184,6 +3925,39 @@ if __name__ == '__main__':
         except Exception:
             pass
 
+        # Single instance check
+        try:
+            kernel32 = ctypes.windll.kernel32
+            user32 = ctypes.windll.user32
+
+            _single_instance_mutex = kernel32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX_NAME)
+            last_err = kernel32.GetLastError()
+            ERROR_ALREADY_EXISTS = 183
+
+            if last_err == ERROR_ALREADY_EXISTS:
+                try:
+                    user32.AllowSetForegroundWindow(0xFFFFFFFF)
+                except Exception:
+                    pass
+
+                msg_id = user32.RegisterWindowMessageW(SINGLE_INSTANCE_MSG_NAME)
+                if msg_id:
+                    user32.PostMessageW(0xFFFF, msg_id, 0, 0)
+
+                try:
+                    hwnd = user32.FindWindowW(None, "iMA Menu")
+                    if hwnd:
+                        user32.ShowWindow(hwnd, 9)
+                        user32.BringWindowToTop(hwnd)
+                        user32.SetForegroundWindow(hwnd)
+                        user32.SwitchToThisWindow(hwnd, True)
+                except Exception:
+                    pass
+
+                sys.exit(0)
+        except Exception:
+            pass
+
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
@@ -4196,6 +3970,16 @@ if __name__ == '__main__':
     except FileNotFoundError:
         print("Warning: style.css not found.")
     manager = PluginManager()
+
+    if os.name == 'nt':
+        try:
+            msg_id = ctypes.windll.user32.RegisterWindowMessageW(SINGLE_INSTANCE_MSG_NAME)
+            if msg_id:
+                native_filter = SingleInstanceNativeFilter(manager, msg_id)
+                app.installNativeEventFilter(native_filter)
+        except Exception:
+            pass
+
     manager.show()
 
     def _auto_upgrade_shell_core_if_needed():

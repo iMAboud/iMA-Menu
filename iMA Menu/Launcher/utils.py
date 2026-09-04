@@ -11,7 +11,6 @@ import time
 import subprocess
 import ctypes
 from ctypes import wintypes
-import win32api
 
 try:
     ctypes.windll.kernel32.SetEnvironmentVariableW("_MEIPASS2", None)
@@ -21,11 +20,24 @@ except Exception:
 for env_key in list(os.environ.keys()):
     if env_key.startswith('_MEI'):
         os.environ.pop(env_key, None)
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDialogButtonBox, QUndoStack, QUndoCommand, QScrollArea, QWidget
-from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics
-from PyQt5.QtCore import Qt, QRunnable, pyqtSignal, QObject, QThreadPool, QEvent
+import functools
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+                             QDialogButtonBox, QUndoStack, QUndoCommand, QScrollArea, 
+                             QWidget, QFrame, QLayout, QComboBox, QListView, QStyledItemDelegate, QStyle, QLineEdit)
+from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QImage, QLinearGradient
+from PyQt5.QtCore import (Qt, QRunnable, pyqtSignal, QObject, QThreadPool, QEvent, 
+                          QSize, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, QTimer, QVariantAnimation)
+try: from PyQt5 import QtSvg
+except ImportError: QtSvg = None
 
 global_undo_stack = QUndoStack()
+
+@functools.lru_cache(maxsize=512)
+def normalize_path(path: str) -> str:
+    """Fast, cached path normalization."""
+    if not path:
+        return ""
+    return os.path.normpath(path).lower().replace('\\', '/')
 
 if getattr(sys, 'frozen', False):
     _base_path = os.path.dirname(os.path.abspath(sys.executable))
@@ -36,6 +48,7 @@ PROJECT_ROOT = _base_path
 if os.path.basename(PROJECT_ROOT).lower() == 'launcher':
     PROJECT_ROOT = os.path.dirname(PROJECT_ROOT)
 
+@functools.lru_cache(maxsize=512)
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     base_path = getattr(sys, '_MEIPASS', _base_path)
@@ -76,32 +89,28 @@ def extract_ttf(dll_path, output_path):
         idx += 4
     return False
 
+_cached_glyphs_dict = None
+
 def generate_glyphs_data():
+    """Stub kept for build backward-compatibility; glyphs are read directly from fonts/glyphs.json."""
     base_dir = _base_path
-    json_path = resource_path(os.path.join('fonts', 'glyphs.json'))
-    if not os.path.exists(json_path):
-        json_path = resource_path('glyphs.json')
-
     out_path = os.path.join(base_dir, 'glyphs_data.py')
-    if not os.path.exists(json_path):
-        return
-
-    with open(json_path, 'rb') as f:
-        raw_data = f.read()
-
-    compressed = base64.b64encode(zlib.compress(raw_data, 9)).decode('ascii')
-    content = f'''# Auto-generated bundled glyphs data module
-import zlib
-import base64
+    content = '''# Auto-generated lightweight glyphs data forwarder
+import os
 import json
 
-_DATA = "{compressed}"
-
 def get_glyphs_data():
-    return json.loads(zlib.decompress(base64.b64decode(_DATA)).decode('utf-8'))
+    try:
+        from utils import get_glyphs_data as _get_data
+        return _get_data()
+    except Exception:
+        return {}
 '''
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write(content)
+    try:
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception:
+        pass
 
 def get_glyphs_json_path():
     if getattr(sys, 'frozen', False):
@@ -126,24 +135,12 @@ def ensure_fonts_unpacked():
     
     target_json = os.path.join(target_fonts_dir, 'glyphs.json')
     if not os.path.exists(target_json) or os.path.getsize(target_json) == 0:
-        data = None
-        try:
-            import glyphs_data
-            data = glyphs_data.get_glyphs_data()
-        except Exception:
-            pass
-        if not data:
-            bundled_json = resource_path(os.path.join('fonts', 'glyphs.json'))
-            if os.path.exists(bundled_json):
-                try:
-                    with open(bundled_json, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                except Exception:
-                    pass
-        if data:
+        bundled_json = resource_path(os.path.join('fonts', 'glyphs.json'))
+        if not os.path.exists(bundled_json):
+            bundled_json = resource_path('glyphs.json')
+        if os.path.exists(bundled_json):
             try:
-                with open(target_json, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+                shutil.copy2(bundled_json, target_json)
             except Exception:
                 pass
     
@@ -157,34 +154,33 @@ def ensure_fonts_unpacked():
                 pass
 
 def get_glyphs_data():
+    global _cached_glyphs_dict
+    if _cached_glyphs_dict is not None:
+        return _cached_glyphs_dict
+
     ensure_fonts_unpacked()
     target_json = get_glyphs_json_path()
-    disk_data = {}
+    data = {}
     if os.path.exists(target_json):
         try:
             with open(target_json, 'r', encoding='utf-8') as f:
-                disk_data = json.load(f)
+                data = json.load(f)
         except Exception:
-            disk_data = {}
+            data = {}
             
-    bundled_data = {}
-    try:
-        import glyphs_data
-        bundled_data = glyphs_data.get_glyphs_data()
-    except Exception:
+    if not data:
         bundled_json = resource_path(os.path.join('fonts', 'glyphs.json'))
+        if not os.path.exists(bundled_json):
+            bundled_json = resource_path('glyphs.json')
         if os.path.exists(bundled_json):
             try:
                 with open(bundled_json, 'r', encoding='utf-8') as f:
-                    bundled_data = json.load(f)
+                    data = json.load(f)
             except Exception:
-                pass
+                data = {}
 
-    if bundled_data and disk_data:
-        merged = bundled_data.copy()
-        merged.update(disk_data)
-        return merged
-    return disk_data or bundled_data or {}
+    _cached_glyphs_dict = data or {}
+    return _cached_glyphs_dict
 
 NILESOFT_FONT_FAMILY = 'Nilesoft.Shell'
 _font_initialized = False
@@ -211,9 +207,15 @@ def _init_nilesoft_font():
                     fams = QFontDatabase.applicationFontFamilies(font_id); NILESOFT_FONT_FAMILY = fams[0]; _font_initialized = True
     except: pass
 
+_font_icon_cache = {}
+_mdl2_icon_cache = {}
+
 def get_font_icon(glyph, size=32, color='#ffffff', font_family=None):
     _init_nilesoft_font()
     family = font_family or NILESOFT_FONT_FAMILY
+    cache_key = (glyph, size, color, family)
+    if cache_key in _font_icon_cache:
+        return _font_icon_cache[cache_key]
     pixmap = QPixmap(size, size); pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
     font = QFont(family, size // 2)
@@ -223,21 +225,35 @@ def get_font_icon(glyph, size=32, color='#ffffff', font_family=None):
     painter.setPen(QPen(QColor(0, 0, 0, 180), 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
     painter.drawPath(path)
     painter.fillPath(path, QColor(color)); painter.end()
-    return QIcon(pixmap)
+    icon = QIcon(pixmap)
+    if len(_font_icon_cache) < 256:
+        _font_icon_cache[cache_key] = icon
+    return icon
 
 def get_mdl2_icon(glyph_code, size=32, color='#ffffff'):
-    pixmap = QPixmap(size, size); pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
-    font = QFont('Segoe MDL2 Assets', int(size * 0.75))
-    font.setWeight(QFont.Bold)
+    cache_key = (glyph_code, size, color)
+    if cache_key in _mdl2_icon_cache:
+        return _mdl2_icon_cache[cache_key]
+    scale = 2
+    px_size = size * scale
+    pixmap = QPixmap(px_size, px_size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.TextAntialiasing)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform)
+    font = QFont('Segoe MDL2 Assets', int(px_size * 0.55))
+    font.setWeight(QFont.DemiBold)
+    painter.setFont(font)
+    painter.setPen(QColor(color))
     glyph = chr(glyph_code) if isinstance(glyph_code, int) else glyph_code
-    fm = QFontMetrics(font); rect = fm.boundingRect(glyph)
-    path = QPainterPath()
-    path.addText((size - rect.width())/2 - rect.x(), (size - rect.height())/2 - rect.y(), font, glyph)
-    painter.setPen(QPen(QColor(0, 0, 0, 255), 2.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-    painter.drawPath(path)
-    painter.fillPath(path, QColor(color)); painter.end()
-    return QIcon(pixmap)
+    painter.drawText(QRect(0, 0, px_size, px_size), Qt.AlignCenter, glyph)
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    icon = QIcon(pixmap)
+    if len(_mdl2_icon_cache) < 256:
+        _mdl2_icon_cache[cache_key] = icon
+    return icon
 
 def generate_theme_preview(nss_path, output_png_path):
     theme_data = {}
@@ -380,6 +396,7 @@ class NSSAutoFixer:
     def fix_content(content):
         content = re.sub(r"=''([^']+)''", r"='\1'", content)
         content = re.sub(r'=""([^"]+)""', r'="\1"', content)
+        content = re.sub(r'(\b(?:menu|pos|title|find|image|icon)\s*=\s*)\(\s*(["\'][^"\']*["\'])\s*\)', r'\1\2)', content)
         
         lines = content.splitlines(keepends=True)
         healed_lines = []
@@ -456,13 +473,6 @@ class NSSAutoFixer:
                     if ',' in line and ']' not in line:
                         if ')' in line: line = line.replace(')', '])', 1)
                         else: line = line.rstrip() + ']'
-            elif c_op < c_cl:
-                cl_idx = line.find(cl); eq_idx = line.rfind('=', 0, cl_idx)
-                if eq_idx != -1:
-                    ins_pos = eq_idx + 1
-                    while ins_pos < len(line) and line[ins_pos].isspace(): ins_pos += 1
-                    if ins_pos < len(line) and line[ins_pos] != op:
-                        line = line[:ins_pos] + op + line[ins_pos:]
         return line
 
     @staticmethod
@@ -509,6 +519,166 @@ class FileChangeCommand(QUndoCommand):
     def undo(self):
         AsyncFileIo.write(self.filepath, self.old_content, self.success_cb, self.error_cb)
 
+
+class PillPushButton(QPushButton):
+    """
+    High-quality vector-antialiased pill-shaped QPushButton.
+    Eliminates low-quality / pixelated borders by rendering with QPainterPath, Antialiasing,
+    and 1.5px crisp vector outlines.
+    """
+    def __init__(self, text, style_type="primary", height=32, icon_code=None, parent=None, **kwargs):
+        super().__init__(text, parent)
+        self.style_type = style_type
+        self.icon_code = icon_code
+        self._custom_bg = kwargs.get('bg_color')
+        self._custom_border = kwargs.get('border_color')
+        self._custom_fg = kwargs.get('text_color')
+        if height:
+            self.setFixedHeight(height)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        w = fm.horizontalAdvance(self.text().strip()) + 32
+        if self.icon_code:
+            w += 22
+        return QSize(max(w, 80), self.height() if self.height() > 0 else 32)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        r = rect.height() / 2.0
+        path.addRoundedRect(rect, r, r)
+
+        is_hov = self.underMouse()
+        is_down = self.isDown()
+
+        if self.style_type == "primary":
+            bg = QColor("#ea999c") if is_hov else QColor("#e78284")
+            border = QColor("#ffccd0") if is_hov else QColor("#f4a5a8")
+            fg = QColor("#232634")
+        elif self.style_type in ("secondary", "cancel"):
+            bg = QColor(255, 255, 255, 22) if is_hov else QColor(255, 255, 255, 10)
+            border = QColor(255, 255, 255, 55) if is_hov else QColor(255, 255, 255, 28)
+            fg = QColor("#ffffff") if is_hov else QColor("#c6d0f5")
+        elif self.style_type == "reset":
+            bg = QColor(140, 170, 238, 26) if is_hov else QColor(255, 255, 255, 8)
+            border = QColor(140, 170, 238, 90) if is_hov else QColor(255, 255, 255, 28)
+            fg = QColor("#ffffff") if is_hov else QColor("#8caaee")
+        elif self.style_type in ("backup", "success"):
+            bg = QColor("#60F2A5") if is_hov else QColor("#4AE290")
+            border = QColor("#85ffc0") if is_hov else QColor("#38c777")
+            fg = QColor("#121212")
+        elif self.style_type in ("restore", "info"):
+            bg = QColor("#5D9CEB") if is_hov else QColor("#4A90E2")
+            border = QColor("#87baff") if is_hov else QColor("#3574c4")
+            fg = QColor("#121212")
+        elif self.style_type == "yes":
+            bg = QColor("#81c8be") if is_hov else QColor("#a6d189")
+            border = QColor("#a6e3d9") if is_hov else QColor("#92bd75")
+            fg = QColor("#121212")
+        elif self.style_type in ("no", "danger"):
+            bg = QColor("#ea999c") if is_hov else QColor("#e78284")
+            border = QColor("#ffccd0") if is_hov else QColor("#d06e70")
+            fg = QColor("#121212")
+        else:
+            bg = QColor(self._custom_bg or "#e78284")
+            border = QColor(self._custom_border or "#ea999c")
+            fg = QColor(self._custom_fg or "#ffffff")
+            if is_hov:
+                bg = bg.lighter(115)
+                border = border.lighter(120)
+
+        if is_down:
+            bg = bg.darker(110)
+
+        p.fillPath(path, bg)
+        p.setPen(QPen(border, 1.5))
+        p.drawPath(path)
+
+        p.setFont(self.font())
+        p.setPen(fg)
+
+        txt = self.text()
+        if self.icon_code:
+            icon_pix = get_mdl2_icon(self.icon_code, 14, fg.name()).pixmap(14, 14)
+            fm = self.fontMetrics()
+            txt_w = fm.horizontalAdvance(txt.strip())
+            total_w = 14 + 6 + txt_w
+            start_x = (self.width() - total_w) / 2.0
+            p.drawPixmap(int(start_x), int((self.height() - 14) / 2.0), icon_pix)
+            p.drawText(int(start_x + 20), int((self.height() + fm.ascent() - fm.descent()) / 2.0), txt.strip())
+        else:
+            p.drawText(self.rect(), Qt.AlignCenter, txt)
+
+
+class PillLineEdit(QLineEdit):
+    """
+    High-quality vector-antialiased pill-shaped QLineEdit.
+    Replaces rasterized QSS borders with QPainterPath, Antialiasing,
+    and 1.5px crisp vector outlines.
+    """
+    def __init__(self, placeholder="", parent=None, height=36):
+        super().__init__(parent)
+        if placeholder:
+            self.setPlaceholderText(placeholder)
+        if height:
+            self.setFixedHeight(height)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setFont(QFont("Segoe UI Variable Text", 9))
+        self.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                border: none;
+                padding-left: 14px;
+                padding-right: 14px;
+                color: #ffffff;
+                selection-background-color: #e78284;
+            }
+        """)
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        r = rect.height() / 2.0
+        path = QPainterPath()
+        path.addRoundedRect(rect, r, r)
+
+        is_focus = self.hasFocus()
+        is_hover = self.underMouse()
+
+        if is_focus:
+            p.fillPath(path, QColor(255, 255, 255, 20))
+            p.setPen(QPen(QColor("#e78284"), 1.5))
+        elif is_hover:
+            p.fillPath(path, QColor(255, 255, 255, 16))
+            p.setPen(QPen(QColor(255, 255, 255, 75), 1.5))
+        else:
+            p.fillPath(path, QColor(255, 255, 255, 10))
+            p.setPen(QPen(QColor(255, 255, 255, 30), 1.2))
+        p.drawPath(path)
+        p.end()
+
+        super().paintEvent(event)
+
+
 class UnsavedChangesDialog(QDialog):
     def __init__(self, parent=None, text='You have unsaved changes. Do you want to save them?', changes=None):
         super().__init__(parent)
@@ -518,48 +688,55 @@ class UnsavedChangesDialog(QDialog):
         self._drag_pos = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        label = QLabel(text)
-        label.setWordWrap(True)
-        label.setStyleSheet('color: #ffffff; font-size: 14px; font-weight: bold; background: transparent;')
-        layout.addWidget(label)
+        self.card = QFrame(self)
+        self.card.setObjectName('customMessageBoxCard')
+        self.card.setStyleSheet('''
+            #customMessageBoxCard {
+                background-color: #121212;
+                border: 1px solid #282828;
+                border-radius: 14px;
+            }
+        ''')
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(20, 20, 20, 20)
+        card_layout.setSpacing(15)
+
+        title_layout = QHBoxLayout()
+        title_layout.setSpacing(10)
+        icon_lbl = QLabel(self)
+        icon_lbl.setText('\uE7BA')
+        icon_lbl.setFont(QFont('Segoe MDL2 Assets', 18))
+        icon_lbl.setStyleSheet('color: #e78284;')
+        title_layout.addWidget(icon_lbl)
+
+        title_lbl = QLabel('Unsaved Changes', self)
+        title_lbl.setStyleSheet('color: #ffffff; font-weight: bold; font-size: 15px;')
+        title_layout.addWidget(title_lbl)
+        title_layout.addStretch()
+        card_layout.addLayout(title_layout)
+
+        msg_lbl = QLabel(text, self)
+        msg_lbl.setStyleSheet('color: #c6d0f5; font-size: 13px; margin-left: 2px;')
+        msg_lbl.setWordWrap(True)
+        card_layout.addWidget(msg_lbl)
 
         if changes:
-            if isinstance(changes, (list, tuple, set)):
-                items = [str(c) for c in changes if str(c).strip()]
+            items = []
+            if isinstance(changes, list):
+                items = changes
             elif isinstance(changes, dict):
-                items = [f"{k}: {v}" for k, v in changes.items() if str(v).strip()]
-            else:
-                items = [line for line in str(changes).splitlines() if line.strip()]
-
+                items = [f"{k}: '{v}'" for k, v in changes.items()]
+            
             if items:
                 scroll = QScrollArea()
                 scroll.setWidgetResizable(True)
-                scroll.setFixedHeight(130)
+                scroll.setMaximumHeight(140)
                 scroll.setStyleSheet("""
-                    QScrollArea {
-                        background: rgba(0, 0, 0, 0.25);
-                        border: 1px solid #2a2a30;
-                        border-radius: 10px;
-                    }
-                    QScrollBar:vertical {
-                        background: transparent;
-                        width: 6px;
-                        margin: 4px 2px 4px 0;
-                    }
-                    QScrollBar::handle:vertical {
-                        background: rgba(255, 255, 255, 0.2);
-                        border-radius: 3px;
-                        min-height: 20px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background: #dc143c;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
+                    QScrollArea { background-color: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); }
+                    QScrollBar:vertical { width: 4px; background: transparent; }
+                    QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
                 """)
                 container = QWidget()
                 container.setStyleSheet("background: transparent;")
@@ -567,47 +744,35 @@ class UnsavedChangesDialog(QDialog):
                 c_lay.setContentsMargins(12, 10, 12, 10)
                 c_lay.setSpacing(6)
                 for item in items:
-                    c_lbl = QLabel(f"•  {item}")
-                    c_lbl.setWordWrap(True)
-                    c_lbl.setStyleSheet("color: #e0e0e0; font-size: 12px; background: transparent;")
-                    c_lay.addWidget(c_lbl)
+                    m = re.match(r'^(?:\[(?P<prefix>[^\]]+)\]\s*)?Icon:\s*\'(?P<before>.*?)\'\s*➔\s*\'(?P<after>.*?)\'$', item)
+                    if m:
+                        prefix = f"[{m.group('prefix')}] " if m.group('prefix') else ""
+                        before_val = m.group('before')
+                        after_val = m.group('after')
+                        row = self._create_icon_change_row(prefix, before_val, after_val)
+                        c_lay.addWidget(row)
+                    else:
+                        c_lbl = QLabel(f"•  {item}")
+                        c_lbl.setWordWrap(True)
+                        c_lbl.setStyleSheet("color: #b5bfe2; font-size: 12px; background: transparent;")
+                        c_lay.addWidget(c_lbl)
                 c_lay.addStretch()
                 scroll.setWidget(container)
-                layout.addWidget(scroll)
+                card_layout.addWidget(scroll)
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
         
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
-        cancel_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: rgba(255, 255, 255, 0.1); 
-                color: white; 
-                border-radius: 12px; 
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                font-weight: bold;
-            } 
-            QPushButton:hover { 
-                background-color: rgba(255, 255, 255, 0.2); 
-            }
-        """)
-        cancel_btn.setFixedSize(80, 36)
-        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn = PillPushButton("Cancel", "secondary", height=34)
+        cancel_btn.setFixedWidth(80)
         cancel_btn.clicked.connect(lambda: self.done(2))
         
-        yes_btn = QPushButton("Yes")
-        yes_btn.setObjectName("customYesBtn")
-        yes_btn.setStyleSheet("QPushButton { background-color: #4AE290; color: #121212; border-radius: 12px; font-weight: bold; border: 2px solid #2a2a30; } QPushButton:hover { background-color: #60F2A5; border: 2px solid #60F2A5; }")
-        yes_btn.setFixedSize(80, 36)
-        yes_btn.setCursor(Qt.PointingHandCursor)
+        yes_btn = PillPushButton("Yes", "yes", height=34)
+        yes_btn.setFixedWidth(80)
         yes_btn.clicked.connect(lambda: self.done(1))
         
-        no_btn = QPushButton("No")
-        no_btn.setObjectName("customNoBtn")
-        no_btn.setStyleSheet("QPushButton { background-color: #FF4C4C; color: #121212; border-radius: 12px; font-weight: bold; border: 2px solid #2a2a30; } QPushButton:hover { background-color: #FF6B6B; border: 2px solid #FF6B6B; }")
-        no_btn.setFixedSize(80, 36)
-        no_btn.setCursor(Qt.PointingHandCursor)
+        no_btn = PillPushButton("No", "no", height=34)
+        no_btn.setFixedWidth(80)
         no_btn.clicked.connect(lambda: self.done(0))
         
         btn_layout.addStretch()
@@ -615,8 +780,68 @@ class UnsavedChangesDialog(QDialog):
         btn_layout.addWidget(yes_btn)
         btn_layout.addWidget(no_btn)
         
-        layout.addLayout(btn_layout)
+        card_layout.addLayout(btn_layout)
+        layout.addWidget(self.card)
         self.setFixedWidth(460)
+
+    def _create_icon_change_row(self, prefix, before_val, after_val):
+        row = QWidget()
+        row.setStyleSheet("background: transparent;")
+        r_lay = QHBoxLayout(row)
+        r_lay.setContentsMargins(0, 2, 0, 2)
+        r_lay.setSpacing(8)
+
+        prefix_text = f"•  {prefix}Icon:" if prefix else "•  Icon:"
+        lbl = QLabel(prefix_text)
+        lbl.setStyleSheet("color: #b5bfe2; font-size: 12px; font-weight: bold; background: transparent;")
+        r_lay.addWidget(lbl)
+
+        def make_badge(val, is_after=False):
+            badge = QFrame()
+            badge.setFixedSize(28, 28)
+            border_color = "rgba(231, 130, 132, 0.6)" if is_after else "#414559"
+            bg_color = "rgba(231, 130, 132, 0.15)" if is_after else "rgba(255, 255, 255, 0.05)"
+            badge.setStyleSheet(f"QFrame {{ background: {bg_color}; border: 1px solid {border_color}; border-radius: 6px; }}")
+            b_lay = QVBoxLayout(badge)
+            b_lay.setContentsMargins(0, 0, 0, 0)
+            b_lay.setAlignment(Qt.AlignCenter)
+
+            val_clean = str(val or '').strip('\'" ')
+            if val_clean and val_clean != '(none)':
+                pix = render_nss_asset_pixmap(val_clean, size=20)
+                if pix and not pix.isNull():
+                    img_lbl = QLabel()
+                    img_lbl.setPixmap(pix)
+                    img_lbl.setAlignment(Qt.AlignCenter)
+                    img_lbl.setStyleSheet("background: transparent; border: none;")
+                    img_lbl.setToolTip(val_clean)
+                    b_lay.addWidget(img_lbl)
+                    badge.setToolTip(val_clean)
+                    return badge
+                else:
+                    txt_lbl = QLabel(val_clean[:6])
+                    txt_lbl.setStyleSheet("color: #c6d0f5; font-size: 10px; background: transparent; border: none;")
+                    txt_lbl.setAlignment(Qt.AlignCenter)
+                    badge.setToolTip(val_clean)
+                    b_lay.addWidget(txt_lbl)
+                    return badge
+            else:
+                txt_lbl = QLabel("(none)")
+                txt_lbl.setStyleSheet("color: #737994; font-size: 9px; font-style: italic; background: transparent; border: none;")
+                txt_lbl.setAlignment(Qt.AlignCenter)
+                b_lay.addWidget(txt_lbl)
+                badge.setToolTip("(no icon)")
+                return badge
+
+        r_lay.addWidget(make_badge(before_val, is_after=False))
+
+        arrow = QLabel("➔")
+        arrow.setStyleSheet("color: #ea999c; font-size: 12px; font-weight: bold; background: transparent;")
+        r_lay.addWidget(arrow)
+
+        r_lay.addWidget(make_badge(after_val, is_after=True))
+        r_lay.addStretch()
+        return row
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -634,9 +859,9 @@ class UnsavedChangesDialog(QDialog):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(24, 24, 26, 250))
-        painter.setPen(QPen(QColor("#2a2a30"), 2))
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 15, 15)
+        painter.setBrush(QColor("#121212"))
+        painter.setPen(QPen(QColor("#414559"), 1.5))
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 16, 16)
 
 class AsyncWriterSignals(QObject):
     finished = pyqtSignal(str)
@@ -652,15 +877,25 @@ class AsyncWriterWorker(QRunnable):
     def run(self):
         try:
             safe_file_write(self.filepath, self.content)
-            self.signals.finished.emit(self.filepath)
+            try:
+                if hasattr(self, 'signals') and self.signals:
+                    self.signals.finished.emit(self.filepath)
+            except RuntimeError:
+                pass
         except Exception as e:
-            self.signals.error.emit(self.filepath, str(e))
+            try:
+                if hasattr(self, 'signals') and self.signals:
+                    self.signals.error.emit(self.filepath, str(e))
+            except RuntimeError:
+                pass
         finally:
             AsyncFileIo._pending_count = max(0, AsyncFileIo._pending_count - 1)
+            AsyncFileIo._active_workers.discard(self)
 
 class AsyncFileIo:
     _pool = QThreadPool.globalInstance()
     _pending_count = 0
+    _active_workers = set()
     
     @classmethod
     def has_pending_writes(cls):
@@ -670,6 +905,7 @@ class AsyncFileIo:
     def write(cls, filepath, content, on_success=None, on_error=None):
         cls._pending_count += 1
         worker = AsyncWriterWorker(filepath, content)
+        cls._active_workers.add(worker)
         if on_success: worker.signals.finished.connect(on_success)
         if on_error: worker.signals.error.connect(on_error)
         cls._pool.start(worker)
@@ -678,21 +914,78 @@ def validate_nss_syntax(content):
     stack = []
     in_string = False
     string_char = ''
-    for i, char in enumerate(content):
-        if in_string and char == string_char and (i == 0 or content[i-1] != '\\'):
-            in_string = False
-        elif not in_string and char in ('"', "'"):
-            in_string = True; string_char = char
-        elif not in_string:
-            if char == '{': stack.append('{')
-            elif char == '}':
-                if not stack or stack[-1] != '{': return False
-                stack.pop()
-            elif char == '[': stack.append('[')
-            elif char == ']':
-                if not stack or stack[-1] != '[': return False
-                stack.pop()
-    return not in_string and len(stack) == 0
+    is_triple = False
+    in_comment = False
+    in_multiline_comment = False
+
+    i = 0
+    n = len(content)
+    while i < n:
+        char = content[i]
+
+        if in_comment:
+            if char == '\n':
+                in_comment = False
+            i += 1
+            continue
+
+        if in_multiline_comment:
+            if char == '*' and i + 1 < n and content[i+1] == '/':
+                in_multiline_comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+
+        if in_string:
+            if is_triple:
+                if content[i:i+3] == string_char * 3:
+                    in_string = False
+                    is_triple = False
+                    i += 3
+                    continue
+            else:
+                if char == string_char and (i == 0 or content[i-1] != '\\'):
+                    in_string = False
+            i += 1
+            continue
+
+        if char == '/' and i + 1 < n:
+            next_char = content[i+1]
+            if next_char == '/':
+                in_comment = True
+                i += 2
+                continue
+            elif next_char == '*':
+                in_multiline_comment = True
+                i += 2
+                continue
+
+        if char in ('"', "'"):
+            in_string = True
+            string_char = char
+            if i + 2 < n and content[i:i+3] == char * 3:
+                is_triple = True
+                i += 3
+                continue
+            i += 1
+            continue
+
+        if char in ('{', '[', '('):
+            stack.append(char)
+        elif char == '}':
+            if not stack or stack[-1] != '{': return False
+            stack.pop()
+        elif char == ']':
+            if not stack or stack[-1] != '[': return False
+            stack.pop()
+        elif char == ')':
+            if not stack or stack[-1] != '(': return False
+            stack.pop()
+
+        i += 1
+
+    return not in_string and not in_multiline_comment and len(stack) == 0
 
 def safe_file_write(filepath, content):
     if filepath.endswith('.nss') and not validate_nss_syntax(content):
@@ -735,21 +1028,55 @@ def safe_file_write(filepath, content):
             raise e
 
 def terminate_plugin_processes(directory):
+    if not directory or not os.path.exists(directory):
+        return
     try:
-        import psutil
         abs_dir = os.path.abspath(directory).lower()
-        for proc in psutil.process_iter(['pid', 'name', 'exe']):
-            try:
-                exe_path = proc.info.get('exe')
-                if exe_path and os.path.abspath(exe_path).lower().startswith(abs_dir):
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=2)
-                    except psutil.TimeoutExpired:
-                        proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except:
+        TH32CS_SNAPPROCESS = 0x00000002
+        PROCESS_TERMINATE = 0x0001
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+        class PROCESSENTRY32(ctypes.Structure):
+            _fields_ = [
+                ('dwSize', wintypes.DWORD),
+                ('cntUsage', wintypes.DWORD),
+                ('th32ProcessID', wintypes.DWORD),
+                ('th32DefaultHeapID', ctypes.c_void_p),
+                ('th32ModuleID', wintypes.DWORD),
+                ('cntThreads', wintypes.DWORD),
+                ('th32ParentProcessID', wintypes.DWORD),
+                ('pcPriClassBase', ctypes.c_long),
+                ('dwFlags', wintypes.DWORD),
+                ('szExeFile', ctypes.c_char * 260)
+            ]
+
+        h_snap = ctypes.windll.kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if h_snap == -1 or not h_snap:
+            return
+
+        try:
+            pe = PROCESSENTRY32()
+            pe.dwSize = ctypes.sizeof(PROCESSENTRY32)
+            if ctypes.windll.kernel32.Process32First(h_snap, ctypes.byref(pe)):
+                while True:
+                    pid = pe.th32ProcessID
+                    if pid > 4:
+                        h_proc = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, False, pid)
+                        if h_proc:
+                            try:
+                                exe_buf = (ctypes.c_wchar * 1024)()
+                                exe_size = wintypes.DWORD(1024)
+                                if ctypes.windll.kernel32.QueryFullProcessImageNameW(h_proc, 0, exe_buf, ctypes.byref(exe_size)):
+                                    exe_path = exe_buf.value
+                                    if exe_path and os.path.abspath(exe_path).lower().startswith(abs_dir):
+                                        ctypes.windll.kernel32.TerminateProcess(h_proc, 1)
+                            finally:
+                                ctypes.windll.kernel32.CloseHandle(h_proc)
+                    if not ctypes.windll.kernel32.Process32Next(h_snap, ctypes.byref(pe)):
+                        break
+        finally:
+            ctypes.windll.kernel32.CloseHandle(h_snap)
+    except Exception:
         pass
 
 class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure): _fields_ = [('Attribute', ctypes.c_int), ('Data', ctypes.c_void_p), ('SizeOfData', ctypes.c_size_t)]
@@ -759,155 +1086,102 @@ def set_window_effect(hwnd, effect='acrylic'):
     if not hwnd: return
     user32 = ctypes.windll.user32; dwmapi = ctypes.windll.dwmapi; margins = wintypes.RECT(-1, -1, -1, -1); dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
     if effect == 'acrylic':
-        accent = ACCENT_POLICY(); accent.AccentState = 4; accent.GradientColor = 0x011e2030; data = WINDOWCOMPOSITIONATTRIBDATA(); data.Attribute = 19; data.Data = ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p); data.SizeOfData = ctypes.sizeof(accent); user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
+        accent = ACCENT_POLICY(); accent.AccentState = 4; accent.GradientColor = 0x01121212; data = WINDOWCOMPOSITIONATTRIBDATA(); data.Attribute = 19; data.Data = ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p); data.SizeOfData = ctypes.sizeof(accent); user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
     elif effect == 'mica': DWMWA_MICA_EFFECT = 1029; dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_MICA_EFFECT, ctypes.byref(ctypes.c_int(1)), 4)
 
 def send_ipc_command(cmd_string):
-    import win32gui, win32con
-    import ctypes
-    from ctypes import wintypes
-    
     try:
-        if cmd_string == 'CMD_RELOAD':
-            msg_id = win32gui.RegisterWindowMessage("iMA_IPC_Command")
-            hwnd = win32gui.FindWindow("Shell_TrayWnd", None)
-            if hwnd:
-                win32gui.SendMessageTimeout(hwnd, msg_id, 1, 0, win32con.SMTO_ABORTIFHUNG, 1000)
-            return True
+        user32 = ctypes.windll.user32
+        SMTO_ABORTIFHUNG = 0x0002
+        HWND_MESSAGE = -3
+        WM_COPYDATA = 0x004A
 
-        hwnd = win32gui.FindWindowEx(win32con.HWND_MESSAGE, 0, "iMA_IPC_Class", "iMA_IPC_Window")
+        if cmd_string == 'CMD_RELOAD':
+            msg_id = user32.RegisterWindowMessageW("iMA_IPC_Command")
+            hwnd = user32.FindWindowW("Shell_TrayWnd", None)
+            if hwnd:
+                user32.SendMessageTimeoutW(hwnd, msg_id, 1, 0, SMTO_ABORTIFHUNG, 1000, None)
+                return True
+            return False
+
+        hwnd = user32.FindWindowExW(HWND_MESSAGE, 0, "iMA_IPC_Class", "iMA_IPC_Window")
         if not hwnd:
             return False
-            
+
         class COPYDATASTRUCT(ctypes.Structure):
             _fields_ = [
                 ('dwData', wintypes.ULONG),
                 ('cbData', wintypes.DWORD),
                 ('lpData', ctypes.c_void_p)
             ]
-            
+
         cmd_bytes = cmd_string.encode('utf-16-le')
         cds = COPYDATASTRUCT()
         cds.dwData = 1
         cds.cbData = len(cmd_bytes)
         buffer = ctypes.create_string_buffer(cmd_bytes)
         cds.lpData = ctypes.cast(buffer, ctypes.c_void_p)
-        
-        win32gui.SendMessageTimeout(hwnd, win32con.WM_COPYDATA, 0, ctypes.addressof(cds), win32con.SMTO_ABORTIFHUNG, 1000)
+
+        user32.SendMessageTimeoutW(hwnd, WM_COPYDATA, 0, ctypes.addressof(cds), SMTO_ABORTIFHUNG, 1000, None)
         return True
     except Exception as e:
         print(f"IPC Error: {e}")
         return False
 
-def trigger_shell_reload(pos=None, close_only=False, open_only=False, scenario=None):
+def trigger_shell_reload(close_only=False, **kwargs):
     wait_start = time.time()
     while AsyncFileIo.has_pending_writes() and time.time() - wait_start < 1.0:
         time.sleep(0.05)
-        
+
     try:
-        import win32gui, win32con
-        
-        hwnd_menu = win32gui.FindWindow("#32768", None)
+        user32 = ctypes.windll.user32
+        WM_CLOSE = 0x0010
+        WM_COMMAND = 0x0111
+
+        hwnd_menu = user32.FindWindowW("#32768", None)
         while hwnd_menu:
-            win32gui.SendMessage(hwnd_menu, win32con.WM_CLOSE, 0, 0)
-            hwnd_menu = win32gui.FindWindow("#32768", None)
+            user32.SendMessageW(hwnd_menu, WM_CLOSE, 0, 0)
+            hwnd_menu = user32.FindWindowW("#32768", None)
 
-        if not open_only:
-            if send_ipc_command('CMD_RELOAD'):
-                if close_only: return
-            else:
-                if getattr(sys, 'frozen', False):
-                    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-                else:
-                    exe_dir = os.path.dirname(os.path.abspath(__file__))
-                    
-                root = exe_dir
-                for _ in range(4):
-                    if os.path.exists(os.path.join(root, 'shell.nss')): break
-                    p = os.path.dirname(root)
-                    if p == root: break
-                    root = p
-                
-                if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
-                    root = os.path.abspath(os.path.join(exe_dir, '..'))
-
-                for f in ['shell.nss', 'imports/modify.nss', 'imports/theme.nss']:
-                    fp = os.path.normpath(os.path.join(root, f))
-                    if os.path.exists(fp):
-                        try:
-                            with open(fp, 'a'): os.utime(fp, None)
-                        except: pass
-
-                exe = os.path.join(root, 'shell.exe')
-                if os.path.exists(exe):
-                    time.sleep(0.05)
-                    clean_environment = os.environ.copy()
-                    for key in list(clean_environment.keys()):
-                        if key.startswith('_MEI'):
-                            clean_environment.pop(key, None)
-                    subprocess.Popen([exe, '-reload'], env=clean_environment, creationflags=0x08000000)
-                    time.sleep(0.1)
-                
-                if close_only: return
-
-        def find_targets():
-            t = []
-            def callback(hwnd, extra):
-                if win32gui.GetClassName(hwnd) == 'WorkerW':
-                    child = win32gui.FindWindowEx(hwnd, 0, 'SHELLDLL_DefView', None)
-                    if child: extra.append(child)
-                return True
-            win32gui.EnumWindows(callback, t)
-            p = win32gui.FindWindow('Progman', None)
-            if p:
-                s = win32gui.FindWindowEx(p, 0, 'SHELLDLL_DefView', None)
-                if s: t.append(s)
-            return list(set(t))
-        
-        if pos:
-            x, y = pos
-            lparam = y << 16 | x
-            targets = find_targets()
-            
-            target_hwnd = None
-            if scenario == 'taskbar':
-                target_hwnd = win32gui.FindWindow('Shell_TrayWnd', None)
-                lparam = 10 | (10 << 16)
-            else:
-                if targets: target_hwnd = targets[-1]
-
-            if not target_hwnd: return
-
-            def perform_click(hwnd, lp, ctrl=False, shift=False):
-                if ctrl: win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
-                if shift: win32api.keybd_event(win32con.VK_SHIFT, 0, 0, 0)
-                try:
-                    win32gui.SendMessageTimeout(hwnd, win32con.WM_ACTIVATE, win32con.WA_ACTIVE, 0, win32con.SMTO_ABORTIFHUNG, 200)
-                    win32gui.SendMessageTimeout(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp, win32con.SMTO_ABORTIFHUNG, 200)
-                    win32gui.SendMessageTimeout(hwnd, win32con.WM_LBUTTONUP, 0, lp, win32con.SMTO_ABORTIFHUNG, 200)
-                    win32api.Sleep(50)
-                    win32gui.SendMessageTimeout(hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, lp, win32con.SMTO_ABORTIFHUNG, 200)
-                    win32gui.SendMessageTimeout(hwnd, win32con.WM_RBUTTONUP, 0, lp, win32con.SMTO_ABORTIFHUNG, 200)
-                finally:
-                    if ctrl: win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
-                    if shift: win32api.keybd_event(win32con.VK_SHIFT, 0, win32con.KEYEVENTF_KEYUP, 0)
-
-            if scenario == 'reload':
-                perform_click(target_hwnd, lparam, ctrl=True)
-                time.sleep(0.5)
-                hm = win32gui.FindWindow("#32768", None)
-                if hm: win32gui.SendMessage(hm, win32con.WM_CLOSE, 0, 0)
-                time.sleep(0.2)
-                perform_click(target_hwnd, lparam, ctrl=False)
-            elif scenario == 'shift':
-                perform_click(target_hwnd, lparam, shift=True)
-            elif scenario == 'ctrl':
-                perform_click(target_hwnd, lparam, ctrl=True)
-            else:
-                perform_click(target_hwnd, lparam)
+        if send_ipc_command('CMD_RELOAD'):
+            if close_only: return
         else:
-            tray = win32gui.FindWindow('Shell_TrayWnd', None)
-            if tray: win32gui.PostMessage(tray, win32con.WM_COMMAND, 28931, 0)
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            else:
+                exe_dir = os.path.dirname(os.path.abspath(__file__))
+
+            root = exe_dir
+            for _ in range(4):
+                if os.path.exists(os.path.join(root, 'shell.nss')): break
+                p = os.path.dirname(root)
+                if p == root: break
+                root = p
+
+            if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
+                root = os.path.abspath(os.path.join(exe_dir, '..'))
+
+            for f in ['shell.nss', 'imports/modify.nss', 'imports/theme.nss']:
+                fp = os.path.normpath(os.path.join(root, f))
+                if os.path.exists(fp):
+                    try:
+                        with open(fp, 'a'): os.utime(fp, None)
+                    except: pass
+
+            exe = os.path.join(root, 'shell.exe')
+            if os.path.exists(exe):
+                time.sleep(0.05)
+                clean_environment = os.environ.copy()
+                for key in list(clean_environment.keys()):
+                    if key.startswith('_MEI'):
+                        clean_environment.pop(key, None)
+                subprocess.Popen([exe, '-reload'], env=clean_environment, creationflags=0x08000000)
+                time.sleep(0.1)
+
+            if close_only: return
+
+        tray = user32.FindWindowW('Shell_TrayWnd', None)
+        if tray: user32.PostMessageW(tray, WM_COMMAND, 28931, 0)
     except: pass
 
 def get_shell_dll_version():
@@ -935,10 +1209,38 @@ def get_shell_dll_version():
             else:
                 return (0, 0, 0, 0)
 
-        info = win32api.GetFileVersionInfo(dll_path, "\\")
-        ms = info['FileVersionMS']
-        ls = info.get('FileVersionLS', 0)
-        return (win32api.HIWORD(ms), win32api.LOWORD(ms), win32api.HIWORD(ls), win32api.LOWORD(ls))
+        class VS_FIXEDFILEINFO(ctypes.Structure):
+            _fields_ = [
+                ('dwSignature', wintypes.DWORD),
+                ('dwStrucVersion', wintypes.DWORD),
+                ('dwFileVersionMS', wintypes.DWORD),
+                ('dwFileVersionLS', wintypes.DWORD),
+                ('dwProductVersionMS', wintypes.DWORD),
+                ('dwProductVersionLS', wintypes.DWORD),
+                ('dwFileFlagsMask', wintypes.DWORD),
+                ('dwFileFlags', wintypes.DWORD),
+                ('dwFileOS', wintypes.DWORD),
+                ('dwFileType', wintypes.DWORD),
+                ('dwFileSubtype', wintypes.DWORD),
+                ('dwFileDateMS', wintypes.DWORD),
+                ('dwFileDateLS', wintypes.DWORD)
+            ]
+
+        version_dll = ctypes.windll.version
+        size = version_dll.GetFileVersionInfoSizeW(dll_path, None)
+        if not size:
+            return (0, 0, 0, 0)
+        res = ctypes.create_string_buffer(size)
+        if not version_dll.GetFileVersionInfoW(dll_path, 0, size, res):
+            return (0, 0, 0, 0)
+        ptr = ctypes.c_void_p()
+        uLen = wintypes.UINT()
+        if not version_dll.VerQueryValueW(res, r'\\', ctypes.byref(ptr), ctypes.byref(uLen)):
+            return (0, 0, 0, 0)
+        ffi = VS_FIXEDFILEINFO.from_address(ptr.value)
+        ms = ffi.dwFileVersionMS
+        ls = ffi.dwFileVersionLS
+        return (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
     except Exception:
         return (0, 0, 0, 0)
 
@@ -1030,6 +1332,1308 @@ class ModernDialog(QDialog):
         if not self.f.geometry().contains(e.pos()):
             self.reject()
 
+def make_circular_pixmap(pixmap, size=72):
+    if not pixmap or pixmap.isNull():
+        return QPixmap()
+    target = QPixmap(size, size)
+    target.fill(Qt.transparent)
+    scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+    x = max(0, (scaled.width() - size) // 2)
+    y = max(0, (scaled.height() - size) // 2)
+    cropped = scaled.copy(x, y, size, size)
+    painter = QPainter(target)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    path = QPainterPath()
+    path.addEllipse(1, 1, size - 2, size - 2)
+    painter.setClipPath(path)
+    painter.drawPixmap(0, 0, cropped)
+    painter.setClipping(False)
+    painter.setPen(QPen(QColor(255, 255, 255, 45), 1.5))
+    painter.setBrush(Qt.NoBrush)
+    painter.drawEllipse(1, 1, size - 2, size - 2)
+    painter.end()
+    return target
+
+def make_initial_avatar_pixmap(initial="U", size=72, bg_color="#e78284", text_color="#1e2030"):
+    target = QPixmap(size, size)
+    target.fill(Qt.transparent)
+    painter = QPainter(target)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.TextAntialiasing, True)
+    painter.setBrush(QColor(bg_color))
+    painter.setPen(QPen(QColor(255, 255, 255, 45), 1.5))
+    painter.drawEllipse(1, 1, size - 2, size - 2)
+    painter.setPen(QColor(text_color))
+    font = QFont('Segoe UI Variable Display', max(10, int(size * 0.42)), QFont.Bold)
+    painter.setFont(font)
+    ch = (initial or 'U')[:1].upper()
+    painter.drawText(QRect(0, 0, size, size), Qt.AlignCenter, ch)
+    painter.end()
+    return target
+
+class AccountProfileDialog(QDialog):
+    def __init__(self, parent=None, user_name="", user_email="", avatar_pixmap=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(360, 310)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.frame = QFrame()
+        self.frame.setObjectName("accountProfileFrame")
+        self.frame.setStyleSheet("""
+            #accountProfileFrame {
+                background-color: #121212;
+                border: 1px solid #2a2a30;
+                border-radius: 20px;
+            }
+        """)
+        main_layout.addWidget(self.frame)
+
+        fl = QVBoxLayout(self.frame)
+        fl.setContentsMargins(28, 26, 28, 22)
+        fl.setSpacing(6)
+        fl.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+
+        avatar_label = QLabel()
+        avatar_label.setFixedSize(76, 76)
+        avatar_label.setAlignment(Qt.AlignCenter)
+        avatar_label.setStyleSheet("border: none; background: transparent;")
+        if avatar_pixmap and not avatar_pixmap.isNull():
+            avatar_label.setPixmap(avatar_pixmap)
+        else:
+            initial = (user_name or user_email or "U")[:1]
+            avatar_label.setPixmap(make_initial_avatar_pixmap(initial, size=76))
+        fl.addWidget(avatar_label, 0, Qt.AlignHCenter)
+
+        fl.addSpacing(6)
+
+        name_label = QLabel(user_name or "Google User")
+        name_label.setStyleSheet("color: white; font-size: 17px; font-weight: bold; border: none; background: transparent;")
+        name_label.setAlignment(Qt.AlignCenter)
+        fl.addWidget(name_label, 0, Qt.AlignHCenter)
+
+        email_label = QLabel(user_email or "")
+        email_label.setStyleSheet("color: #a5adce; font-size: 13px; border: none; background: transparent;")
+        email_label.setAlignment(Qt.AlignCenter)
+        fl.addWidget(email_label, 0, Qt.AlignHCenter)
+
+        fl.addSpacing(14)
+
+        logout_btn = QPushButton("Log out")
+        logout_btn.setFixedHeight(38)
+        logout_btn.setCursor(Qt.PointingHandCursor)
+        logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e78284;
+                border: 1px solid #ea999c;
+                border-radius: 12px;
+                color: #1e2030;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #ea999c;
+            }
+        """)
+        logout_btn.clicked.connect(lambda: self.done(1))
+        fl.addWidget(logout_btn)
+
+        fl.addSpacing(4)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setFixedHeight(38)
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #26262c;
+                border: 1px solid #363640;
+                border-radius: 12px;
+                color: #c6d0f5;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #363642;
+                color: #ffffff;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        fl.addWidget(cancel_btn)
+
+    def mousePressEvent(self, e):
+        if hasattr(self, 'frame') and not self.frame.geometry().contains(e.pos()):
+            self.reject()
+        else:
+            super().mousePressEvent(e)
+
+
+class FlowLayout(QLayout):
+    def __init__(self, parent=None, margin=0, spacing=-1):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self.itemList = []
+
+    def addItem(self, item): self.itemList.append(item)
+    def count(self): return len(self.itemList)
+    def itemAt(self, index): return self.itemList[index] if 0 <= index < len(self.itemList) else None
+    def takeAt(self, index): return self.itemList.pop(index) if 0 <= index < len(self.itemList) else None
+    def expandingDirections(self): return Qt.Orientations(Qt.Orientation(0))
+    def hasHeightForWidth(self): return True
+    def heightForWidth(self, width): return self.doLayout(QRect(0, 0, width, 0), True)
+    def setGeometry(self, rect): super().setGeometry(rect); self.doLayout(rect, False)
+    def sizeHint(self): return self.minimumSize()
+    def minimumSize(self):
+        size = QSize()
+        for item in self.itemList:
+            w = item.widget()
+            if w is None or not w.isHidden():
+                size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def doLayout(self, rect, testOnly):
+        x = rect.x(); y = rect.y(); lineHeight = 0
+        m = self.contentsMargins()
+        effective_spacing = self.spacing() if self.spacing() >= 0 else 6
+        for item in self.itemList:
+            w = item.widget()
+            if w is not None and w.isHidden():
+                continue
+            spaceX = effective_spacing
+            spaceY = effective_spacing
+            nextX = x + item.sizeHint().width() + spaceX
+            if nextX - spaceX > rect.right() and lineHeight > 0:
+                x = rect.x()
+                y = y + lineHeight + spaceY
+                nextX = x + item.sizeHint().width() + spaceX
+                lineHeight = 0
+            if not testOnly:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+            x = nextX
+            lineHeight = max(lineHeight, item.sizeHint().height())
+        return y + lineHeight - rect.y() + m.bottom()
+
+class ModernSwitch(QWidget):
+    stateChanged = pyqtSignal(bool)
+    def __init__(self, parent=None, checked=False):
+        super().__init__(parent); self.setFixedSize(50, 26); self._checked = checked; self._pos_val = 1.0 if checked else 0.0
+        self._anim = QPropertyAnimation(self, b"pos_val"); self._anim.setDuration(400); self._anim.setEasingCurve(QEasingCurve.OutBack)
+        self.setCursor(Qt.PointingHandCursor)
+    @pyqtProperty(float)
+    def pos_val(self): return self._pos_val
+    @pos_val.setter
+    def pos_val(self, v): self._pos_val = v; self.update()
+    def mousePressEvent(self, e): self._checked = not self._checked; self._anim.setStartValue(self._pos_val); self._anim.setEndValue(1.0 if self._checked else 0.0); self._anim.start(); self.stateChanged.emit(self._checked)
+    def isChecked(self): return self._checked
+    def setChecked(self, v): self._checked = v; self._pos_val = 1.0 if v else 0.0; self.update()
+    def paintEvent(self, e):
+        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing); r = self.rect(); bg = QColor("#e78284") if self._checked else QColor("#2a2a30")
+        p.setBrush(bg); p.setPen(Qt.NoPen); p.drawRoundedRect(r, r.height()/2, r.height()/2); handle = QColor("#ffffff") if self._checked else QColor("#b0b0b0")
+        p.setBrush(handle); x = 4 + (r.width() - 24) * self._pos_val; p.drawEllipse(int(x), 4, 18, 18)
+
+class PillProgressBar(QWidget):
+    def __init__(self, parent=None, height=20):
+        super().__init__(parent); self.setFixedHeight(height); self.value = 0
+        self.setMinimumWidth(120)
+        self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.groove = QFrame(); self.groove.setObjectName("pillGroove")
+        self.groove.setStyleSheet(f"QFrame#pillGroove {{ background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: {height//2}px; }}")
+        self.fill = QFrame(self.groove); self.fill.setObjectName("pillFill")
+        self.fill.setStyleSheet(f"QFrame#pillFill {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e78284, stop:1 #ea999c); border-radius: {max(2, (height-4)//2)}px; }}")
+        self.fill.setGeometry(2, 2, 0, height - 4); self.main_layout.addWidget(self.groove)
+    def setValue(self, val):
+        self.value = max(0, min(100, val))
+        if self.value <= 0: self.fill.hide(); return
+        self.fill.show()
+        max_w = self.groove.width() - 4
+        if max_w <= 0: return
+        new_w = max(2, int(max_w * (self.value / 100)))
+        self.fill.setGeometry(2, 2, new_w, self.height() - 4)
+    def resizeEvent(self, e): super().resizeEvent(e); self.setValue(self.value)
+    def setVisible(self, v): super().setVisible(v)
+
+class CapsuleActionButton(QPushButton):
+    """
+    Modern capsule/pill action button with tactile colored icon badge, slightly lighter dark
+    background, and smooth morphing animation into a circular progress widget during installation.
+    """
+    def __init__(self, action_type='install', text=None, parent=None, height=34):
+        super().__init__(parent)
+        self._height = height
+        self._action_type = (action_type or 'install').lower()
+        self._custom_text = text
+        self._display_progress = 0.0
+        self._target_progress = 0.0
+        self._hover_alpha = 0.0
+        self._is_pressed = False
+        self._is_hovered = False
+        self._spin_angle = 0.0
+        self._dot_count = 0
+        self._compact = False
+
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(self._height)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none;")
+
+        # Smooth width transition between action states
+        self._width_anim = QVariantAnimation(self)
+        self._width_anim.setDuration(200)
+        self._width_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._width_anim.valueChanged.connect(self._on_width_step)
+
+        # Progress arc glide animation
+        self._prog_anim = QVariantAnimation(self)
+        self._prog_anim.setDuration(220)
+        self._prog_anim.setEasingCurve(QEasingCurve.OutQuad)
+        self._prog_anim.valueChanged.connect(self._on_prog_step)
+
+        # Hover transition animation
+        self._hover_anim = QVariantAnimation(self)
+        self._hover_anim.setDuration(180)
+        self._hover_anim.valueChanged.connect(self._on_hover_step)
+
+        # Indeterminate 60fps spinner timer
+        self._spin_timer = QTimer(self)
+        self._spin_timer.setInterval(16)
+        self._spin_timer.timeout.connect(self._on_spin_tick)
+
+        # Animated dots timer for 'Installing...'
+        self._dot_timer = QTimer(self)
+        self._dot_timer.setInterval(350)
+        self._dot_timer.timeout.connect(self._on_dot_tick)
+
+        self._update_dimensions(animated=False)
+        if self._action_type == 'installing':
+            self._dot_timer.start()
+            self._spin_timer.start()
+
+    def set_compact(self, compact=True):
+        if self._compact != compact:
+            self._compact = compact
+            self._update_dimensions(animated=False)
+            self.update()
+
+    def set_height(self, h):
+        if self._height != h:
+            self._height = h
+            self.setFixedHeight(h)
+            self._update_dimensions(animated=False)
+            self.update()
+
+    def _get_display_text(self):
+        if self._custom_text is not None:
+            return self._custom_text
+        if self._action_type == 'installing':
+            return "Installing" + ("." * self._dot_count)
+        defaults = {
+            'install': 'Install',
+            'uninstall': 'Uninstall',
+            'update': 'Update',
+            'enable': 'Enable',
+            'disable': 'Disable',
+            'delete': 'Delete',
+            'queued': 'Queued',
+            'cancel': 'Cancel'
+        }
+        return defaults.get(self._action_type, self._action_type.capitalize())
+
+    def _calculate_pill_width(self):
+        txt = "Installing..." if self._action_type == 'installing' else self._get_display_text()
+        font_size = 9 if self._compact else 10
+        font = QFont('Segoe UI Variable Display', font_size, QFont.Bold)
+        fm = QFontMetrics(font)
+        txt_w = fm.horizontalAdvance(txt) if hasattr(fm, 'horizontalAdvance') else fm.width(txt)
+        badge_diam = self._height - (6 if self._compact else 8)
+        gap = 4 if self._compact else 8
+        pad_right = 8 if self._compact else 14
+        left_pad = 3 if self._compact else 4
+        w = left_pad + badge_diam + gap + txt_w + pad_right
+        min_w = self._height + (24 if self._compact else 40)
+        return max(w, min_w)
+
+    def _update_dimensions(self, animated=False):
+        target_w = float(self._calculate_pill_width())
+        if animated and self.isVisible() and self.width() > 0:
+            if self._width_anim.state() == QVariantAnimation.Running:
+                self._width_anim.stop()
+            self._width_anim.setStartValue(float(self.width()))
+            self._width_anim.setEndValue(target_w)
+            self._width_anim.start()
+        else:
+            self.setFixedWidth(int(target_w))
+            self.update()
+
+    def _on_width_step(self, val):
+        self.setFixedWidth(int(val))
+        self.update()
+
+    def _on_prog_step(self, val):
+        self._display_progress = float(val)
+        self.update()
+
+    def _on_hover_step(self, val):
+        self._hover_alpha = float(val)
+        self.update()
+
+    def _on_spin_tick(self):
+        self._spin_angle = (self._spin_angle + 4.0) % 360.0
+        self.update()
+
+    def _on_dot_tick(self):
+        self._dot_count = (self._dot_count + 1) % 4
+        self.update()
+
+    def set_state(self, action_type, text=None, animated=True):
+        new_action = (action_type or 'install').lower()
+        if text is not None:
+            self._custom_text = text
+
+        self._action_type = new_action
+
+        if new_action == 'installing':
+            self.setToolTip("Click to Cancel")
+            self._dot_count = 0
+            if not self._dot_timer.isActive():
+                self._dot_timer.start()
+            if self._target_progress <= 0:
+                if not self._spin_timer.isActive():
+                    self._spin_timer.start()
+        else:
+            self.setToolTip("")
+            if self._dot_timer.isActive():
+                self._dot_timer.stop()
+            if self._spin_timer.isActive():
+                self._spin_timer.stop()
+            self._display_progress = 0.0
+            self._target_progress = 0.0
+
+        self._update_dimensions(animated=animated)
+        self.update()
+
+    def setValue(self, val):
+        val = max(0.0, min(100.0, float(val)))
+        self._target_progress = val
+        if val > 0:
+            if self._spin_timer.isActive():
+                self._spin_timer.stop()
+        elif self._action_type == 'installing' and not self._spin_timer.isActive():
+            self._spin_timer.start()
+
+        if self._prog_anim.state() == QVariantAnimation.Running:
+            self._prog_anim.stop()
+        self._prog_anim.setStartValue(self._display_progress)
+        self._prog_anim.setEndValue(val)
+        self._prog_anim.start()
+
+    def setProgress(self, val):
+        self.setValue(val)
+
+    def value(self):
+        return self._target_progress
+
+    def setText(self, text):
+        self._custom_text = text
+        self._update_dimensions(animated=False)
+        self.update()
+
+    def text(self):
+        return self._get_display_text()
+
+    def enterEvent(self, e):
+        self._is_hovered = True
+        if self._hover_anim.state() == QVariantAnimation.Running:
+            self._hover_anim.stop()
+        self._hover_anim.setStartValue(self._hover_alpha)
+        self._hover_anim.setEndValue(1.0)
+        self._hover_anim.start()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._is_hovered = False
+        if self._hover_anim.state() == QVariantAnimation.Running:
+            self._hover_anim.stop()
+        self._hover_anim.setStartValue(self._hover_alpha)
+        self._hover_anim.setEndValue(0.0)
+        self._hover_anim.start()
+        super().leaveEvent(e)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self._is_pressed = True
+            self.update()
+        super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._is_pressed = False
+        self.update()
+        super().mouseReleaseEvent(e)
+
+    @staticmethod
+    def _draw_download_icon(p, cx, cy, size=18, color='#ffffff', stroke=2.2):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        half = size / 2.0
+        top_y = cy - half * 0.70
+        bot_y = cy + half * 0.25
+        p.drawLine(QPointF(cx, top_y), QPointF(cx, bot_y))
+        head_w = half * 0.65
+        head_h = half * 0.50
+        path = QPainterPath()
+        path.moveTo(cx - head_w, bot_y - head_h)
+        path.lineTo(cx, bot_y)
+        path.lineTo(cx + head_w, bot_y - head_h)
+        p.drawPath(path)
+        tray_y = cy + half * 0.75
+        tray_w = half * 0.85
+        p.drawLine(QPointF(cx - tray_w, tray_y), QPointF(cx + tray_w, tray_y))
+
+    @staticmethod
+    def _draw_trash_icon(p, cx, cy, size=16, color='#ffffff', stroke=1.8):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        w = size * 0.7
+        h = size * 0.8
+        p.drawLine(QPointF(cx - w*0.6, cy - h*0.45), QPointF(cx + w*0.6, cy - h*0.45))
+        p.drawLine(QPointF(cx - w*0.25, cy - h*0.6), QPointF(cx + w*0.25, cy - h*0.6))
+        p.drawLine(QPointF(cx - w*0.25, cy - h*0.6), QPointF(cx - w*0.25, cy - h*0.45))
+        p.drawLine(QPointF(cx + w*0.25, cy - h*0.6), QPointF(cx + w*0.25, cy - h*0.45))
+        path = QPainterPath()
+        path.moveTo(cx - w*0.45, cy - h*0.45)
+        path.lineTo(cx - w*0.40, cy + h*0.45)
+        path.lineTo(cx + w*0.40, cy + h*0.45)
+        path.lineTo(cx + w*0.45, cy - h*0.45)
+        p.drawPath(path)
+        p.drawLine(QPointF(cx - w*0.15, cy - h*0.25), QPointF(cx - w*0.15, cy + h*0.25))
+        p.drawLine(QPointF(cx + w*0.15, cy - h*0.25), QPointF(cx + w*0.15, cy + h*0.25))
+
+    @staticmethod
+    def _draw_sync_icon(p, cx, cy, size=16, color='#ffffff', stroke=2.0):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        r = size * 0.40
+        rect = QRectF(cx - r, cy - r, r*2, r*2)
+        p.drawArc(rect, 35 * 16, 110 * 16)
+        p.drawLine(QPointF(cx + r*0.5, cy - r*0.9), QPointF(cx + r*0.9, cy - r*0.5))
+        p.drawLine(QPointF(cx + r*0.3, cy - r*0.4), QPointF(cx + r*0.9, cy - r*0.5))
+        p.drawArc(rect, 215 * 16, 110 * 16)
+        p.drawLine(QPointF(cx - r*0.5, cy + r*0.9), QPointF(cx - r*0.9, cy + r*0.5))
+        p.drawLine(QPointF(cx - r*0.3, cy + r*0.4), QPointF(cx - r*0.9, cy + r*0.5))
+
+    @staticmethod
+    def _draw_check_icon(p, cx, cy, size=16, color='#ffffff', stroke=2.2):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        path = QPainterPath()
+        path.moveTo(cx - size*0.35, cy)
+        path.lineTo(cx - size*0.08, cy + size*0.28)
+        path.lineTo(cx + size*0.38, cy - size*0.28)
+        p.drawPath(path)
+
+    @staticmethod
+    def _draw_ban_icon(p, cx, cy, size=16, color='#ffffff', stroke=2.0):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        r = size * 0.42
+        p.drawEllipse(QPointF(cx, cy), r, r)
+        dx = r * 0.707
+        dy = r * 0.707
+        p.drawLine(QPointF(cx - dx, cy - dy), QPointF(cx + dx, cy + dy))
+
+    @staticmethod
+    def _draw_clock_icon(p, cx, cy, size=16, color='#ffffff', stroke=1.8):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        r = size * 0.42
+        p.drawEllipse(QPointF(cx, cy), r, r)
+        p.drawLine(QPointF(cx, cy), QPointF(cx, cy - r * 0.55))
+        p.drawLine(QPointF(cx, cy), QPointF(cx + r * 0.45, cy))
+
+    @staticmethod
+    def _draw_cancel_icon(p, cx, cy, size=14, color='#ffffff', stroke=2.0):
+        p.setPen(QPen(QColor(color), stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        half = size * 0.40
+        p.drawLine(QPointF(cx - half, cy - half), QPointF(cx + half, cy + half))
+        p.drawLine(QPointF(cx + half, cy - half), QPointF(cx - half, cy + half))
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+
+        w = self.width()
+        h = self.height()
+        r = h / 2.0
+        btn_rect = QRectF(0, 0, w, h)
+
+        # Lighter dark background (#252830 normal, #2e323c hover, #1d2027 pressed)
+        if self._is_pressed:
+            bg_col = QColor('#1d2027')
+        else:
+            base_r, base_g, base_b = 37, 40, 48       # #252830
+            hover_r, hover_g, hover_b = 46, 50, 60    # #2e323c
+            cur_r = int(base_r + (hover_r - base_r) * self._hover_alpha)
+            cur_g = int(base_g + (hover_g - base_g) * self._hover_alpha)
+            cur_b = int(base_b + (hover_b - base_b) * self._hover_alpha)
+            bg_col = QColor(cur_r, cur_g, cur_b)
+
+        p.setPen(Qt.NoPen)
+        p.setBrush(bg_col)
+        p.drawRoundedRect(btn_rect, r, r)
+
+        # Specular rim / border
+        border_alpha = int(22 + 23 * self._hover_alpha)
+        p.setPen(QPen(QColor(255, 255, 255, border_alpha), 1.0))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(btn_rect.adjusted(0.5, 0.5, -0.5, -0.5), r - 0.5, r - 0.5)
+
+        # Badge coordinates
+        badge_pad = 3.0 if self._compact else 4.0
+        badge_diam = h - (badge_pad * 2.0)
+        badge_radius = badge_diam / 2.0
+        cx = badge_pad + badge_radius
+        cy = h / 2.0
+
+        if self._is_pressed:
+            cy += 1.0
+
+        if self._action_type == 'installing':
+            # Circular progress arc around the install/download icon
+            track_r = badge_radius - 1.0
+            track_rect = QRectF(cx - track_r, cy - track_r, track_r * 2.0, track_r * 2.0)
+            stroke_w = 2.2
+
+            # Dark circular back
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor('#1b1e26'))
+            p.drawEllipse(track_rect)
+
+            # Circular track ring
+            p.setPen(QPen(QColor('#333842'), stroke_w, Qt.SolidLine, Qt.RoundCap))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(track_rect)
+
+            # Vibrant green progress arc
+            arc_col = QColor('#38b449')
+            p.setPen(QPen(arc_col, stroke_w, Qt.SolidLine, Qt.RoundCap))
+            if self._display_progress <= 0:
+                start_a = int((90.0 - self._spin_angle) * 16.0)
+                p.drawArc(track_rect, start_a, -int(90.0 * 16.0))
+            else:
+                span = -int((self._display_progress / 100.0) * 360.0 * 16.0)
+                p.drawArc(track_rect, 90 * 16, span)
+
+            # Center download icon (or cancel if hovered)
+            if self._is_hovered:
+                self._draw_cancel_icon(p, cx, cy, size=13, stroke=2.0, color='#ff6b6b')
+            else:
+                self._draw_download_icon(p, cx, cy, size=15, stroke=1.8, color='#ffffff')
+        else:
+            # Solid tactile badge
+            badge_rect = QRectF(cx - badge_radius, cy - badge_radius, badge_diam, badge_diam)
+            b_grad = QLinearGradient(badge_rect.topLeft(), badge_rect.bottomLeft())
+
+            if self._action_type == 'install':
+                b_grad.setColorAt(0.0, QColor('#42be54'))
+                b_grad.setColorAt(1.0, QColor('#2ea043'))
+            elif self._action_type in ('uninstall', 'delete', 'cancel'):
+                b_grad.setColorAt(0.0, QColor('#f87171'))
+                b_grad.setColorAt(1.0, QColor('#dc2626'))
+            elif self._action_type == 'update':
+                b_grad.setColorAt(0.0, QColor('#60a5fa'))
+                b_grad.setColorAt(1.0, QColor('#2563eb'))
+            elif self._action_type == 'enable':
+                b_grad.setColorAt(0.0, QColor('#34d399'))
+                b_grad.setColorAt(1.0, QColor('#059669'))
+            elif self._action_type == 'disable':
+                b_grad.setColorAt(0.0, QColor('#f87171'))
+                b_grad.setColorAt(1.0, QColor('#dc2626'))
+            elif self._action_type == 'queued':
+                b_grad.setColorAt(0.0, QColor('#fbbf24'))
+                b_grad.setColorAt(1.0, QColor('#d97706'))
+            else:
+                b_grad.setColorAt(0.0, QColor('#42be54'))
+                b_grad.setColorAt(1.0, QColor('#2ea043'))
+
+            # Drop shadow
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(0, 0, 0, 60))
+            p.drawEllipse(badge_rect.adjusted(0, 1, 0, 1))
+
+            p.setBrush(b_grad)
+            p.drawEllipse(badge_rect)
+
+            # Specular inner ring
+            p.setPen(QPen(QColor(255, 255, 255, 50), 0.75))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(badge_rect)
+
+            # Vector icon
+            icon_col = '#ffffff'
+            if self._action_type == 'install':
+                self._draw_download_icon(p, cx, cy, size=16, stroke=2.0, color=icon_col)
+            elif self._action_type in ('uninstall', 'delete'):
+                self._draw_trash_icon(p, cx, cy, size=15, stroke=1.8, color=icon_col)
+            elif self._action_type == 'update':
+                self._draw_sync_icon(p, cx, cy, size=15, stroke=2.0, color=icon_col)
+            elif self._action_type == 'enable':
+                self._draw_check_icon(p, cx, cy, size=15, stroke=2.2, color=icon_col)
+            elif self._action_type == 'disable':
+                self._draw_ban_icon(p, cx, cy, size=15, stroke=2.0, color=icon_col)
+            elif self._action_type == 'queued':
+                self._draw_clock_icon(p, cx, cy, size=15, stroke=1.8, color=icon_col)
+            elif self._action_type == 'cancel':
+                self._draw_cancel_icon(p, cx, cy, size=13, stroke=2.0, color=icon_col)
+            else:
+                self._draw_download_icon(p, cx, cy, size=16, stroke=2.0, color=icon_col)
+
+        # Text rendering
+        txt = self._get_display_text()
+        p.setPen(QColor(255, 255, 255))
+        font_size = 9 if self._compact else 10
+        font = QFont('Segoe UI Variable Display', font_size, QFont.Bold)
+        p.setFont(font)
+        gap = 4.0 if self._compact else 8.0
+        text_x = cx + badge_radius + gap
+        text_rect = QRectF(text_x, 0, max(10.0, w - text_x - (4.0 if self._compact else 8.0)), h)
+        p.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, txt)
+
+        p.end()
+
+# Icon & Menu Discovery Cache
+_cached_nss_menus = {}
+_asset_pixmap_cache = {}
+
+def get_nss_menus_dict(force_refresh=False):
+    global _cached_nss_menus
+    if _cached_nss_menus and not force_refresh:
+        return _cached_nss_menus
+    
+    root = PROJECT_ROOT
+    if not root:
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        root = os.path.dirname(base) if os.path.basename(base).lower() == 'launcher' else base
+
+    menus = {}
+    paths = [
+        os.path.join(root, 'imports'),
+        os.path.join(root, 'plugins'),
+        os.path.join(root, 'Launcher', '_internal', 'imports'),
+        os.path.join(root, '_internal', 'imports')
+    ]
+    try:
+        from nss_parser import read_file, find_items_and_menus
+        for p in paths:
+            if not os.path.exists(p):
+                continue
+            for r, _, files in os.walk(p):
+                for f in files:
+                    if f.endswith('.nss') and f not in ('theme.nss', 'modify.nss'):
+                        fp = os.path.join(r, f)
+                        try:
+                            content = read_file(fp)
+                            for item in find_items_and_menus(content, types=('menu',)):
+                                props = item.get('props', {})
+                                title = str(props.get('title', '')).strip().strip("'\"")
+                                if not title:
+                                    m_target = str(props.get('menu', '')).strip().strip("'\"")
+                                    if m_target.lower() in ('title.options', 'options'):
+                                        title = 'Options'
+                                if title:
+                                    icon_val = props.get('icon') or props.get('image') or ''
+                                    t_key = title.lower()
+                                    if t_key not in menus or (icon_val and not menus[t_key].get('icon')):
+                                        menus[t_key] = {'title': title, 'icon': icon_val, 'file': fp}
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+    _cached_nss_menus = menus
+    return menus
+
+def _extract_svg_markup(val):
+    if not val: return None
+    s = str(val).strip()
+    s = re.sub(r"^[ '\"\[\\]+|[ '\"\]\\]+$", "", s).strip()
+    if s.startswith('<svg') and s.endswith('</svg>'): return s
+    if '<svg' in s and '</svg>' in s:
+        start_idx = s.find('<svg')
+        end_idx = s.rfind('</svg>') + 6
+        return s[start_idx:end_idx]
+    m = re.search(r"image\.svg\s*\(\s*", val, re.IGNORECASE)
+    if not m: return None
+    start = m.end(); pc = 1; p = start; qc = None
+    while p < len(val) and pc > 0:
+        if qc:
+            if val[p] == qc and val[p-1] != '\\': qc = None
+        elif val[p] in ("'", '"'): qc = val[p]
+        elif val[p] == '(': pc += 1
+        elif val[p] == ')': pc -= 1
+        p += 1
+    if pc == 0:
+        return val[start:p-1].strip().strip("'").strip('"')
+    return None
+
+_THEME_COLOR_CACHE = ['#ffffff', '#ffffff']
+_LAST_THEME_MTIME = 0
+
+def get_theme_glyph_colors():
+    global _THEME_COLOR_CACHE, _LAST_THEME_MTIME
+    try:
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        root = os.path.dirname(base) if os.path.basename(base).lower() == 'launcher' else base
+        path = os.path.join(root, 'imports', 'theme.nss')
+        if os.path.exists(path):
+            mtime = os.path.getmtime(path)
+            if mtime > _LAST_THEME_MTIME:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    m = re.search(r'image\.color\s*=\s*\[?\s*(#[0-9A-Fa-f]{3,8})\s*,\s*(#[0-9A-Fa-f]{3,8})\s*\]?', content)
+                    if m: _THEME_COLOR_CACHE = [m.group(1), m.group(2)]
+                    else:
+                        m1 = re.search(r'image\.color\s*=\s*(#[0-9A-Fa-f]{3,8})', content)
+                        if m1: _THEME_COLOR_CACHE = [m1.group(1), _THEME_COLOR_CACHE[1]]
+                _LAST_THEME_MTIME = mtime
+    except Exception:
+        pass
+    return _THEME_COLOR_CACHE
+
+def render_nss_asset_pixmap(val, size=18):
+    if not val: return None
+    cache_key = (val, size)
+    if cache_key in _asset_pixmap_cache:
+        return _asset_pixmap_cache[cache_key]
+
+    raw_str = str(val).strip()
+
+    # 1. Check direct SVG markup
+    svg = _extract_svg_markup(raw_str)
+    if svg and QtSvg:
+        try:
+            custom_colors = re.findall(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b", raw_str)
+            c1 = custom_colors[0] if len(custom_colors) > 0 and custom_colors[0] else "#ffffff"
+            c2 = custom_colors[1] if len(custom_colors) > 1 and custom_colors[1] else c1
+            clean_svg = svg.replace("@image.color1", c1).replace("@image.color2", c2).replace("@color3", c1)
+            renderer = QtSvg.QSvgRenderer(clean_svg.encode('utf-8'))
+            if renderer.isValid():
+                pm = QPixmap(size * 2, size * 2); pm.fill(Qt.transparent)
+                p = QPainter(pm); p.setRenderHint(QPainter.Antialiasing); p.setRenderHint(QPainter.SmoothPixmapTransform)
+                renderer.render(p); p.end()
+                res = pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                _asset_pixmap_cache[cache_key] = res
+                return res
+        except Exception:
+            pass
+
+    # 2. Check glyphs (supports single or dual glyphs / layered icons)
+    codes = []
+    for m in re.finditer(r'\\u([0-9A-Fa-f]{4})', raw_str, re.IGNORECASE):
+        try: codes.append(int(m.group(1), 16))
+        except Exception: pass
+    if not codes:
+        for m in re.finditer(r'0x([0-9A-Fa-f]{4})(?![0-9A-Fa-f])', raw_str, re.IGNORECASE):
+            try: codes.append(int(m.group(1), 16))
+            except Exception: pass
+    if not codes and not raw_str.lower().endswith(('.png', '.svg', '.ico', '.dll', '.exe', '.jpg')):
+        for ch in raw_str:
+            c_ord = ord(ch)
+            if 0xE000 <= c_ord <= 0xF8FF:
+                codes.append(c_ord)
+
+    if codes and not raw_str.lower().endswith(('.png', '.svg', '.ico', '.dll', '.exe', '.jpg')):
+        try:
+            glyphs_data = get_glyphs_data()
+            _init_nilesoft_font()
+            
+            colors = []
+            if '[[' in raw_str or '], [' in raw_str or '],[' in raw_str:
+                blocks = re.findall(r'\[\s*([^\[\]]*?)\s*\]', raw_str)
+                for b in blocks:
+                    if '\\u' in b or '0x' in b:
+                        c_match = re.search(r'#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b', b)
+                        colors.append(c_match.group(0) if c_match else None)
+            if not colors:
+                colors = re.findall(r'#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b', raw_str)
+                
+            theme_colors = get_theme_glyph_colors()
+            
+            pm = QPixmap(size * 2, size * 2)
+            pm.fill(Qt.transparent)
+            p = QPainter(pm)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.TextAntialiasing)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            
+            rendered_any = False
+            for idx, code in enumerate(codes[:2]):
+                meta = glyphs_data.get(f"{code:04x}") or glyphs_data.get(f"{code:04X}") or glyphs_data.get(code) or glyphs_data.get(str(code)) or {}
+                paths = meta.get('paths', [])
+                c_hex = colors[idx] if (idx < len(colors) and colors[idx]) else (theme_colors[idx] if idx < len(theme_colors) else "#ffffff")
+                
+                if paths and QtSvg:
+                    paths_xml = ''.join([f'<path fill="{c_hex}" d="{d}"/>' for d in paths])
+                    svg_xml = f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{paths_xml}</svg>'
+                    renderer = QtSvg.QSvgRenderer(svg_xml.encode('utf-8'))
+                    if renderer.isValid():
+                        renderer.render(p, QRectF(0, 0, size * 2, size * 2))
+                        rendered_any = True
+                else:
+                    font_family = meta.get('font') or NILESOFT_FONT_FAMILY
+                    font = QFont(font_family)
+                    font.setPixelSize(int(size * 2 * 0.72))
+                    p.setFont(font)
+                    p.setPen(QColor(c_hex))
+                    p.drawText(QRect(0, 0, size * 2, size * 2), Qt.AlignCenter, chr(code))
+                    rendered_any = True
+                    
+            p.end()
+            if rendered_any:
+                res = pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                _asset_pixmap_cache[cache_key] = res
+                return res
+        except Exception:
+            pass
+
+    # Check image path
+    path = str(val).strip('\'"[] ')
+    m_res = re.search(r"image\.res\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", val, re.IGNORECASE)
+    if m_res: path = m_res.group(1)
+    if '@app.dir' in path:
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        root = os.path.dirname(base) if os.path.basename(base).lower() == 'launcher' else base
+        path = path.replace('@app.dir', root)
+
+    if os.path.exists(path):
+        try:
+            if path.lower().endswith('.svg') and QtSvg:
+                renderer = QtSvg.QSvgRenderer(path)
+                if renderer.isValid():
+                    pm = QPixmap(size * 2, size * 2); pm.fill(Qt.transparent)
+                    p = QPainter(pm); p.setRenderHint(QPainter.Antialiasing); renderer.render(p); p.end()
+                    res = pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    _asset_pixmap_cache[cache_key] = res
+                    return res
+            pm = QPixmap(path)
+            if not pm.isNull():
+                res = pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                _asset_pixmap_cache[cache_key] = res
+                return res
+        except Exception:
+            pass
+
+    return None
+
+def get_combo_item_visuals(text, context_key=""):
+    """
+    Returns (glyph_or_pixmap_or_mode, badge_bg_hex, icon_color_hex) for a given combo item text and context.
+    """
+    t_clean = str(text).strip().lower()
+    k_clean = str(context_key).strip().lower()
+    
+    # 1. Separator (Special Custom Drawing)
+    if "sep" in k_clean or t_clean in ("none", "before", "after", "both"):
+        if t_clean == "before": return ("sep_before", "#2a2a2a", "#e78284")
+        elif t_clean == "after": return ("sep_after", "#2a2a2a", "#e78284")
+        elif t_clean == "both": return ("sep_both", "#2a2a2a", "#e78284")
+        elif t_clean in ("none", "", "(none)"): return ("\uE711", "#2a2a2a", "#888888")
+
+    # 2. Menu / Move To
+    if "menu" in k_clean or "moveto" in k_clean or t_clean in ("main", "options"):
+        if t_clean in ("none", "", "(none)"): return ("\uE711", "#2a2a2a", "#888888")
+        if t_clean == "main": return ("\uE80F", "#2a2a2a", "#e78284")
+        menus = get_nss_menus_dict()
+        if t_clean in menus and menus[t_clean].get('icon'):
+            icon_val = menus[t_clean]['icon']
+            pix = render_nss_asset_pixmap(icon_val, size=14)
+            if pix:
+                return (pix, "#2a2a2a", "#ffffff")
+        if t_clean == "options": return ("\uE713", "#2a2a2a", "#e78284")
+        return ("\uE8D2", "#2a2a2a", "#b0b0b8")
+
+    # 3. Position
+    if "pos" in k_clean or t_clean in ("top", "bottom", "middle", "1", "2", "3", "4", "5", "0", "-1", "default", "(default)"):
+        if t_clean in ("", "default", "(default)", "none", "auto"):
+            return ("\uE71D", "#2a2a2a", "#8caaee")
+        elif t_clean == "top":
+            return ("\uE74A", "#2a2a2a", "#e78284")
+        elif t_clean == "bottom":
+            return ("\uE74B", "#2a2a2a", "#e78284")
+        elif t_clean == "middle":
+            return ("\uE8CB", "#2a2a2a", "#e5c890")
+        elif t_clean in ("1", "2", "3", "4", "5", "0"):
+            return (f"num_{t_clean}", "#2a2a2a", "#a6d189")
+        elif t_clean == "-1":
+            return ("\uE74B", "#2a2a2a", "#e78284")
+
+    # 4. Theme Mode
+    if "name" in k_clean or t_clean in ("auto", "classic", "white", "black", "modern"):
+        if t_clean == "auto": return ("\uE790", "#2a2a2a", "#e78284")
+        elif t_clean == "classic": return ("\uE777", "#2a2a2a", "#e2b340")
+        elif t_clean == "white": return ("\uE706", "#2a2a2a", "#facc15")
+        elif t_clean == "black": return ("\uE708", "#2a2a2a", "#c084fc")
+        elif t_clean == "modern": return ("\uE74C", "#2a2a2a", "#e78284")
+
+    # 5. View
+    if "view" in k_clean or t_clean in ("compact", "small", "medium", "large", "wide"):
+        if t_clean == "compact": return ("\uE8A1", "#2a2a2a", "#b0b0b8")
+        elif t_clean == "small": return ("\uE8A0", "#2a2a2a", "#b0b0b8")
+        elif t_clean == "medium": return ("\uE737", "#2a2a2a", "#e78284")
+        elif t_clean == "large": return ("\uE736", "#2a2a2a", "#b0b0b8")
+        elif t_clean == "wide": return ("\uE8A2", "#2a2a2a", "#b0b0b8")
+
+    # 6. Background Effect
+    if "effect" in k_clean or t_clean in ("disabled", "transparent", "blur", "acrylic", "noise"):
+        if t_clean == "disabled": return ("\uE711", "#2a2a2a", "#888888")
+        elif t_clean == "transparent": return ("\uE727", "#2a2a2a", "#e78284")
+        elif t_clean == "blur": return ("\uE7F4", "#2a2a2a", "#e78284")
+        elif t_clean == "acrylic": return ("\uE790", "#2a2a2a", "#e78284")
+        elif t_clean == "noise": return ("\uE7B5", "#2a2a2a", "#e78284")
+
+    # 7. Dark Mode
+    if "dark" in k_clean or t_clean in ("true", "false", "default"):
+        if t_clean == "true": return ("\uE708", "#2a2a2a", "#c084fc")
+        elif t_clean == "false": return ("\uE706", "#2a2a2a", "#facc15")
+        elif t_clean == "default": return ("\uE790", "#2a2a2a", "#e78284")
+
+    # 8. Argument Presets & Action Types
+    if "arg" in k_clean or "action" in k_clean:
+        if any(ch in str(text) for ch in ("📁", "📂", "📄")): return ("\uE838", "#2a2a2a", "#8caaee")
+        if "⚡" in str(text) or "powershell" in t_clean or "ps:" in t_clean: return ("\uE945", "#2a2a2a", "#ef9f76")
+        if "💻" in str(text) or "cmd" in t_clean: return ("\uE756", "#2a2a2a", "#8caaee")
+        if "🐍" in str(text) or "python" in t_clean: return ("\uE230", "#2a2a2a", "#a6d189")
+        if "🛡️" in str(text) or "admin" in t_clean: return ("\uEA18", "#2a2a2a", "#8caaee")
+        if "📋" in str(text) or "copy" in t_clean or "clipboard" in t_clean: return ("\uE16F", "#2a2a2a", "#ca9ee6")
+        if "🔄" in str(text) or "restart" in t_clean: return ("\uE149", "#2a2a2a", "#e5c890")
+        if "👁️" in str(text) or "hidden" in t_clean: return ("\uE7B3", "#2a2a2a", "#ea999c")
+        if "🚀" in str(text) or "launch" in t_clean: return ("\uE710", "#2a2a2a", "#ea999c")
+        if any(ch in str(text) for ch in ("🏷️", "📑", "🔢")): return ("\uE8EC", "#2a2a2a", "#8caaee")
+        if t_clean.startswith("+") or "insert" in t_clean: return ("\uE710", "#2a2a2a", "#ea999c")
+        return ("\uE756", "#2a2a2a", "#838ba7")
+
+    if t_clean == "shift": return ("\uE765", "#2a2a2a", "#e78284")
+    if t_clean == "control": return ("\uE765", "#2a2a2a", "#e78284")
+    if t_clean in ("left mouse", "mouse"): return ("\uE962", "#2a2a2a", "#e78284")
+
+    return ("\uE8D2", "#2a2a2a", "#b0b0b8")
+
+def draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color):
+    if isinstance(glyph_or_pix, QPixmap):
+        pw = glyph_or_pix.width()
+        ph = glyph_or_pix.height()
+        px = badge_rect.x() + (badge_rect.width() - pw) / 2
+        py = badge_rect.y() + (badge_rect.height() - ph) / 2
+        painter.drawPixmap(int(px), int(py), glyph_or_pix)
+    elif str(glyph_or_pix).startswith("num_"):
+        digit_str = str(glyph_or_pix)[4:]
+        num_font = QFont("Segoe UI Variable Display", 9, QFont.Bold)
+        painter.setFont(num_font)
+        painter.setPen(QColor(icon_color))
+        painter.drawText(badge_rect, Qt.AlignCenter, digit_str)
+    elif glyph_or_pix == "sep_before":
+        painter.setPen(QPen(QColor("#e78284"), 2.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(int(badge_rect.left() + 4), int(badge_rect.top() + 5), int(badge_rect.right() - 4), int(badge_rect.top() + 5))
+        painter.setPen(Qt.NoPen); painter.setBrush(QColor("#777777"))
+        painter.drawRoundedRect(QRectF(badge_rect.left() + 6, badge_rect.top() + 11, badge_rect.width() - 12, 5), 2.5, 2.5)
+    elif glyph_or_pix == "sep_after":
+        painter.setPen(QPen(QColor("#e78284"), 2.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(int(badge_rect.left() + 4), int(badge_rect.bottom() - 5), int(badge_rect.right() - 4), int(badge_rect.bottom() - 5))
+        painter.setPen(Qt.NoPen); painter.setBrush(QColor("#777777"))
+        painter.drawRoundedRect(QRectF(badge_rect.left() + 6, badge_rect.top() + 6, badge_rect.width() - 12, 5), 2.5, 2.5)
+    elif glyph_or_pix == "sep_both":
+        painter.setPen(QPen(QColor("#e78284"), 2.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(int(badge_rect.left() + 4), int(badge_rect.top() + 4), int(badge_rect.right() - 4), int(badge_rect.top() + 4))
+        painter.drawLine(int(badge_rect.left() + 4), int(badge_rect.bottom() - 4), int(badge_rect.right() - 4), int(badge_rect.bottom() - 4))
+        painter.setPen(Qt.NoPen); painter.setBrush(QColor("#777777"))
+        painter.drawRoundedRect(QRectF(badge_rect.left() + 6, badge_rect.top() + 9, badge_rect.width() - 12, 4), 2, 2)
+    else:
+        glyph_font = QFont("Segoe MDL2 Assets", 10, QFont.DemiBold)
+        painter.setFont(glyph_font)
+        painter.setPen(QColor(icon_color))
+        painter.drawText(badge_rect, Qt.AlignCenter, str(glyph_or_pix))
+
+
+class ModernComboDelegate(QStyledItemDelegate):
+    def __init__(self, combo, parent=None):
+        super().__init__(parent)
+        self.combo = combo
+
+    def sizeHint(self, option, index):
+        return QSize(option.rect.width(), 34)
+
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+        rect = option.rect.adjusted(3, 2, -3, -2)
+        text = index.data(Qt.DisplayRole)
+        display_text = text if text != "" else "(Default)"
+        if "arg" in str(getattr(self.combo, "context_key", "")).lower():
+            for emo in ("📁", "📂", "📄", "🏷️", "📑", "🔢", "💻", "⚡", "🐍", "🛡️", "🖥️", "📋", "🔄", "👁️", "🚀"):
+                if display_text.startswith(emo):
+                    display_text = display_text[len(emo):].strip()
+                    break
+        
+        is_selected = bool(option.state & QStyle.State_Selected)
+        is_hovered = bool(option.state & QStyle.State_MouseOver)
+
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(rect), 8, 8)
+
+        if is_selected or is_hovered:
+            grad = QLinearGradient(QRectF(rect).topLeft(), QRectF(rect).bottomRight())
+            grad.setColorAt(0.0, QColor(231, 130, 132, 58))
+            grad.setColorAt(0.45, QColor(202, 158, 230, 40))
+            grad.setColorAt(1.0, QColor(140, 170, 238, 30))
+            painter.fillPath(path, grad)
+            painter.setPen(QPen(QColor(255, 255, 255, 85), 1.5))
+            painter.drawPath(path)
+        else:
+            painter.fillPath(path, QColor(255, 255, 255, 6))
+            painter.setPen(QPen(QColor(255, 255, 255, 18), 1.0))
+            painter.drawPath(path)
+
+        # Draw circular icon badge
+        context_key = getattr(self.combo, "context_key", "")
+        glyph_or_pix, badge_bg, icon_color = get_combo_item_visuals(text, context_key)
+
+        badge_size = 20
+        badge_x = rect.left() + 6
+        badge_y = rect.top() + (rect.height() - badge_size) // 2
+        badge_rect = QRectF(badge_x, badge_y, badge_size, badge_size)
+
+        badge_path = QPainterPath()
+        badge_path.addEllipse(badge_rect)
+        painter.fillPath(badge_path, QColor(badge_bg))
+        painter.setPen(QPen(QColor(255, 255, 255, 45) if (is_selected or is_hovered) else QColor("#2a2d3e"), 1.0))
+        painter.drawPath(badge_path)
+
+        draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color)
+
+        # Draw item text
+        text_font = QFont("Segoe UI Variable Display", 10)
+        text_font.setWeight(QFont.Medium if not (is_selected or is_hovered) else QFont.DemiBold)
+        painter.setFont(text_font)
+
+        text_x = badge_x + badge_size + 8
+        text_w = rect.right() - text_x - 6
+        text_rect = QRectF(text_x, rect.top(), text_w, rect.height())
+
+        if text == "":
+            painter.setPen(QColor("#777777"))
+        elif is_selected or is_hovered:
+            painter.setPen(QColor("#ffffff"))
+        else:
+            painter.setPen(QColor("#d0d0d0"))
+
+        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, display_text)
+        painter.restore()
+
+
+class ModernComboBox(QComboBox):
+    def __init__(self, parent=None, context_key=""):
+        super().__init__(parent)
+        self.context_key = context_key
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(32)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setMouseTracking(True)
+        self._is_popup_open = False
+
+        list_view = QListView(self)
+        list_view.setObjectName("modernComboListView")
+        list_view.setSelectionMode(QListView.SingleSelection)
+        list_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        list_view.setAutoScroll(False)
+        list_view.setMouseTracking(True)
+        list_view.viewport().setAttribute(Qt.WA_Hover)
+        
+        self.setView(list_view)
+        self.setItemDelegate(ModernComboDelegate(self, self))
+
+        popup = self.view().window()
+        popup.setAttribute(Qt.WA_TranslucentBackground, True)
+        popup.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+
+        self.setStyleSheet("""
+            QComboBoxPrivateContainer {
+                background: transparent;
+                border: none;
+            }
+            QComboBox {
+                background: transparent;
+                border: none;
+                padding-left: 34px;
+                padding-right: 26px;
+                color: #ffffff;
+                font-family: 'Segoe UI Variable Display', 'Segoe UI';
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QComboBox:hover, QComboBox:focus {
+                background: transparent;
+                border: none;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 24px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #121212;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 12px;
+                padding: 4px 4px;
+                outline: none;
+                selection-background-color: transparent;
+            }
+            QComboBox QScrollBar:vertical {
+                border: none;
+                background: transparent;
+                width: 6px;
+                margin: 4px 2px 4px 0px;
+                border-radius: 3px;
+            }
+            QComboBox QScrollBar::handle:vertical {
+                background: rgba(255, 255, 255, 0.2);
+                min-height: 20px;
+                border-radius: 3px;
+            }
+            QComboBox QScrollBar::handle:vertical:hover {
+                background: #e78284;
+            }
+            QComboBox QScrollBar::add-line:vertical,
+            QComboBox QScrollBar::sub-line:vertical {
+                height: 0px;
+                border: none;
+                background: transparent;
+            }
+            QComboBox QScrollBar::add-page:vertical,
+            QComboBox QScrollBar::sub-page:vertical {
+                background: transparent;
+            }
+        """)
+
+    def enterEvent(self, event):
+        self._is_hovered = True
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        self._is_hovered = False
+        super().leaveEvent(event)
+        self.update()
+
+    def wheelEvent(self, e):
+        e.ignore()
+
+    def showPopup(self):
+        popup = self.view().window()
+        popup.setAttribute(Qt.WA_TranslucentBackground, True)
+        popup.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        self._is_popup_open = True
+        min_w = getattr(self, "popup_min_width", 0)
+        if min_w > 0:
+            popup.setMinimumWidth(min_w)
+            self.view().setMinimumWidth(min_w)
+        self.update()
+        super().showPopup()
+        if min_w > 0 and popup.width() < min_w:
+            popup.resize(min_w, popup.height())
+
+    def hidePopup(self):
+        self._is_popup_open = False
+        self.update()
+        super().hidePopup()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 10.0, 10.0)
+
+        is_hovered = getattr(self, '_is_hovered', False) or self.underMouse()
+        is_active = is_hovered or self._is_popup_open
+
+        if is_active:
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0.0, QColor(231, 130, 132, 58))
+            grad.setColorAt(0.45, QColor(202, 158, 230, 40))
+            grad.setColorAt(1.0, QColor(140, 170, 238, 30))
+            painter.fillPath(path, grad)
+            painter.setPen(QPen(QColor(255, 255, 255, 85), 1.5))
+            painter.drawPath(path)
+        else:
+            painter.fillPath(path, QColor(255, 255, 255, 8))
+            painter.setPen(QPen(QColor(255, 255, 255, 22), 1.0))
+            painter.drawPath(path)
+
+        # Draw left circular badge
+        current_text = self.currentText()
+        glyph_or_pix, badge_bg, icon_color = get_combo_item_visuals(current_text, self.context_key)
+
+        badge_size = 20
+        badge_x = 7
+        badge_y = (self.height() - badge_size) // 2
+        badge_rect = QRectF(badge_x, badge_y, badge_size, badge_size)
+
+        badge_path = QPainterPath()
+        badge_path.addEllipse(badge_rect)
+        painter.fillPath(badge_path, QColor(badge_bg))
+        painter.setPen(QPen(QColor(255, 255, 255, 45) if is_active else QColor("#383838"), 1.0))
+        painter.drawPath(badge_path)
+
+        draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color)
+
+        # Draw item text
+        text_font = QFont("Segoe UI Variable Display", 10)
+        text_font.setWeight(QFont.DemiBold if is_active else QFont.Medium)
+        painter.setFont(text_font)
+        text_rect = QRectF(34, 0, self.width() - 58, self.height())
+        if not current_text:
+            painter.setPen(QColor("#ffffff") if is_active else QColor("#777777"))
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, "(Default)")
+        else:
+            painter.setPen(QColor("#ffffff") if is_active else QColor("#d1d5db"))
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, current_text)
+
+        # Draw right chevron arrow
+        chevron = "\uE70E" if self._is_popup_open else "\uE70D"
+        ch_font = QFont("Segoe MDL2 Assets", 8)
+        painter.setFont(ch_font)
+        painter.setPen(QColor("#ffffff") if is_active else QColor("#888888"))
+        ch_rect = QRectF(self.width() - 22, (self.height() - 18) // 2, 18, 18)
+        painter.drawText(ch_rect, Qt.AlignCenter, chevron)
+
+        painter.end()
+
+
 def launch_shell_core_update(parent=None):
     if getattr(sys, 'frozen', False):
         exe_dir = os.path.dirname(os.path.abspath(sys.executable))
@@ -1078,3 +2682,86 @@ def launch_shell_core_update(parent=None):
         return ret > 32
     except Exception:
         return False
+
+
+class PillTabButton(QPushButton):
+    """Segmented pill tab button with crisp anti-aliased vector rendering."""
+    def __init__(self, text="", icon_code=None, parent=None, height=30, icon_size=16):
+        super().__init__(text, parent)
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self._height = height
+        self.setFixedHeight(self._height)
+        self._icon_code = icon_code
+        self._icon_size = icon_size
+        self.setFont(QFont('Segoe UI Variable Display', 10, QFont.Bold))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        has_icon = bool(self._icon_code or not self.icon().isNull())
+        isize = getattr(self, '_icon_size', 16)
+        w = fm.horizontalAdvance(self.text().strip()) + (isize + 10 if has_icon else 0) + 28
+        return QSize(max(w, 75), self._height)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        r = rect.height() / 2.0
+        path.addRoundedRect(rect, r, r)
+        
+        is_chk = self.isChecked()
+        is_hov = self.underMouse()
+        
+        if is_chk:
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0.0, QColor(231, 130, 132, 58))
+            grad.setColorAt(0.45, QColor(202, 158, 230, 40))
+            grad.setColorAt(1.0, QColor(140, 170, 238, 30))
+            p.fillPath(path, grad)
+            
+            # Crisp, thick, vector anti-aliased border (1.5px)
+            p.setPen(QPen(QColor(255, 255, 255, 85), 1.5))
+            p.drawPath(path)
+            text_color = QColor('#ffffff')
+        elif is_hov:
+            p.fillPath(path, QColor(255, 255, 255, 14))
+            p.setPen(QPen(QColor(255, 255, 255, 38), 1.2))
+            p.drawPath(path)
+            text_color = QColor('#c6d0f5')
+        else:
+            text_color = QColor('#8c92a4')
+            
+        fm = self.fontMetrics()
+        txt = self.text().strip()
+        txt_w = fm.horizontalAdvance(txt)
+        
+        icon = self.icon()
+        isize = getattr(self, '_icon_size', 16)
+        if not icon.isNull():
+            icon_pix = icon.pixmap(isize, isize)
+            total_w = isize + 8 + txt_w
+            start_x = (self.width() - total_w) / 2.0
+            p.drawPixmap(int(start_x), int((self.height() - isize) / 2.0), icon_pix)
+            p.setFont(self.font())
+            p.setPen(text_color)
+            p.drawText(int(start_x + isize + 8), int((self.height() + fm.ascent() - fm.descent()) / 2.0), txt)
+        elif self._icon_code:
+            icon_pix = get_mdl2_icon(self._icon_code, isize, text_color.name()).pixmap(isize, isize)
+            total_w = isize + 8 + txt_w
+            start_x = (self.width() - total_w) / 2.0
+            p.drawPixmap(int(start_x), int((self.height() - isize) / 2.0), icon_pix)
+            p.setFont(self.font())
+            p.setPen(text_color)
+            p.drawText(int(start_x + isize + 8), int((self.height() + fm.ascent() - fm.descent()) / 2.0), txt)
+        else:
+            p.setFont(self.font())
+            p.setPen(text_color)
+            p.drawText(self.rect(), Qt.AlignCenter, txt)
+

@@ -78,16 +78,43 @@ def safe_json_read(path):
         return None
 
 
-def git_blob_sha(filepath):
+def git_blob_sha(filepath, normalize_text=False):
     try:
         with open(filepath, 'rb') as f:
             data = f.read()
-        if filepath.endswith(('.nss', '.txt', '.json', '.md', '.py', '.bat', '.ps1')):
+        if normalize_text and filepath.endswith(('.nss', '.txt', '.json', '.md', '.py', '.bat', '.ps1')):
             data = data.replace(b'\r\n', b'\n')
         header = f"blob {len(data)}\0".encode('utf-8')
         return hashlib.sha1(header + data).hexdigest()
     except Exception:
         return None
+
+
+def file_matches_git_sha(filepath, remote_sha):
+    if not filepath or not remote_sha or not os.path.exists(filepath):
+        return False
+    try:
+        with open(filepath, 'rb') as f:
+            data = f.read()
+        # 1. Exact raw bytes
+        h_raw = hashlib.sha1(f"blob {len(data)}\0".encode('utf-8') + data).hexdigest()
+        if h_raw == remote_sha:
+            return True
+        # 2. Normalized LF
+        if b'\r' in data:
+            lf_data = data.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+            h_lf = hashlib.sha1(f"blob {len(lf_data)}\0".encode('utf-8') + lf_data).hexdigest()
+            if h_lf == remote_sha:
+                return True
+        else:
+            # 3. Normalized CRLF
+            crlf_data = data.replace(b'\n', b'\r\n')
+            h_crlf = hashlib.sha1(f"blob {len(crlf_data)}\0".encode('utf-8') + crlf_data).hexdigest()
+            if h_crlf == remote_sha:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def version_cmp(a, b):
@@ -388,7 +415,8 @@ class PluginRegistry:
                 detected_version = None
                 if os.path.exists(version_file):
                     try:
-                        v = open(version_file, 'r').read().strip()
+                        with open(version_file, 'r', encoding='utf-8', errors='ignore') as vf:
+                            v = vf.read().strip()
                         if v:
                             detected_version = v
                     except Exception:
@@ -437,7 +465,8 @@ class PluginRegistry:
                 v_file = os.path.join(switcher_appdata, vf)
                 if os.path.exists(v_file):
                     try:
-                        v = open(v_file, 'r', encoding='utf-8', errors='ignore').read().strip()
+                        with open(v_file, 'r', encoding='utf-8', errors='ignore') as vf:
+                            v = vf.read().strip()
                         if v:
                             s_version = v.lstrip('vV')
                             break
@@ -498,6 +527,12 @@ class PluginRegistry:
             merged['_is_local'] = False
             result.append(merged)
         return result
+
+    def get_remote_plugin(self, name):
+        for rp in self._data.get('remote_manifest_cache', []):
+            if isinstance(rp, dict) and rp.get('name', '').lower() == name.lower():
+                return rp
+        return None
 
     def get_local_plugins_for_ui(self):
         remote_names_lower = {rp['name'].lower() for rp in self._data.get('remote_manifest_cache', []) if isinstance(rp, dict) and 'name' in rp}

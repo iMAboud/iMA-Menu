@@ -6,12 +6,13 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QCheckBox, QSlider, QComboBox, QColorDialog, QGridLayout,
     QFrame, QButtonGroup, QRadioButton, QTabWidget, QScrollArea, QGraphicsDropShadowEffect, QStackedWidget, QDialog,
-    QSpinBox, QAbstractSpinBox, QDialogButtonBox, QFileDialog, QListWidget, QListWidgetItem, QSizePolicy
+    QSpinBox, QAbstractSpinBox, QDialogButtonBox, QFileDialog, QListWidget, QListWidgetItem, QSizePolicy,
+    QStyledItemDelegate, QStyle
 )
-from PyQt5.QtGui import QIcon, QColor, QFont, QPainter, QBrush, QPen, QPixmap
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPoint, QEvent, QTimer, QObject, QRect, QPropertyAnimation, pyqtProperty
+from PyQt5.QtGui import QIcon, QColor, QFont, QPainter, QBrush, QPen, QPixmap, QPainterPath, QLinearGradient
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPoint, QEvent, QTimer, QObject, QRect, QRectF, QPropertyAnimation, pyqtProperty
 
-from utils import resource_path, get_font_icon, get_mdl2_icon, safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir
+from utils import resource_path, get_font_icon, get_mdl2_icon, safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir, ModernComboBox, PillLineEdit
 
 from PyQt5.QtWidgets import QMessageBox
 
@@ -185,6 +186,122 @@ class DimmingOverlay(QWidget):
         painter.drawRoundedRect(self.rect(), 20, 20)
 
 
+class ModernSlider(QSlider):
+    """
+    High-quality vector anti-aliased horizontal slider.
+    Features:
+    - Smooth 6px rounded groove track with translucent fill and anti-aliasing.
+    - Active track gradient fill matching tab hover aesthetic.
+    - Smooth anti-aliased circular handle with pink/rose gradient and specular ring.
+    - Proportional direct mouse drag (mousePressEvent / mouseMoveEvent) for 60fps responsiveness.
+    """
+    def __init__(self, orientation=Qt.Horizontal, parent=None):
+        super().__init__(orientation, parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(28)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setTracking(True)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def _val_ratio(self):
+        rng = self.maximum() - self.minimum()
+        if rng <= 0:
+            return 0.0
+        return max(0.0, min(1.0, (self.value() - self.minimum()) / float(rng)))
+
+    def _update_from_x(self, x):
+        m = 12.0
+        tw = self.width() - 2.0 * m
+        if tw <= 0:
+            return
+        ratio = max(0.0, min(1.0, (x - m) / tw))
+        v = int(round(self.minimum() + ratio * (self.maximum() - self.minimum())))
+        if v != self.value():
+            self.setValue(v)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self._update_from_x(e.pos().x())
+            self.setSliderDown(True)
+            e.accept()
+        else:
+            super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self.isSliderDown():
+            self._update_from_x(e.pos().x())
+            e.accept()
+        else:
+            super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.setSliderDown(False)
+            self.sliderReleased.emit()
+            self.update()
+            e.accept()
+        else:
+            super().mouseReleaseEvent(e)
+
+    def enterEvent(self, e):
+        super().enterEvent(e)
+        self.update()
+
+    def leaveEvent(self, e):
+        super().leaveEvent(e)
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        m = 12.0
+        cy = self.height() / 2.0
+        tw = self.width() - 2.0 * m
+        gh = 6.0
+        gr = gh / 2.0
+
+        # Background track
+        track_rect = QRectF(m, cy - gr, tw, gh)
+        tpath = QPainterPath()
+        tpath.addRoundedRect(track_rect, gr, gr)
+        p.fillPath(tpath, QColor(255, 255, 255, 20))
+        p.setPen(QPen(QColor(255, 255, 255, 30), 1.0))
+        p.drawPath(tpath)
+
+        # Active fill track
+        ratio = self._val_ratio()
+        act_w = ratio * tw
+        if act_w > 0:
+            act_rect = QRectF(m, cy - gr, act_w, gh)
+            apath = QPainterPath()
+            apath.addRoundedRect(act_rect, gr, gr)
+            agrad = QLinearGradient(m, 0, m + act_w, 0)
+            agrad.setColorAt(0.0, QColor(231, 130, 132, 120))
+            agrad.setColorAt(1.0, QColor(234, 153, 156, 220))
+            p.fillPath(apath, agrad)
+
+        # Circular handle with tab-hover gradient effect
+        hx = m + ratio * tw
+        is_down = self.isSliderDown()
+        is_hov = self.underMouse()
+        hr = 9.0 if (is_down or is_hov) else 8.0
+
+        handle_rect = QRectF(hx - hr, cy - hr, hr * 2.0, hr * 2.0)
+        hgrad = QLinearGradient(handle_rect.topLeft(), handle_rect.bottomRight())
+        hgrad.setColorAt(0.0, QColor("#ea999c"))
+        hgrad.setColorAt(1.0, QColor("#e78284"))
+
+        hpath = QPainterPath()
+        hpath.addEllipse(handle_rect)
+        p.fillPath(hpath, hgrad)
+        p.setPen(QPen(QColor(255, 255, 255, 180 if is_hov else 110), 1.4))
+        p.drawPath(hpath)
+        p.end()
+
+MinimalSlider = ModernSlider
+
+
 class MinimalColorPickerDialog(QDialog):
     colorSelected = pyqtSignal(str, str)
 
@@ -220,7 +337,7 @@ class MinimalColorPickerDialog(QDialog):
         self.default_checkbox = QCheckBox("Default")
         self.default_checkbox.setObjectName("themeEditorCheckbox")
         self.default_checkbox.setChecked(initial_color == "default")
-        self.default_checkbox.setStyleSheet("QCheckBox { color: #b0b0b0; font-weight: bold; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 9px; border: 2px solid #333333; } QCheckBox::indicator:checked { background: #dc143c; border: 2px solid #dc143c; }")
+        self.default_checkbox.setStyleSheet("QCheckBox { color: #b0b0b0; font-weight: bold; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 9px; border: 2px solid #333333; } QCheckBox::indicator:checked { background: #e78284; border: 2px solid #e78284; }")
         top_bar_layout.addWidget(self.default_checkbox)
         top_bar_layout.addStretch()
         self.main_layout.addLayout(top_bar_layout)
@@ -284,7 +401,7 @@ class MinimalColorPickerDialog(QDialog):
         hex_layout.setContentsMargins(0,0,0,0)
         self.hex_input = QLineEdit()
         self.hex_input.setAlignment(Qt.AlignCenter)
-        self.hex_input.setStyleSheet("QLineEdit { background: #25252b; color: white; border: 1px solid #555566; border-radius: 6px; padding: 4px; font-family: monospace; font-size: 13px; font-weight: bold; } QLineEdit:focus { border: 1px solid #dc143c; }")
+        self.hex_input.setStyleSheet("QLineEdit { background: #25252b; color: white; border: 1px solid #555566; border-radius: 6px; padding: 4px; font-family: monospace; font-size: 13px; font-weight: bold; } QLineEdit:focus { border: 1px solid #e78284; }")
         self.hex_input.textEdited.connect(self.update_color_from_hex)
         
         self.eyedropper_btn = QPushButton("🖌")
@@ -317,7 +434,7 @@ class MinimalColorPickerDialog(QDialog):
         ok_btn = QPushButton("Apply")
         ok_btn.setFixedSize(100, 36)
         ok_btn.setCursor(Qt.PointingHandCursor)
-        ok_btn.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; font-weight: bold; border-radius: 18px; border: none; } QPushButton:hover { background: #ff2a55; }")
+        ok_btn.setStyleSheet("QPushButton { background: #e78284; color: #ffffff; font-weight: bold; border-radius: 18px; border: none; } QPushButton:hover { background: #ea999c; }")
         
         can_btn = QPushButton("Cancel")
         can_btn.setFixedSize(100, 36)
@@ -370,15 +487,9 @@ class MinimalColorPickerDialog(QDialog):
         vbox.setSpacing(4)
         lbl = QLabel(name)
         lbl.setStyleSheet("color: #b0b0b0; font-size: 11px; font-weight: bold;")
-        slider = QSlider(Qt.Horizontal)
+        slider = ModernSlider(Qt.Horizontal)
         slider.setMinimum(0)
         slider.setMaximum(max_val)
-        slider.setStyleSheet("""
-            QSlider::groove:horizontal { border-radius: 4px; height: 8px; background: rgba(255,255,255,0.1); }
-            QSlider::handle:horizontal { background: #dc143c; border-radius: 8px; width: 16px; height: 16px; margin: -4px 0; }
-            QSlider::handle:horizontal:hover { background: #ff2a55; width: 20px; height: 20px; border-radius: 10px; margin: -6px 0; }
-        """)
-        slider.setCursor(Qt.PointingHandCursor)
         vbox.addWidget(lbl)
         vbox.addWidget(slider)
         layout.addWidget(container)
@@ -489,7 +600,7 @@ class MinimalColorPickerDialog(QDialog):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(QBrush(QColor("#121212")))
-        painter.setPen(QPen(QColor("#dc143c"), 2))
+        painter.setPen(QPen(QColor("#e78284"), 2))
         painter.drawRoundedRect(self.rect().adjusted(1,1,-1,-1), 20, 20)
 
 
@@ -504,6 +615,8 @@ class ColorPickerWidget(QFrame):
         self.setCursor(Qt.PointingHandCursor)
         self.setObjectName("ColorPickerWidget")
         self.setFixedHeight(34)
+        self.setAttribute(Qt.WA_Hover, True)
+        self._bg_qcolor = QColor(255, 255, 255, 13)
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 0, 15, 0)
@@ -523,7 +636,7 @@ class ColorPickerWidget(QFrame):
     def set_color(self, hex_color):
         if hex_color == "default":
             self.hex_color = "default"
-            bg_color = "rgba(255, 255, 255, 0.05)"
+            self._bg_qcolor = QColor(255, 255, 255, 13)
             text_color = "#ffffff"
             self.hex_label.setText("default")
         else:
@@ -546,9 +659,8 @@ class ColorPickerWidget(QFrame):
             if opacity_val < 100 and color_obj.isValid():
                 alpha = int((opacity_val / 100.0) * 255)
                 color_obj.setAlpha(alpha)
-                bg_color = f"rgba({color_obj.red()}, {color_obj.green()}, {color_obj.blue()}, {color_obj.alpha() / 255.0})"
-            else:
-                bg_color = base_hex if color_obj.isValid() else "rgba(255, 255, 255, 0.05)"
+            
+            self._bg_qcolor = color_obj if color_obj.isValid() else QColor(255, 255, 255, 13)
 
             if color_obj.isValid():
                 luminance = 0.299 * color_obj.red() + 0.587 * color_obj.green() + 0.114 * color_obj.blue()
@@ -559,21 +671,41 @@ class ColorPickerWidget(QFrame):
             self.hex_label.setText(hex_color)
             
         self.setStyleSheet(f"""
-            #ColorPickerWidget {{
-                background-color: {bg_color};
-                border-radius: 17px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }}
-            #ColorPickerWidget:hover {{
-                border: 2px solid white;
-            }}
             QLabel {{
                 color: {text_color};
                 font-weight: bold;
                 font-size: 11px;
                 background: transparent;
+                border: none;
             }}
         """)
+        self.update()
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        r = rect.height() / 2.0
+        path = QPainterPath()
+        path.addRoundedRect(rect, r, r)
+
+        is_hov = self.underMouse()
+        p.fillPath(path, self._bg_qcolor)
+        if is_hov:
+            p.setPen(QPen(QColor("#ffffff"), 1.6))
+        else:
+            p.setPen(QPen(QColor(255, 255, 255, 30), 1.2))
+        p.drawPath(path)
+        p.end()
 
     def mousePressEvent(self, event):
         self.openColorDialog(event)
@@ -635,7 +767,7 @@ class ModernToggle(QCheckBox):
         # Track
         track_rect = QRect(0, 0, 44, 24)
         if self.isChecked():
-            p.setBrush(QColor("#dc143c"))
+            p.setBrush(QColor("#e78284"))
             p.setPen(Qt.NoPen)
         else:
             p.setBrush(QColor(255, 255, 255, 25))
@@ -651,16 +783,45 @@ class ModernToggle(QCheckBox):
         return self.rect().contains(pos)
 
 
-class MinimalSlider(QSlider):
-    def __init__(self, orientation=Qt.Horizontal, parent=None):
-        super().__init__(orientation, parent)
+class RadiusButton(QPushButton):
+    """High-quality vector anti-aliased radius option button."""
+    def __init__(self, val, corner_px, parent=None):
+        super().__init__(parent)
+        self.val = val
+        self.corner_px = corner_px
+        self.is_selected = False
+        self.setFixedSize(36, 36)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(24)
-        self.setStyleSheet("""
-            QSlider::groove:horizontal { border-radius: 4px; height: 8px; background: rgba(255,255,255,0.05); }
-            QSlider::handle:horizontal { background: #dc143c; border-radius: 8px; width: 16px; margin: -4px 0; }
-            QSlider::handle:horizontal:hover { background: #dc143c; width: 20px; border-radius: 10px; margin: -6px 0; }
-        """)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def enterEvent(self, e):
+        super().enterEvent(e)
+        self.update()
+
+    def leaveEvent(self, e):
+        super().leaveEvent(e)
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5)
+        path = QPainterPath()
+        path.addRoundedRect(rect, float(self.corner_px), float(self.corner_px))
+
+        is_hov = self.underMouse()
+        if self.is_selected:
+            p.fillPath(path, QColor(231, 130, 132, 45))
+            p.setPen(QPen(QColor("#e78284"), 1.8))
+        elif is_hov:
+            p.fillPath(path, QColor(255, 255, 255, 20))
+            p.setPen(QPen(QColor(255, 255, 255, 75), 1.5))
+        else:
+            p.fillPath(path, QColor(255, 255, 255, 10))
+            p.setPen(QPen(QColor(255, 255, 255, 28), 1.2))
+        p.drawPath(path)
+        p.end()
 
 
 class RadiusPickerWidget(QWidget):
@@ -676,11 +837,7 @@ class RadiusPickerWidget(QWidget):
         self._buttons = []
         radii_px = [0, 3, 6, 10]
         for i in range(max_value + 1):
-            btn = QPushButton()
-            btn.setFixedSize(36, 36)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setProperty("radius_val", i)
-            btn.setProperty("corner_px", radii_px[min(i, len(radii_px)-1)])
+            btn = RadiusButton(i, radii_px[min(i, len(radii_px)-1)], self)
             btn.clicked.connect(lambda _, v=i: self._select(v))
             self._buttons.append(btn)
             layout.addWidget(btn)
@@ -693,12 +850,8 @@ class RadiusPickerWidget(QWidget):
 
     def _update_styles(self):
         for btn in self._buttons:
-            v = btn.property("radius_val")
-            r = btn.property("corner_px")
-            selected = v == self._value
-            border_color = "#dc143c" if selected else "rgba(255,255,255,0.1)"
-            bg = "rgba(220,20,60,0.15)" if selected else "rgba(255,255,255,0.05)"
-            btn.setStyleSheet(f"QPushButton {{ background: {bg}; border: 2px solid {border_color}; border-radius: {r}px; }} QPushButton:hover {{ background: rgba(220,20,60,0.25); }}")
+            btn.is_selected = (btn.val == self._value)
+            btn.update()
 
     def value(self):
         return self._value
@@ -732,6 +885,60 @@ class BorderPreviewWidget(QWidget):
         p.end()
 
 
+class ThemeCategoryDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def sizeHint(self, option, index):
+        return QSize(200, 42)
+
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(option.rect).adjusted(4.0, 3.0, -4.0, -3.0)
+        path = QPainterPath()
+        r = rect.height() / 2.0
+        path.addRoundedRect(rect, r, r)
+
+        is_selected = bool(option.state & QStyle.State_Selected)
+        is_hover = bool(option.state & QStyle.State_MouseOver)
+
+        if is_selected:
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0.0, QColor(231, 130, 132, 65))
+            grad.setColorAt(0.45, QColor(202, 158, 230, 48))
+            grad.setColorAt(1.0, QColor(140, 170, 238, 38))
+            painter.fillPath(path, grad)
+            painter.setPen(QPen(QColor(255, 255, 255, 90), 1.5))
+            painter.drawPath(path)
+            fg = QColor("#ffffff")
+        elif is_hover:
+            painter.fillPath(path, QColor(255, 255, 255, 20))
+            painter.setPen(QPen(QColor(255, 255, 255, 50), 1.5))
+            painter.drawPath(path)
+            fg = QColor("#ffffff")
+        else:
+            painter.fillPath(path, QColor(255, 255, 255, 8))
+            painter.setPen(QPen(QColor(255, 255, 255, 20), 1.5))
+            painter.drawPath(path)
+            fg = QColor("#b0b0b0")
+
+        icon = index.data(Qt.DecorationRole)
+        icon_rect = QRectF(rect.left() + 14, rect.top() + (rect.height() - 20) / 2.0, 20, 20)
+        if icon and isinstance(icon, QIcon):
+            icon.paint(painter, icon_rect.toRect(), Qt.AlignCenter)
+
+        text = index.data(Qt.DisplayRole)
+        painter.setFont(QFont("Segoe UI Variable Display", 10, QFont.Bold if is_selected else QFont.DemiBold))
+        painter.setPen(fg)
+        txt_rect = QRectF(rect.left() + 44, rect.top(), rect.width() - 50, rect.height())
+        painter.drawText(txt_rect, Qt.AlignLeft | Qt.AlignVCenter, text)
+
+        painter.restore()
+
+
 class ThemeEditorWidget(QWidget):
     theme_saved = pyqtSignal()
     reload_requested = pyqtSignal()
@@ -762,7 +969,7 @@ class ThemeEditorWidget(QWidget):
     def _load_theme(self):
         if os.path.exists(self.theme_path):
             try:
-                with open(self.theme_path, 'r') as file:
+                with open(self.theme_path, 'r', encoding='utf-8', errors='ignore') as file:
                     theme_content = file.read()
                 self._parse_theme(theme_content)
                 self.backup_theme_data = self.theme_data.copy()
@@ -803,7 +1010,12 @@ class ThemeEditorWidget(QWidget):
             if key not in self.theme_data:
                 self.theme_data[key] = "#ffffff"
 
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#121212"))
+
     def _setup_ui(self):
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(15, 15, 15, 15)
         self.main_layout.setSpacing(25)
@@ -816,41 +1028,31 @@ class ThemeEditorWidget(QWidget):
         self.sidebar_layout.addWidget(sidebar_title)
 
         self.category_list = QListWidget()
-        self.category_list.setFixedWidth(220)
+        self.category_list.setFixedWidth(225)
         self.category_list.setIconSize(QSize(22, 22))
+        self.category_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.category_list.setStyleSheet("""
             QListWidget {
-                background: #1c1c20;
+                background: #121212;
                 border-radius: 16px;
                 border: 1px solid rgba(255, 255, 255, 0.05);
-                padding: 8px;
+                padding: 8px 6px;
                 outline: none;
             }
             QListWidget::item {
-                color: #b0b0b0;
-                padding: 10px 14px;
-                border-radius: 12px;
-                margin: 2px 0px;
-                font-size: 13px;
-                font-weight: 600;
-            }
-            QListWidget::item:selected {
-                background: rgba(220, 20, 60, 0.15);
-                color: #dc143c;
-            }
-            QListWidget::item:hover:!selected {
-                background: rgba(255, 255, 255, 0.05);
-                color: #ffffff;
+                background: transparent;
+                border: none;
             }
         """)
+        self.category_list.setItemDelegate(ThemeCategoryDelegate(self.category_list))
+        self.category_list.setMouseTracking(True)
         self.sidebar_layout.addWidget(self.category_list)
         self.main_layout.addLayout(self.sidebar_layout)
 
         self.content_area = QStackedWidget()
         self.content_area.setStyleSheet("background: transparent;")
         self.main_layout.addWidget(self.content_area, 1)
-
-        self.category_list.currentRowChanged.connect(self.content_area.setCurrentIndex)
+        self.category_list.currentRowChanged.connect(self._on_category_changed)
 
     def _parse_nss_array(self, value):
         if not value or not isinstance(value, str): return value
@@ -873,10 +1075,10 @@ class ThemeEditorWidget(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setStyleSheet("""
-            QScrollArea { background: rgba(0, 0, 0, 0.2); border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); } 
-            QScrollBar:vertical { width: 8px; background: transparent; border-radius: 4px; } 
-            QScrollBar::handle:vertical { background: rgba(255,255,255,0.2); border-radius: 4px; }
-            QScrollBar::handle:vertical:hover { background: rgba(255,255,255,0.3); }
+            QScrollArea { background: transparent; border: none; } 
+            QScrollBar:vertical { width: 6px; background: transparent; } 
+            QScrollBar::handle:vertical { background: rgba(198, 208, 245, 0.28); border-radius: 3px; }
+            QScrollBar::handle:vertical:hover { background: rgba(198, 208, 245, 0.5); }
         """)
         
         content = QWidget()
@@ -889,13 +1091,13 @@ class ThemeEditorWidget(QWidget):
         layout.addWidget(scroll)
         return page, content_layout
 
-    def _create_card(self, title):
+    def _create_card(self, title=""):
         card = QFrame()
         card.setStyleSheet("""
             QFrame {
-                background-color: #202024;
-                border-radius: 20px;
-                border: 1px solid rgba(255, 255, 255, 0.04);
+                background: #121212;
+                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
             }
         """)
         layout = QVBoxLayout(card)
@@ -904,7 +1106,7 @@ class ThemeEditorWidget(QWidget):
 
         if title:
             title_lbl = QLabel(title.upper())
-            title_lbl.setStyleSheet("font-size: 12px; font-weight: 700; color: #dc143c; border: none;")
+            title_lbl.setStyleSheet("font-size: 12px; font-weight: 700; color: #e78284; border: none;")
             layout.addWidget(title_lbl)
 
         settings_container = QWidget()
@@ -916,26 +1118,60 @@ class ThemeEditorWidget(QWidget):
 
         return card, settings_layout
 
+    def _build_category_page_content(self, index: int):
+        if index in self._built_categories or index >= len(self._category_names):
+            return
+        cat_name = self._category_names[index]
+        icon_code, groups = self._categories_def[cat_name]
+
+        page, page_layout = self._create_category_page(cat_name)
+        for group_name, keys in groups.items():
+            card, card_settings_layout = self._create_card(group_name)
+            
+            if group_name == "Border Padding":
+                layout = self._create_padding_cross_layout()
+                card_settings_layout.addLayout(layout)
+            elif len(keys) == 4 and group_name in ["Colors", "Background", "Item Borders"]:
+                grid_layout = QGridLayout()
+                grid_layout.setSpacing(10)
+                for i, key in enumerate(keys):
+                    widget = self._create_setting_row(key, is_image=False, grid_mode=True)
+                    grid_layout.addWidget(widget, i // 2, i % 2)
+                card_settings_layout.addLayout(grid_layout)
+            else:
+                for key in keys:
+                    is_image = (key == "image.color")
+                    row_layout = self._create_setting_row(key, is_image=is_image, grid_mode=False)
+                    card_settings_layout.addLayout(row_layout)
+            page_layout.addWidget(card)
+            
+        page_layout.addStretch()
+
+        placeholder = self.content_area.widget(index)
+        self.content_area.insertWidget(index, page)
+        self.content_area.removeWidget(placeholder)
+        if placeholder:
+            placeholder.deleteLater()
+        self._built_categories.add(index)
+
+    def _on_category_changed(self, row: int):
+        if row < 0 or not hasattr(self, '_category_names') or row >= len(self._category_names):
+            return
+        if row not in self._built_categories:
+            self._build_category_page_content(row)
+        self.content_area.setCurrentIndex(row)
+
     def _create_form(self):
         current_row = self.category_list.currentRow()
         
-        scroll_positions = {}
-        for i in range(self.category_list.count()):
-            cat_name = self.category_list.item(i).text()
-            page = self.content_area.widget(i)
-            if page and page.layout():
-                for j in range(page.layout().count()):
-                    widget = page.layout().itemAt(j).widget()
-                    if isinstance(widget, QScrollArea):
-                        scroll_positions[cat_name] = widget.verticalScrollBar().value()
-        
+        self.category_list.blockSignals(True)
         self.category_list.clear()
         while self.content_area.count() > 0:
             widget = self.content_area.widget(0)
             self.content_area.removeWidget(widget)
             widget.deleteLater()
             
-        categories = {
+        self._categories_def = {
             "General": (0xE115, {
                 "": ["name", "view", "dark"],
                 "Border Padding": []
@@ -961,46 +1197,19 @@ class ThemeEditorWidget(QWidget):
                 "Icons": ["image.enabled", "image.effect", "image.color", "symbol.effect", "symbol.normal"]
             })
         }
+        self._category_names = list(self._categories_def.keys())
+        self._built_categories = set()
 
-        for cat_name, (icon_code, groups) in categories.items():
+        for cat_name, (icon_code, _) in self._categories_def.items():
             item = QListWidgetItem(get_mdl2_icon(icon_code, 22, '#ffffff'), cat_name)
             self.category_list.addItem(item)
-            page, page_layout = self._create_category_page(cat_name)
-            
-            for group_name, keys in groups.items():
-                card, card_settings_layout = self._create_card(group_name)
-                
-                if group_name == "Border Padding":
-                    layout = self._create_padding_cross_layout()
-                    card_settings_layout.addLayout(layout)
-                elif len(keys) == 4 and group_name in ["Colors", "Background", "Item Borders"]:
-                    grid_layout = QGridLayout()
-                    grid_layout.setSpacing(10)
-                    for i, key in enumerate(keys):
-                        widget = self._create_setting_row(key, is_image=False, grid_mode=True)
-                        grid_layout.addWidget(widget, i // 2, i % 2)
-                    card_settings_layout.addLayout(grid_layout)
-                else:
-                    for key in keys:
-                        is_image = (key == "image.color")
-                        row_layout = self._create_setting_row(key, is_image=is_image, grid_mode=False)
-                        card_settings_layout.addLayout(row_layout)
-                page_layout.addWidget(card)
-                
-            page_layout.addStretch()
-            self.content_area.addWidget(page)
-            
-            if cat_name in scroll_positions:
-                for j in range(page.layout().count()):
-                    widget = page.layout().itemAt(j).widget()
-                    if isinstance(widget, QScrollArea):
-                        QTimer.singleShot(0, lambda w=widget, v=scroll_positions[cat_name]: w.verticalScrollBar().setValue(v))
-            
-        if self.category_list.count() > 0:
-            if current_row >= 0 and current_row < self.category_list.count():
-                self.category_list.setCurrentRow(current_row)
-            else:
-                self.category_list.setCurrentRow(0)
+            placeholder = QWidget()
+            self.content_area.addWidget(placeholder)
+
+        self.category_list.blockSignals(False)
+        target_row = current_row if (current_row >= 0 and current_row < len(self._category_names)) else 0
+        self.category_list.setCurrentRow(target_row)
+        self._on_category_changed(target_row)
 
     def _create_padding_cross_layout(self):
         layout = QGridLayout()
@@ -1035,7 +1244,7 @@ class ThemeEditorWidget(QWidget):
                 
             val_lbl = QLabel(str(val))
             val_lbl.setFixedWidth(25)
-            val_lbl.setStyleSheet("color: #dc143c; font-weight: bold; font-size: 13px;")
+            val_lbl.setStyleSheet("color: #e78284; font-weight: bold; font-size: 13px;")
             val_lbl.setAlignment(Qt.AlignCenter)
             
             btn_style = "QPushButton { background: rgba(255,255,255,0.05); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; font-weight: 900; font-size: 12px; } QPushButton:hover { background: rgba(255,255,255,0.1); }"
@@ -1206,7 +1415,7 @@ class ThemeEditorWidget(QWidget):
         spinbox.setButtonSymbols(QAbstractSpinBox.NoButtons)
         spinbox.setFixedSize(50, 34)
         spinbox.setAlignment(Qt.AlignCenter)
-        spinbox.setStyleSheet("QSpinBox { background: rgba(255,255,255,0.05); color: #ffffff; border-radius: 17px; font-weight: bold; font-size: 13px; border: 1px solid rgba(255,255,255,0.1); } QSpinBox:focus { background: rgba(255,255,255,0.1); border: 1px solid #dc143c; } QSpinBox:disabled { background: rgba(0,0,0,0.2); color: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.05); }")
+        spinbox.setStyleSheet("QSpinBox { background: rgba(255,255,255,0.05); color: #ffffff; border-radius: 17px; font-weight: bold; font-size: 13px; border: 1px solid rgba(255,255,255,0.1); } QSpinBox:focus { background: rgba(255,255,255,0.1); border: 1px solid #e78284; } QSpinBox:disabled { background: rgba(0,0,0,0.2); color: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.05); }")
         spinbox.installEventFilter(self.wheel_filter)
 
         auto_check = ModernToggle()
@@ -1243,13 +1452,13 @@ class ThemeEditorWidget(QWidget):
         radio_group = QButtonGroup()
         
         default_radio = QRadioButton("Default")
-        default_radio.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
+        default_radio.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #e78284; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
         default_radio.setChecked(value == 'default')
         radio_group.addButton(default_radio)
         layout.addWidget(default_radio)
 
         custom_radio = QRadioButton("Custom")
-        custom_radio.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
+        custom_radio.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #e78284; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
         custom_radio.setChecked(value != 'default')
         radio_group.addButton(custom_radio)
         layout.addWidget(custom_radio)
@@ -1296,7 +1505,7 @@ class ThemeEditorWidget(QWidget):
             radio_buttons = []
             for label_text, opt_val in options:
                 radio_button = QRadioButton(label_text)
-                radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
+                radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #e78284; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
                 radio_button.setChecked(current_val == opt_val)
                 radio_group.addButton(radio_button)
                 layout.addWidget(radio_button)
@@ -1326,7 +1535,7 @@ class ThemeEditorWidget(QWidget):
             options = ["auto", "display", "ignore"]
             for i, option in enumerate(options):
                 radio_button = QRadioButton(option.title())
-                radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #dc143c; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
+                radio_button.setStyleSheet("QRadioButton { color: #b0b0b0; font-weight: bold; margin-right: 5px; } QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 2px solid #333333; background: rgba(255,255,255,0.05); } QRadioButton::indicator:checked { background: #e78284; border: 4px solid #121212; } QRadioButton:hover { color: #ffffff; }")
                 radio_button.setChecked(value == str(i) or option == value)
                 radio_group.addButton(radio_button)
                 layout.addWidget(radio_button)
@@ -1449,7 +1658,7 @@ class ThemeEditorWidget(QWidget):
         label_val = QLabel(str(value))
         label_val.setFixedSize(30, 20)
         label_val.setAlignment(Qt.AlignCenter)
-        label_val.setStyleSheet("color: #dc143c; font-weight: 700; font-size: 12px;")
+        label_val.setStyleSheet("color: #e78284; font-weight: 700; font-size: 12px;")
 
         slider = MinimalSlider(Qt.Horizontal)
         slider.setFixedWidth(120)
@@ -1465,6 +1674,7 @@ class ThemeEditorWidget(QWidget):
             slider.valueChanged.connect(lambda val, p=preview: p.set_border_width(val))
 
         slider.valueChanged.connect(lambda val, k=key, l=label_val, s=slider: self._update_slider_value(k, s.value(), l, trigger_reload=False))
+        slider.sliderReleased.connect(lambda: self.reload_timer.start(50))
         
         if preview:
             layout.addWidget(preview)
@@ -1475,27 +1685,17 @@ class ThemeEditorWidget(QWidget):
         label.setText(str(value))
         self._update_theme_data(key, value, trigger_reload=False)
         self.reload_timer.stop()
-        self.reload_timer.start(250)
+        if trigger_reload:
+            self.reload_timer.start(350)
 
     def _trigger_reload(self):
         if not self.auto_save: self._write_temporary_theme()
         else: self.save_theme()
 
     def _add_dropdown(self, layout, key, value):
-        dropdown = QComboBox()
-        dropdown.setFixedHeight(34)
-        dropdown.setCursor(Qt.PointingHandCursor)
-        dropdown.setStyleSheet("""
-            QComboBox { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 17px; color: white; padding: 0 35px 0 15px; min-width: 120px; font-weight: 500; font-size: 13px; }
-            QComboBox:hover { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); }
-            QComboBox:focus { border: 1px solid #dc143c; }
-            QComboBox::drop-down { border: none; width: 30px; }
-            QComboBox::down-arrow { image: url("icons/chevron_down.svg"); width: 14px; height: 14px; margin-right: 15px; border: none; }
-            QComboBox::down-arrow:hover { image: url("icons/chevron_down_hover.svg"); }
-            QComboBox QAbstractItemView { background: #1c1c20; color: white; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; outline: none; padding: 6px; }
-            QComboBox QAbstractItemView::item { min-height: 24px; padding: 10px 14px; border-radius: 8px; margin: 2px 4px; color: #b0b0b0; }
-            QComboBox QAbstractItemView::item:selected { background-color: rgba(255, 255, 255, 0.1); color: #ffffff; }
-        """)
+        dropdown = ModernComboBox(context_key=key)
+        dropdown.setFixedHeight(36)
+        dropdown.setMinimumWidth(150)
         options = []
         if key == "name": options = ["auto", "classic", "white", "black", "modern"]
         elif key == "view": options = ["auto", "compact", "small", "medium", "large", "wide"]
@@ -1520,9 +1720,9 @@ class ThemeEditorWidget(QWidget):
         layout.addWidget(dropdown)
 
     def _add_text_input(self, layout, key, value):
-        line_edit = QLineEdit(value)
-        line_edit.setFixedSize(140, 34)
-        line_edit.setStyleSheet("QLineEdit { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 17px; color: white; padding: 0 15px; font-size: 13px; } QLineEdit:hover { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); } QLineEdit:focus { border: 1px solid #dc143c; background: rgba(0, 0, 0, 0.2); }")
+        line_edit = PillLineEdit(height=34)
+        line_edit.setText(value)
+        line_edit.setFixedWidth(140)
         line_edit.textChanged.connect(lambda text, k=key: self._update_theme_data(k, text))
         layout.addWidget(line_edit)
 
@@ -1556,11 +1756,11 @@ class ThemeEditorWidget(QWidget):
         clear_btn = QPushButton("✕")
         clear_btn.setFixedSize(24, 24)
         clear_btn.setCursor(Qt.PointingHandCursor)
-        clear_btn.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); color: #888888; font-size: 10px; font-weight: bold; } QPushButton:hover { background: #dc143c; color: white; border: none; }")
+        clear_btn.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); color: #888888; font-size: 10px; font-weight: bold; } QPushButton:hover { background: #e78284; color: white; border: none; }")
 
-        line_edit = QLineEdit(value)
-        line_edit.setFixedSize(180, 34)
-        line_edit.setStyleSheet("QLineEdit { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 17px; color: white; padding: 0 15px; font-size: 13px; } QLineEdit:hover { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); } QLineEdit:focus { border: 1px solid #dc143c; background: rgba(0, 0, 0, 0.2); }")
+        line_edit = PillLineEdit(height=34)
+        line_edit.setText(value)
+        line_edit.setFixedWidth(180)
         
         def on_text_changed(text):
             update_preview_icon(text)
@@ -1576,7 +1776,7 @@ class ThemeEditorWidget(QWidget):
         browse_btn = QPushButton(get_mdl2_icon(0xE838, 16), "")
         browse_btn.setFixedSize(34, 34)
         browse_btn.setCursor(Qt.PointingHandCursor)
-        browse_btn.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border-radius: 17px; border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; } QPushButton:hover { background: #dc143c; color: #ffffff; border: none; }")
+        browse_btn.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border-radius: 17px; border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; } QPushButton:hover { background: #e78284; color: #ffffff; border: none; }")
         browse_btn.clicked.connect(lambda: self._browse_image(line_edit))
         layout.addWidget(browse_btn)
 
@@ -1718,6 +1918,9 @@ class ThemeEditorWidget(QWidget):
             print(f"Error in save_theme: {e}")
             return False
 
+    def save_selection(self):
+        return self.save_theme()
+
     def reset_theme(self):
         self.theme_data = self.backup_theme_data.copy()
         self._write_temporary_theme()
@@ -1726,9 +1929,13 @@ class ThemeEditorWidget(QWidget):
         return True
 
     def revert_changes(self):
-        self.theme_data = self.backup_theme_data.copy()
-        self._write_temporary_theme()
-        self.is_dirty = False
+        return self.reset_theme()
+
+    def revert_selection(self):
+        return self.reset_theme()
+
+    def revert_theme(self):
+        return self.reset_theme()
 
     def reload_theme(self, theme_name=None):
         if getattr(self, 'ignore_external_reload', False):

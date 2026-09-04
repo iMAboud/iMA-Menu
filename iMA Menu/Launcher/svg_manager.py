@@ -16,7 +16,7 @@ class StandaloneSVGManager(QDialog):
         self.setMinimumWidth(520)
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; }")
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(231, 130, 132, 0.6); border-radius: 8px; padding: 6px 12px; }")
         self._drag_pos = None
         self.setup_ui()
 
@@ -40,7 +40,7 @@ class StandaloneSVGManager(QDialog):
             #addSvgFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
             QLabel { color: #ffffff; font-size: 13px; } 
             QLineEdit, QTextEdit { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 12px; padding: 10px; color: #ffffff; font-size: 12px; }
-            QLineEdit:focus, QTextEdit:focus { border: 1px solid #dc143c; }
+            QLineEdit:focus, QTextEdit:focus { border: 1px solid #e78284; }
         """)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -60,7 +60,7 @@ class StandaloneSVGManager(QDialog):
         close_btn.setFont(QFont('Segoe MDL2 Assets', 10))
         close_btn.setFixedSize(28, 28)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #b0b0b0; } QPushButton:hover { background: rgba(220,20,60,0.2); color: #dc143c; }")
+        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #b0b0b0; } QPushButton:hover { background: rgba(231, 130, 132,0.2); color: #e78284; }")
         close_btn.clicked.connect(self.close)
         head_lay.addWidget(close_btn)
         cl.addLayout(head_lay)
@@ -94,7 +94,7 @@ class StandaloneSVGManager(QDialog):
         
         save_btn = QPushButton("Add & Save SVG")
         save_btn.setCursor(Qt.PointingHandCursor)
-        save_btn.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 9px 18px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
+        save_btn.setStyleSheet("QPushButton { background: #e78284; color: #ffffff; border-radius: 10px; padding: 9px 18px; font-weight: bold; } QPushButton:hover { background: #ea999c; }")
         save_btn.clicked.connect(self.save_svg)
         
         btns.addStretch()

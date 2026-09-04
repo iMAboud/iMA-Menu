@@ -2,6 +2,135 @@ import PyInstaller.__main__
 import os
 import shutil
 import sys
+import zipfile
+
+SPEC_TEMPLATE = '''# -*- mode: python ; coding: utf-8 -*-
+import os
+
+block_cipher = None
+
+# Heavy native DLLs that are completely unused by pure QWidget Windows apps
+excluded_binaries = {
+    'opengl32sw.dll',
+    'd3dcompiler_47.dll',
+    'libglesv2.dll',
+    'libegl.dll',
+    'qt5quick.dll',
+    'qt5qml.dll',
+    'qt5qmlmodels.dll',
+    'qt5network.dll',
+    'qt5dbus.dll',
+    'qt5sensors.dll',
+    'qt5location.dll',
+    'qt5positioning.dll',
+    'qt5multimedia.dll',
+    'qt5multimediawidgets.dll',
+    'qt5xml.dll',
+    'qt5xmlpatterns.dll',
+    'qt5sql.dll',
+    'qt5test.dll',
+    'qt5printsupport.dll',
+    'qminimal.dll',
+    'qoffscreen.dll',
+    'qwebgl.dll',
+    'qtiff.dll',
+    'qtuiotouchplugin.dll',
+    'qxdgdesktopportal.dll',
+    'qicns.dll',
+    'qtga.dll',
+    'qwbmp.dll',
+    'qt5websockets.dll',
+    'libssl-3.dll',
+}
+
+datas = [
+    ('style.css', '.'),
+    ('ima_updater.exe', '.'),
+    ('shell.dll', '.'),
+    ('shell.exe', '.'),
+    ('icons', 'icons'),
+    ('fonts', 'fonts'),
+    ('cursors.json', '.'),
+    ('cursors_previews.json', '.'),
+    ('cache/plugins.json', 'cache'),
+]
+
+a = Analysis(
+    ['launcher.pyw'],
+    pathex=[],
+    binaries=[],
+    datas=datas,
+    hiddenimports=[
+        'encodings', 'glyphs_data', 'modify_widget',
+        'theme_editor_widget', 'theme_switcher_widget', 'cursor_widget',
+        'github_client', 'utils', 'cloud_sync', 'nss_error_monitor',
+        'plugin_registry', 'nss_parser', 'plugin_workers'
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        'requests', 'urllib3', 'idna', 'certifi', 'charset_normalizer',
+        'markdown', 'xml', 'pyexpat', '_elementtree', 'xmlrpc',
+        'win32gui', 'win32api', 'win32con', 'win32', 'win32crypt', 'pywintypes', 'pywin32_system32', 'win32trace', 'win32ui',
+        '_decimal', 'decimal', 'lzma', '_lzma', 'bz2', '_bz2', 'sqlite3', '_sqlite3',
+        'distutils', 'setuptools', 'pkg_resources', 'pip', 'wheel', 'curses', 'turtle',
+        'cryptography', 'cffi', '_cffi_backend', 'pycparser', 'psutil',
+        'brotlicffi', 'brotli', 'numpy',
+        'PyQt5.QtWinExtras',
+        'PyQt5.QtWebEngine', 'PyQt5.QtWebEngineCore', 'PyQt5.QtWebEngineWidgets',
+        'PyQt5.QtWebKit', 'PyQt5.QtWebKitWidgets',
+        'PyQt5.QtSql', 'PyQt5.QtTest', 'PyQt5.QtXml', 'PyQt5.QtMultimedia',
+        'PyQt5.QtQuick', 'PyQt5.QtQml', 'PyQt5.QtLocation', 'PyQt5.QtSensors',
+        'PyQt5.QtRemoteObjects', 'PyQt5.QtWebChannel', 'PyQt5.QtBluetooth',
+        'PyQt5.QtNfc', 'PyQt5.QtPositioning', 'PyQt5.QtQuickWidgets',
+        'PyQt5.QtMultimediaWidgets', 'PyQt5.QtNetwork', 'PyQt5.QtDBus',
+        'PyQt5.QtDesigner', 'PyQt5.QtHelp', 'PyQt5.QtPrintSupport',
+        'PyQt5.QtXmlPatterns', 'PyQt5.QtOpenGL', 'PyQt5.QtOpenGLWidgets',
+        'tkinter', 'unittest', 'pydoc',
+        'unicodedata', 'multiprocessing', '_multiprocessing',
+        'ssl', '_ssl', 'webbrowser', 'tarfile'
+    ],
+    noarchive=False,
+    optimize=2,
+)
+
+# Strip out heavy unneeded native binaries from the bundle
+a.binaries = [
+    x for x in a.binaries
+    if not any(x[0].lower().endswith(ex) for ex in excluded_binaries)
+]
+
+# Strip out unused translation files from datas
+a.datas = [
+    x for x in a.datas
+    if not x[0].lower().endswith('.qm')
+]
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='launcher',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=os.path.join('icons', 'icon.ico'),
+)
+'''
 
 def build():
     try:
@@ -15,86 +144,20 @@ def build():
     if os.path.exists('build'):
         shutil.rmtree('build', ignore_errors=True)
 
-    base_args = [
-        'launcher.pyw',
-        '--onefile', 
-        '--windowed',
-        f'--icon={os.path.join("icons", "icon.ico")}',
-        '--name=launcher',
-        '--add-data=style.css;.',
-        '--add-data=ima_updater.exe;.',
-        '--add-data=shell.dll;.',
-        '--add-data=shell.exe;.',
-        '--add-data=icons;icons',
-        '--add-data=fonts;fonts',
-        '--add-data=cache/plugins.json;cache',
-        '--hidden-import=unicodedata',
-        '--hidden-import=idna',
-        '--hidden-import=urllib3',
-        '--hidden-import=certifi',
-        '--hidden-import=charset_normalizer',
-        '--hidden-import=requests',
-        '--hidden-import=encodings',
-        '--hidden-import=glyphs_data',
-        '--hidden-import=modify_widget',
-        '--hidden-import=theme_editor_widget',
-        '--hidden-import=theme_switcher_widget',
-        '--hidden-import=utils',
-        '--hidden-import=cloud_sync',
-        '--hidden-import=nss_error_monitor',
-        '--hidden-import=plugin_registry',
-        '--hidden-import=win32gui',
-        '--hidden-import=win32api',
-        '--hidden-import=win32con',
-        '--exclude-module=brotlicffi',
-        '--exclude-module=brotli',
-        '--exclude-module=numpy',
-        '--exclude-module=PyQt5.QtWebEngine',
-        '--exclude-module=PyQt5.QtWebEngineCore',
-        '--exclude-module=PyQt5.QtWebEngineWidgets',
-        '--exclude-module=PyQt5.QtWebKit',
-        '--exclude-module=PyQt5.QtWebKitWidgets',
-        '--exclude-module=PyQt5.QtSql',
-        '--exclude-module=PyQt5.QtTest',
-        '--exclude-module=PyQt5.QtXml',
-        '--exclude-module=PyQt5.QtMultimedia',
-        '--exclude-module=PyQt5.QtQuick',
-        '--exclude-module=PyQt5.QtQml',
-        '--exclude-module=PyQt5.QtLocation',
-        '--exclude-module=PyQt5.QtSensors',
-        '--exclude-module=PyQt5.QtRemoteObjects',
-        '--exclude-module=PyQt5.QtWebChannel',
-        '--exclude-module=PyQt5.QtBluetooth',
-        '--exclude-module=PyQt5.QtNfc',
-        '--exclude-module=PyQt5.QtPositioning',
-        '--exclude-module=PyQt5.QtQuickWidgets',
-        '--exclude-module=PyQt5.QtMultimediaWidgets',
-        '--exclude-module=PyQt5.QtNetwork',
-        '--exclude-module=PyQt5.QtDBus',
-        '--exclude-module=PyQt5.QtDesigner',
-        '--exclude-module=PyQt5.QtHelp',
-        '--exclude-module=PyQt5.QtPrintSupport',
-        '--exclude-module=PyQt5.QtXmlPatterns',
-        '--exclude-module=PyQt5.QtOpenGL',
-        '--exclude-module=PyQt5.QtOpenGLWidgets',
-        '--exclude-module=tkinter',
-        '--exclude-module=unittest',
-        '--exclude-module=pydoc',
-        '--noconfirm',
-        '--clean',
-    ]
+    with open('launcher.spec', 'w', encoding='utf-8') as f:
+        f.write(SPEC_TEMPLATE)
 
-    optional_dirs = [
-        (os.path.join("..", "imports"), "imports"),
-        (os.path.join("..", "theme"), "theme"),
-    ]
+    PyInstaller.__main__.run(['launcher.spec', '--noconfirm', '--clean'])
 
-    for src, dst in optional_dirs:
-        if os.path.exists(src):
-            base_args.append(f'--add-data={src};{dst}')
+    dist_dir = os.path.abspath('dist')
+    exe_path = os.path.join(dist_dir, 'launcher.exe')
 
-    PyInstaller.__main__.run(base_args)
-    print(f"Build complete! Single executable is at: {os.path.abspath(os.path.join('dist', 'launcher.exe'))}")
+    if os.path.exists(exe_path):
+        size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+        print(f"\n=======================================================")
+        print(f"Build complete!")
+        print(f"Standalone Executable: {exe_path} ({size_mb:.2f} MB)")
+        print(f"=======================================================\n")
 
 if __name__ == "__main__":
     build()

@@ -7,14 +7,23 @@ from PyQt5.QtWidgets import (QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLay
                              QScrollArea, QFrame, QLineEdit, QFileDialog, QComboBox, 
                              QCheckBox, QRadioButton, QGridLayout, QButtonGroup, QListWidget,
                              QListWidgetItem, QSizePolicy, QDialog, QFormLayout, 
-                             QGraphicsDropShadowEffect, QTabWidget, QLayout, QListView,
-                             QStyledItemDelegate, QStyle, QAbstractItemView, QTextEdit, QFileIconProvider)
-from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QIcon, QPixmap, QFontDatabase, QFontMetrics, QImage
+                             QGraphicsDropShadowEffect, QTabWidget, QStackedWidget, QLayout, QListView,
+                             QStyledItemDelegate, QStyle, QAbstractItemView, QTextEdit, QFileIconProvider, QCompleter,
+                             QMenu, QAction)
+from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QIcon, QPixmap, QFontDatabase, QFontMetrics, QImage, QConicalGradient, QLinearGradient, QRadialGradient
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QPoint, QPointF, QRect, QRectF, QTimer, QObject, QAbstractListModel, QModelIndex, QFileInfo
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
-from utils import resource_path, UnsavedChangesDialog, safe_file_write, get_font_icon, get_mdl2_icon, NILESOFT_FONT_FAMILY, _init_nilesoft_font
+from utils import resource_path, UnsavedChangesDialog, safe_file_write, get_font_icon, get_mdl2_icon, NILESOFT_FONT_FAMILY, _init_nilesoft_font, FlowLayout, normalize_path, ModernComboBox, render_nss_asset_pixmap, PillTabButton, PillPushButton, PillLineEdit
 from theme_editor_widget import MinimalColorPickerDialog
+from nss_parser import (
+    NSSLexer, parse_nss_args, find_items_and_menus, format_nss_value,
+    save_imported_item, mass_save_op, _get_custom_menus_from_nss,
+    _get_vis_options, _build_vis_expression, _parse_vis_expression,
+    is_rule_complete, extract_ids_from_section, extract_custom_rules,
+    update_section, scan_nss_items, cleanup_orphan_icons,
+    read_file, write_file
+)
 
 # Global path storage to be set by launcher.pyw
 PROJECT_ROOT = None
@@ -22,31 +31,69 @@ PROJECT_ROOT = None
 def set_project_root(root):
     global PROJECT_ROOT
     PROJECT_ROOT = root
+    import nss_parser
+    nss_parser.set_project_root(root)
 
 DEFAULT_IDS = [
-    "id.add_a_network_location", "id.align_icons_to_grid", "id.arrange_by", "id.auto_arrange_icons",
-    "id.autoplay", "id.cancel", "id.cascade_windows", "id.cast_to_device", "id.cleanup", "id.collapse",
-    "id.collapse_all_groups", "id.collapse_group", "id.configure", "id.content", "id.control_panel",
-    "id.copy_as_path", "id.copy_here", "id.copy_to", "id.copy_to_folder", "id.cortana",
-    "id.create_shortcuts_here", "id.customize_notification_icons", "id.customize_this_folder",
-    "id.desktop", "id.details", "id.device_manager", "id.disconnect", "id.disconnect_network_drive",
-    "id.erase_this_disc", "id.expand", "id.expand_all_groups", "id.expand_group", "id.extra_large_icons",
-    "id.folder_options", "id.give_access_to", "id.group_by", "id.include_in_library",
-    "id.insert_unicode_control_character", "id.large_icons", "id.list", "id.lock_all_taskbars",
-    "id.lock_the_taskbar", "id.make_available_offline", "id.make_available_online", "id.manage",
-    "id.map_as_drive", "id.map_network_drive", "id.medium_icons", "id.merge", "id.more_options",
-    "id.move_here", "id.move_to", "id.move_to_folder", "id.new", "id.new_item", "id.news_and_interests",
-    "id.next_desktop_background", "id.open", "id.open_as_portable", "id.open_autoplay",
-    "id.open_in_new_process", "id.open_in_new_tab", "id.open_in_new_window", "id.open_new_tab",
-    "id.open_new_window", "id.paste_shortcut", "id.play", "id.power_options", "id.print",
-    "id.reconversion", "id.redo", "id.remove_properties", "id.restore_default_libraries",
-    "id.restore_previous_versions", "id.rotate_left", "id.rotate_right", "id.run",
-    "id.run_as_another_user", "id.search", "id.select_all", "id.share", "id.share_with",
-    "id.shield", "id.show_cortana_button", "id.show_desktop_icons", "id.show_libraries",
-    "id.show_network", "id.show_pen_button", "id.show_people_on_the_taskbar", "id.show_task_view_button",
-    "id.show_the_desktop", "id.show_this_pc", "id.show_touch_keyboard_button", "id.show_touchpad_button",
-    "id.show_windows_stacked", "id.small_icons", "id.sort_by", "id.store", "id.tiles",
-    "id.troubleshoot_compatibility", "id.turn_off_bitlocker", "id.turn_on_bitlocker", "id.undo", "id.view"
+    "id.account", "id.add_a_network_location", "id.add_to_favorites", "id.add_to_playlist",
+    "id.add_to_windows_media_player_list", "id.adjust_date_time", "id.administrator", "id.align_icons_to_grid",
+    "id.all_control_panel_items", "id.application", "id.arrange_by", "id.autoplay",
+    "id.auto_arrange_icons", "id.burn_disc_image", "id.cancel", "id.cascade_windows",
+    "id.cast_to_device", "id.cleanup", "id.close", "id.close_all_windows",
+    "id.collapse", "id.collapse_all_groups", "id.collapse_group", "id.command_prompt",
+    "id.compressed", "id.configure", "id.content", "id.control_panel",
+    "id.copy", "id.copy_as_path", "id.copy_here", "id.copy_path",
+    "id.copy_to", "id.copy_to_clipboard", "id.copy_to_folder", "id.cortana",
+    "id.create_shortcut", "id.create_shortcuts", "id.create_shortcuts_here", "id.customize_notification_icons",
+    "id.customize_this_folder", "id.cut", "id.default", "id.delete",
+    "id.desktop", "id.details", "id.device_manager", "id.disconnect",
+    "id.disconnect_network_drive", "id.display_settings", "id.documents", "id.downloads",
+    "id.edit", "id.eject", "id.empty", "id.empty_recycle_bin",
+    "id.erase_this_disc", "id.exit_explorer", "id.expand", "id.expand_all_groups",
+    "id.expand_group", "id.expand_to_current_folder", "id.extract_all", "id.extract_to",
+    "id.extra_large_icons", "id.favorites", "id.file_access_denied", "id.file_explorer",
+    "id.file_explorer_options", "id.file_in_use", "id.folder", "id.folders",
+    "id.folder_access_denied", "id.folder_in_use", "id.folder_options", "id.format",
+    "id.general", "id.give_access_to", "id.go_to", "id.group_by",
+    "id.hide", "id.import_pictures_and_videos", "id.include_in_library", "id.insert_unicode_control_character",
+    "id.install", "id.invert_selection", "id.large_icons", "id.list",
+    "id.lock_all_taskbars", "id.lock_the_taskbar", "id.make_available_offline", "id.make_available_online",
+    "id.manage", "id.map_as_drive", "id.map_network_drive", "id.maximize",
+    "id.media", "id.medium_icons", "id.merge", "id.minimize",
+    "id.minimize_all_windows", "id.more", "id.more_options", "id.mount",
+    "id.move", "id.move_here", "id.move_to", "id.move_to_folder",
+    "id.music", "id.network", "id.new", "id.news_and_interests",
+    "id.new_folder", "id.new_item", "id.next_desktop_background", "id.none",
+    "id.open", "id.open_as_portable", "id.open_autoplay", "id.open_command_prompt",
+    "id.open_command_window_here", "id.open_file_location", "id.open_folder_location", "id.open_in_new_process",
+    "id.open_in_new_tab", "id.open_in_new_window", "id.open_new_tab", "id.open_new_window",
+    "id.open_powershell_window_here", "id.open_windows_powershell", "id.open_with", "id.options",
+    "id.paste", "id.paste_shortcut", "id.permanently_delete", "id.personalize",
+    "id.personal_folder", "id.pictures", "id.pin_current_folder_to_quick_access", "id.pin_to_quick_access",
+    "id.pin_to_start", "id.pin_to_start_menu", "id.pin_to_taskbar", "id.play",
+    "id.play_with_windows_media_player", "id.power", "id.power_options", "id.preview",
+    "id.print", "id.programs", "id.programs_and_features", "id.properties",
+    "id.reconversion", "id.recycle_bin", "id.redo", "id.refresh",
+    "id.remove", "id.remove_from_favorites", "id.remove_from_quick_access", "id.remove_from_recent",
+    "id.remove_properties", "id.rename", "id.restart", "id.restore",
+    "id.restore_all_windows", "id.restore_default_libraries", "id.restore_previous_versions", "id.rotate_left",
+    "id.rotate_right", "id.run", "id.run_as_administrator", "id.run_as_another_user",
+    "id.run_as_different_user", "id.run_with_powershell", "id.search", "id.security",
+    "id.select", "id.select_all", "id.select_none", "id.send_feedback",
+    "id.send_to", "id.settings", "id.set_as_desktop_background", "id.set_as_desktop_wallpaper",
+    "id.share", "id.share_with", "id.shield", "id.shortcut",
+    "id.show", "id.show_all_folders", "id.show_cortana_button", "id.show_desktop_icons",
+    "id.show_file_extensions", "id.show_hidden_files", "id.show_libraries", "id.show_network",
+    "id.show_open_windows", "id.show_pen_button", "id.show_people_on_the_taskbar", "id.show_task_view_button",
+    "id.show_the_desktop", "id.show_this_pc", "id.show_touchpad_button", "id.show_touch_keyboard_button",
+    "id.show_windows_side_by_side", "id.show_windows_stacked", "id.shut_down", "id.sign_out",
+    "id.size", "id.small_icons", "id.sort_by", "id.start_menu",
+    "id.store", "id.system", "id.system_folder", "id.taskbar",
+    "id.taskbar_settings", "id.task_manager", "id.terminal", "id.this_pc",
+    "id.tiles", "id.troubleshoot_compatibility", "id.turn_off_bitlocker", "id.turn_on_bitlocker",
+    "id.undo", "id.unpin_from_quick_access", "id.unpin_from_start", "id.unpin_from_start_menu",
+    "id.unpin_from_taskbar", "id.videos", "id.view", "id.windows",
+    "id.windows_powershell", "id.windows_terminal"
 ]
 
 
@@ -83,282 +130,825 @@ class NSSCacheManager:
         h = cls.get_file_hash(fp)
         cls._cache[fp] = {'hash': h, 'items': items}
 
-KEY_TOGGLE_ICONS = {
-    'Hide': (0xED1A, 'Hide'),
-    'Normal': (0xE73E, 'Normal'),
-    'Shift': (0xE752, 'Shift'),
-    'Ctrl': (0xE765, 'Ctrl'),
-    'Caps': (0xE8E8, 'Caps'),
-    'LMB': (0xE962, 'LMB'),
-}
+class AnimatedGlowPreviewLabel(QPushButton):
+    """
+    Large icon preview box (68x68) with a continuous animated gradient glow border.
+    Uses QPushButton's built-in clicked signal.
+    """
 
-class KeyToggleButton(QPushButton):
-    stateChanged = pyqtSignal(int)
-    def __init__(self, label, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        icon_code, self._label = KEY_TOGGLE_ICONS.get(label, (0xE73E, label))
-        glyph = chr(icon_code)
-        self.setText(f"{glyph}\n{self._label}")
-        self.setFont(QFont('Segoe MDL2 Assets', 10))
-        self.setCheckable(True)
-        self.setFixedSize(50, 40)
+        self.setFixedSize(68, 68)
         self.setCursor(Qt.PointingHandCursor)
-        self._update_style()
-        self.toggled.connect(self._on_toggled)
-    def _on_toggled(self, checked):
-        self._update_style()
-        self.stateChanged.emit(2 if checked else 0)
-    def _update_style(self):
-        if self.isChecked():
-            self.setStyleSheet("QPushButton { background: rgba(220, 20, 60, 0.2); border: 1px solid rgba(220, 20, 60, 0.5); border-radius: 10px; color: #dc143c; font-size: 10px; padding: 2px; } QPushButton:hover { background: rgba(220, 20, 60, 0.3); }")
-        else:
-            self.setStyleSheet("QPushButton { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; color: #333333; font-size: 10px; padding: 2px; } QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #b0b0b0; }")
-    def isChecked(self):
-        return super().isChecked()
-    def setChecked(self, val):
-        super().setChecked(val)
-        self._update_style()
-    def setEnabled(self, val):
-        super().setEnabled(val)
-        if not val:
-            self.setStyleSheet("QPushButton { background: rgba(220, 20, 60, 0.15); border: 1px solid rgba(220, 20, 60, 0.3); border-radius: 10px; color: rgba(220, 20, 60, 0.6); font-size: 10px; padding: 2px; }")
+        self.setToolTip("Click to Browse Glyphs / Upload Icon")
+        self._angle = 0
+        self._asset_val = ""
+        self._rendered_pixmap = None
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._rotate_glow)
+        self._timer.start(35)
+
+    def _rotate_glow(self):
+        self._angle = (self._angle + 3) % 360
+        self.update()
+
+    def set_asset(self, val):
+        self._asset_val = str(val or "")
+        self._rendered_pixmap = render_nss_asset_pixmap(self._asset_val, size=40)
+        self.update()
+
     def paintEvent(self, event):
-        from PyQt5.QtGui import QPainter, QFont as QF
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            painter.setRenderHint(QPainter.TextAntialiasing)
+
+            center = QPointF(self.width() / 2.0, self.height() / 2.0)
+            is_hover = self.underMouse()
+
+            # Outer radiant bloom glow on hover
+            if is_hover:
+                glow_radius = self.width() / 2.0
+                glow_grad = QRadialGradient(center, glow_radius)
+                glow_grad.setColorAt(0.0, QColor(234, 153, 156, 180))
+                glow_grad.setColorAt(0.4, QColor(231, 130, 132, 140))
+                glow_grad.setColorAt(0.7, QColor(168, 85, 247, 90))
+                glow_grad.setColorAt(1.0, QColor(0, 0, 0, 0))
+                painter.fillRect(self.rect(), glow_grad)
+
+            rect = QRectF(5, 5, self.width() - 10, self.height() - 10)
+
+            gradient = QConicalGradient(center, self._angle)
+            gradient.setColorAt(0.0, QColor("#ea999c"))
+            gradient.setColorAt(0.3, QColor("#e78284"))
+            gradient.setColorAt(0.6, QColor("#a855f7"))
+            gradient.setColorAt(0.85, QColor("#ec4899"))
+            gradient.setColorAt(1.0, QColor("#ea999c"))
+
+            border_pen = QPen(gradient, 2.5 if is_hover else 1.8)
+            painter.setPen(border_pen)
+            
+            path = QPainterPath()
+            path.addRoundedRect(rect, 14, 14)
+            
+            painter.fillPath(path, QColor("#121212") if not is_hover else QColor("#1a1018"))
+            painter.drawPath(path)
+
+            if self._rendered_pixmap and not self._rendered_pixmap.isNull():
+                pw = self._rendered_pixmap.width()
+                ph = self._rendered_pixmap.height()
+                px = center.x() - pw / 2
+                py = center.y() - ph / 2
+                painter.drawPixmap(int(px), int(py), self._rendered_pixmap)
+            else:
+                glyph_font = QFont("Segoe MDL2 Assets", 18, QFont.Bold)
+                painter.setFont(glyph_font)
+                painter.setPen(QColor("#ea999c"))
+                painter.drawText(rect, Qt.AlignCenter, "\uE734")
+        finally:
+            painter.end()
+
+
+class ColorCircleButton(QPushButton):
+    """
+    Circular color dot button (●) for selecting glyph layer colors.
+    """
+    colorSelected = pyqtSignal(str)
+
+    def __init__(self, color="#ea999c", tooltip="Select Color", parent=None):
+        super().__init__(parent)
+        self._color = color or "#ffffff"
+        self.setFixedSize(28, 28)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(tooltip)
+        self.clicked.connect(self._toggle_palette)
+
+    def get_color(self):
+        return self._color
+
+    def set_color(self, color):
+        self._color = color or "#ffffff"
+        self.update()
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        icon_code = KEY_TOGGLE_ICONS.get(self._label, (0xE73E, ''))[0]
-        glyph = chr(icon_code)
-        c = QColor('#dc143c') if self.isChecked() else QColor('#333333')
-        if not self.isEnabled(): c = QColor(220, 20, 60, 153)
-        if self.underMouse() and self.isEnabled(): c = c.lighter(130)
-        painter.setPen(c)
-        icon_font = QF('Segoe MDL2 Assets', 12)
-        icon_font.setWeight(QF.Bold)
-        painter.setFont(icon_font)
-        painter.drawText(self.rect().adjusted(0, 3, 0, -14), Qt.AlignHCenter | Qt.AlignTop, glyph)
-        label_font = QF('Segoe UI Variable Display', 8)
-        label_font.setWeight(QF.DemiBold)
-        painter.setFont(label_font)
-        painter.drawText(self.rect().adjusted(0, 22, 0, 0), Qt.AlignHCenter | Qt.AlignTop, self._label)
+
+        rect = QRectF(2.0, 2.0, self.width() - 4.0, self.height() - 4.0)
+        is_hover = self.underMouse() and self.isEnabled()
+
+        path = QPainterPath()
+        path.addEllipse(rect)
+        if not self.isEnabled():
+            painter.fillPath(path, QColor(45, 48, 58))
+            painter.setPen(QPen(QColor(255, 255, 255, 35), 1.2))
+        else:
+            painter.fillPath(path, QColor(self._color))
+            border_color = QColor(255, 255, 255, 230) if is_hover else QColor(255, 255, 255, 80)
+            painter.setPen(QPen(border_color, 2.0 if is_hover else 1.5))
+        painter.drawPath(path)
+
         painter.end()
+
+    def _toggle_palette(self):
+        dlg = MinimalColorPickerDialog(self._color or "#ea999c", "glyph_color", self)
+        dlg.default_checkbox.hide()
+        def on_color(key, color):
+            hex_c = color.name() if hasattr(color, 'name') else str(color)
+            self._on_palette_color(hex_c)
+        dlg.colorSelected.connect(on_color)
+        dlg.exec_()
+
+    def _on_palette_color(self, hex_color):
+        self.set_color(hex_color)
+        self.colorSelected.emit(hex_color)
+
+ColorDropdownPill = ColorCircleButton
+
+
+class ModernCheckBox(QCheckBox):
+    """Anti-aliased vector checkbox with smooth 1.5px border and checkmark."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(18, 18)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none;")
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(1.0, 1.0, self.width() - 2.0, self.height() - 2.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 4.0, 4.0)
+
+        is_chk = self.isChecked()
+        is_hov = self.underMouse()
+
+        if is_chk:
+            p.fillPath(path, QColor("#e78284"))
+            p.setPen(QPen(QColor("#ea999c"), 1.5))
+            p.drawPath(path)
+            p.setPen(QPen(QColor("#ffffff"), 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            p.drawLine(int(rect.left() + 4), int(rect.top() + 9), int(rect.left() + 7), int(rect.top() + 12))
+            p.drawLine(int(rect.left() + 7), int(rect.top() + 12), int(rect.left() + 13), int(rect.top() + 5))
+        else:
+            p.fillPath(path, QColor(255, 255, 255, 12))
+            border_c = QColor(255, 255, 255, 120) if is_hov else QColor(255, 255, 255, 60)
+            p.setPen(QPen(border_c, 1.5))
+            p.drawPath(path)
+        p.end()
+
+
+class PillSearchInput(PillLineEdit):
+    """Vector anti-aliased pill-shaped search line edit."""
+    def __init__(self, placeholder="", parent=None):
+        super().__init__(placeholder=placeholder, parent=parent, height=38)
+
+
+class UploadIconButton(QPushButton):
+    """Vector anti-aliased circular upload button."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(38, 38)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Upload Custom Image/Icon")
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addEllipse(rect)
+
+        is_hover = self.underMouse()
+        if is_hover:
+            p.fillPath(path, QColor(231, 130, 132, 45))
+            p.setPen(QPen(QColor("#e78284"), 1.5))
+            p.drawPath(path)
+            p.setPen(QColor("#ffffff"))
+        else:
+            p.fillPath(path, QColor(255, 255, 255, 12))
+            p.setPen(QPen(QColor(255, 255, 255, 32), 1.2))
+            p.drawPath(path)
+            p.setPen(QColor("#e0e0e0"))
+
+        p.setFont(QFont('Segoe MDL2 Assets', 12))
+        p.drawText(self.rect(), Qt.AlignCenter, "\uE8E5")
+        p.end()
+
+
+class GlyphPreviewFrame(QFrame):
+    """Vector anti-aliased preview container with exactly ONE smooth outline."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(56, 38)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none;")
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 12.0, 12.0)
+
+        is_hover = self.underMouse()
+        p.fillPath(path, QColor(255, 255, 255, 18 if is_hover else 12))
+        border_c = QColor(255, 255, 255, 70) if is_hover else QColor(255, 255, 255, 32)
+        p.setPen(QPen(border_c, 1.2))
+        p.drawPath(path)
+        p.end()
+
+
+class InlinePalettePopup(QDialog):
+    """
+    Sleek floating popup with swatches, custom hex input, and eyedropper tool.
+    """
+    colorSelected = pyqtSignal(str)
+
+    PALETTE = [
+        "#ea999c", "#e78284", "#f43f5e", "#ec4899", "#d946ef", "#a855f7",
+        "#8b5cf6", "#6366f1", "#3b82f6", "#0ea5e9", "#06b6d4", "#14b8a6",
+        "#10b981", "#22c55e", "#84cc16", "#eab308", "#f97316", "#ef4444",
+        "#ffffff", "#d1d5db", "#9ca3af", "#6b7280", "#374151", "#111827"
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(220, 180)
+
+        main_lay = QVBoxLayout(self)
+        main_lay.setContentsMargins(0, 0, 0, 0)
+
+        frame = QFrame(self)
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #12141c;
+                border: 1px solid #2a2e42;
+                border-radius: 12px;
+            }
+        """)
+        main_lay.addWidget(frame)
+
+        cl = QVBoxLayout(frame)
+        cl.setContentsMargins(10, 10, 10, 10)
+        cl.setSpacing(8)
+
+        grid_w = QWidget()
+        grid_lay = QGridLayout(grid_w)
+        grid_lay.setContentsMargins(0, 0, 0, 0)
+        grid_lay.setSpacing(5)
+
+        for i, color in enumerate(self.PALETTE):
+            btn = QPushButton()
+            btn.setFixedSize(22, 22)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {color};
+                    border: 1px solid rgba(255,255,255,0.15);
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    border: 2px solid #ffffff;
+                }}
+            """)
+            btn.clicked.connect(lambda _, c=color: self._select_color(c))
+            row = i // 6
+            col = i % 6
+            grid_lay.addWidget(btn, row, col)
+
+        cl.addWidget(grid_w)
+
+        hex_row = QHBoxLayout()
+        hex_row.setSpacing(6)
+        
+        self.hex_inp = QLineEdit("#ea999c")
+        self.hex_inp.setFixedHeight(28)
+        self.hex_inp.setStyleSheet("""
+            QLineEdit {
+                background-color: #121212;
+                border: 1px solid #2a2e42;
+                border-radius: 6px;
+                color: #ffffff;
+                padding: 0 6px;
+                font-size: 11px;
+                font-family: 'Consolas', monospace;
+            }
+            QLineEdit:focus {
+                border: 1px solid #ea999c;
+            }
+        """)
+        hex_row.addWidget(self.hex_inp, 1)
+
+        apply_btn = QPushButton("Apply")
+        apply_btn.setFixedHeight(28)
+        apply_btn.setCursor(Qt.PointingHandCursor)
+        apply_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ea999c;
+                color: #ffffff;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 0 10px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #ff4770;
+            }
+        """)
+        apply_btn.clicked.connect(self._apply_custom_hex)
+        hex_row.addWidget(apply_btn)
+
+        cl.addLayout(hex_row)
+
+    def _select_color(self, c):
+        self.colorSelected.emit(c)
+        self.close()
+
+    def _apply_custom_hex(self):
+        c = self.hex_inp.text().strip()
+        if not c.startswith("#"):
+            c = "#" + c
+        if len(c) in (4, 7, 9):
+            self.colorSelected.emit(c)
+            self.close()
+
+
+class CriteriaPill(QPushButton):
+    """
+    Pill-shaped radio switch with pink/magenta gradient border and glowing filled dot when active.
+    """
+    def __init__(self, text, mode, parent=None):
+        super().__init__(parent)
+        self.setText(text)
+        self.mode = mode
+        self.setCheckable(True)
+        self.setFixedHeight(32)
+        self.setMinimumWidth(76)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(1, 1, self.width() - 2, self.height() - 2)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 16, 16)
+
+        is_checked = self.isChecked()
+        is_hover = self.underMouse()
+
+        if is_checked:
+            painter.fillPath(path, QColor(234, 153, 156, 28))
+            gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            gradient.setColorAt(0.0, QColor("#ea999c"))
+            gradient.setColorAt(1.0, QColor("#e78284"))
+            painter.setPen(QPen(gradient, 1.5))
+            painter.drawPath(path)
+
+            dot_rect = QRectF(rect.left() + 8, (self.height() - 12) / 2, 12, 12)
+            dot_path = QPainterPath()
+            dot_path.addEllipse(dot_rect)
+            painter.fillPath(dot_path, QColor("#ea999c"))
+            painter.setPen(Qt.NoPen)
+            painter.drawPath(dot_path)
+
+            inner_rect = QRectF(rect.left() + 11.5, (self.height() - 5) / 2, 5, 5)
+            painter.setBrush(QColor("#ffffff"))
+            painter.drawEllipse(inner_rect)
+        else:
+            painter.fillPath(path, QColor("#121212") if not is_hover else QColor("#0E0E0E"))
+            painter.setPen(QPen(QColor("#242738") if not is_hover else QColor("#383d56"), 1.0))
+            painter.drawPath(path)
+
+            dot_rect = QRectF(rect.left() + 8, (self.height() - 12) / 2, 12, 12)
+            painter.setPen(QPen(QColor("#4b5563") if not is_hover else QColor("#9ca3af"), 1.2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(dot_rect)
+
+        font = QFont("Segoe UI Variable Display", 9)
+        font.setWeight(QFont.DemiBold if is_checked else QFont.Medium)
+        painter.setFont(font)
+        painter.setPen(QColor("#ffffff") if is_checked else QColor("#9ca3af"))
+        
+        text_rect = QRectF(rect.left() + 24, 0, self.width() - 28, self.height())
+        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.text())
+
+        painter.end()
+
+
+class VisibilityCard(QPushButton):
+    """
+    Modern rectangular card for visibility selection with top icon, bold title, 2-4 word description, and top right checkmark badge.
+    """
+    def __init__(self, key, title, subtitle, icon_code, parent=None):
+        super().__init__(parent)
+        self.key = key
+        self.title_text = title
+        self.sub_text = subtitle
+        self.icon_code = icon_code
+        self.setCheckable(True)
+        self.setFixedHeight(70)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(1, 1, self.width() - 2, self.height() - 2)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 10, 10)
+
+        is_checked = self.isChecked()
+        is_hover = self.underMouse()
+
+        if is_checked:
+            painter.fillPath(path, QColor(234, 153, 156, 26))
+            gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            gradient.setColorAt(0.0, QColor("#ea999c"))
+            gradient.setColorAt(1.0, QColor("#e78284"))
+            painter.setPen(QPen(gradient, 1.5))
+            painter.drawPath(path)
+
+            chk_rect = QRectF(rect.right() - 15, rect.top() + 5, 11, 11)
+            chk_path = QPainterPath()
+            chk_path.addEllipse(chk_rect)
+            painter.fillPath(chk_path, QColor("#ea999c"))
+            painter.setPen(Qt.NoPen)
+            painter.drawPath(chk_path)
+
+            painter.setFont(QFont("Segoe MDL2 Assets", 6, QFont.Bold))
+            painter.setPen(QColor("#ffffff"))
+            painter.drawText(chk_rect, Qt.AlignCenter, "\uE73E")
+        else:
+            painter.fillPath(path, QColor("#121212") if not is_hover else QColor("#0E0E0E"))
+            painter.setPen(QPen(QColor("#242738") if not is_hover else QColor("#383d56"), 1.0))
+            painter.drawPath(path)
+
+        icon_font = QFont("Segoe MDL2 Assets", 11, QFont.Bold)
+        painter.setFont(icon_font)
+        painter.setPen(QColor("#ea999c") if is_checked else (QColor("#9ca3af") if not is_hover else QColor("#d1d5db")))
+        icon_rect = QRectF(rect.left() + 7, rect.top() + 7, 18, 14)
+        painter.drawText(icon_rect, Qt.AlignLeft | Qt.AlignVCenter, chr(self.icon_code))
+
+        title_font = QFont("Segoe UI Variable Display", 9, QFont.Bold)
+        painter.setFont(title_font)
+        painter.setPen(QColor("#ea999c") if is_checked else QColor("#ffffff"))
+        title_rect = QRectF(rect.left() + 7, rect.top() + 25, rect.width() - 14, 15)
+        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter, self.title_text)
+
+        sub_font = QFont("Segoe UI Variable Display", 7, QFont.Medium)
+        painter.setFont(sub_font)
+        painter.setPen(QColor("#ec4899") if is_checked else QColor("#6b7280"))
+        sub_rect = QRectF(rect.left() + 7, rect.top() + 41, rect.width() - 14, 24)
+        painter.drawText(sub_rect, Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, self.sub_text)
+
+        painter.end()
+
+
+VALID_NIL_TYPES = {
+    '*', 'file', 'dir', 'directory', 'drive', 'usb', 'dvd', 'fixed', 'vhd',
+    'removable', 'remote', 'back', 'back.directory', 'back.dir', 'back.drive',
+    'back.namespace', 'back.computer', 'back.recyclebin', 'desktop', 'namespace',
+    'computer', 'recyclebin', 'taskbar', 'all'
+}
 
 class VisibilityWidget(QWidget):
     valueChanged = pyqtSignal(str)
+    MAIN_VIS_EXPR = "@if(key.shift() || key.control() || key.capslock() || key.lbutton(), 'hidden', 'normal')"
+
+    CARDS = [
+        ('normal', 'Normal', 'Always Visible', 0xE890),
+        ('hide', 'Hidden', 'Hidden Everywhere', 0xED1A),
+        ('main', 'Right-Click', 'In Right-Click ONLY', 0xE80F),
+        ('shift', 'Shift', 'Shift + Right-Click', 0xE74A),
+        ('ctrl', 'Ctrl', 'Ctrl + Right-Click', 0xE765),
+        ('caps', 'Capslock', 'Caps + Right-Click', 0xE8E8),
+        ('lmb', 'Left Click', 'Left + Right-Click', 0xE962),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._updating = False
         self._custom_vis = ""
         self._user_modified = False
-        layout = QHBoxLayout(self)
+
+        layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        
-        self.btn_hide = KeyToggleButton("Hide")
-        self.btn_normal = KeyToggleButton("Normal")
-        self.btn_shift = KeyToggleButton("Shift")
-        self.btn_ctrl = KeyToggleButton("Ctrl")
-        self.btn_caps = KeyToggleButton("Caps")
-        self.btn_lmb = KeyToggleButton("LMB")
-        
-        self.buttons = {
-            'hide': self.btn_hide,
-            'normal': self.btn_normal,
-            'shift': self.btn_shift,
-            'ctrl': self.btn_ctrl,
-            'caps': self.btn_caps,
-            'lmb': self.btn_lmb,
-        }
-        
-        for key, btn in self.buttons.items():
-            layout.addWidget(btn)
-            btn.toggled.connect(lambda checked, k=key: self._on_btn_toggled(k, checked))
-            
+        layout.setHorizontalSpacing(6)
+        layout.setVerticalSpacing(6)
+        for col in range(4):
+            layout.setColumnStretch(col, 1)
+
+        self.cards = {}
+        for idx, (key, title, sub, icon) in enumerate(self.CARDS):
+            r = idx // 4
+            c = idx % 4
+            card = VisibilityCard(key, title, sub, icon)
+            self.cards[key] = card
+            layout.addWidget(card, r, c)
+            card.toggled.connect(lambda checked, k=key: self._on_card_toggled(k, checked))
+
         self.set_value("")
 
-    def _on_btn_toggled(self, key, checked):
-        if self._updating:
-            return
+    def _on_card_toggled(self, key, checked):
+        if self._updating: return
         self._updating = True
         self._user_modified = True
         if checked:
-            for k, btn in self.buttons.items():
-                if k != key:
-                    btn.setChecked(False)
+            for k, card in self.cards.items():
+                if k != key: card.setChecked(False)
         else:
-            if not any(btn.isChecked() for btn in self.buttons.values()):
-                self.btn_normal.setChecked(True)
+            if not any(card.isChecked() for card in self.cards.values()):
+                self.cards['normal'].setChecked(True)
         self._updating = False
         self.valueChanged.emit(self.get_value())
 
     def get_value(self):
-        if self.btn_hide.isChecked():
-            return "vis.remove"
-        if self.btn_shift.isChecked():
-            return "key.shift()"
-        if self.btn_ctrl.isChecked():
-            return "key.control()"
-        if self.btn_caps.isChecked():
-            return "key.capslock()"
-        if self.btn_lmb.isChecked():
-            return "key.lbutton()"
         if not self._user_modified and self._custom_vis:
             return self._custom_vis
-        return ""
+        for k, card in self.cards.items():
+            if card.isChecked():
+                if k == 'hide':
+                    return "vis.remove"
+                elif k == 'main':
+                    if self._custom_vis:
+                        cv = self._custom_vis.lower().replace('"', '').replace("'", "").replace(" ", "")
+                        if ('key.shift' in cv or 'key.control' in cv or 'key.ctrl' in cv or 'key.lbutton' in cv or 'key.caps' in cv) and 'hidden' in cv:
+                            return self._custom_vis
+                    return self.MAIN_VIS_EXPR
+                elif k == 'normal': return ""
+                elif k == 'shift': return "key.shift()"
+                elif k == 'ctrl': return "key.control()"
+                elif k == 'caps': return "key.capslock()"
+                elif k == 'lmb': return "key.lbutton()"
+        return self._custom_vis if not self._user_modified else ""
 
     def set_value(self, vis_str):
         self._updating = True
         self._user_modified = False
-        self._custom_vis = ""
-        raw_str = str(vis_str or '').strip()
-        clean_vis = raw_str.strip('\'" ').lower()
-        
-        if clean_vis in ('key.remove', 'vis.remove', 'key.hidden', 'vis.hidden', 'remove', 'hidden', '0'):
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'hide')
-        elif clean_vis in ('key.shift()', 'vis.shift', 'shift', 'key.shift'):
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'shift')
-        elif clean_vis in ('key.control()', 'key.ctrl()', 'vis.control', 'vis.ctrl', 'control', 'ctrl', 'key.control', 'key.ctrl'):
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'ctrl')
-        elif clean_vis in ('key.capslock()', 'key.caps()', 'vis.capslock', 'vis.caps', 'capslock', 'caps', 'key.capslock', 'key.caps'):
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'caps')
-        elif clean_vis in ('key.lbutton()', 'key.lmb()', 'vis.lbutton', 'vis.lmb', 'lbutton', 'lmb', 'key.lbutton'):
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'lmb')
-        elif clean_vis in ('', 'normal', 'vis.normal', '1', 'vis.visible', 'visible', 'always visible'):
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'normal')
+        self._custom_vis = str(vis_str or '').strip()
+        clean_vis = self._custom_vis.lower().replace('"', '').replace("'", "").replace(" ", "")
+
+        if clean_vis in ('vis.remove', 'remove', 'vis.hidden', 'hidden', '0', 'none'):
+            for k, card in self.cards.items(): card.setChecked(k == 'hide')
+        elif ('key.shift' in clean_vis or 'key.control' in clean_vis or 'key.ctrl' in clean_vis or 'key.lbutton' in clean_vis or 'key.caps' in clean_vis) and 'hidden' in clean_vis:
+            for k, card in self.cards.items(): card.setChecked(k == 'main')
+        elif not clean_vis or clean_vis in ('vis.normal', 'normal', 'alwaysvisible', '1'):
+            for k, card in self.cards.items(): card.setChecked(k == 'normal')
+        elif clean_vis in ('key.shift()', 'vis.shift()', 'vis.shift', 'shift', 'key.shift'):
+            for k, card in self.cards.items(): card.setChecked(k == 'shift')
+        elif clean_vis in ('key.control()', 'key.ctrl()', 'vis.control()', 'vis.control', 'vis.ctrl', 'control', 'ctrl', 'key.control', 'key.ctrl'):
+            for k, card in self.cards.items(): card.setChecked(k == 'ctrl')
+        elif clean_vis in ('key.capslock()', 'key.caps()', 'vis.capslock()', 'vis.capslock', 'vis.caps', 'capslock', 'caps', 'key.capslock', 'key.caps'):
+            for k, card in self.cards.items(): card.setChecked(k == 'caps')
+        elif clean_vis in ('key.lbutton()', 'key.lmb()', 'vis.lbutton()', 'vis.lbutton', 'vis.lmb', 'lbutton', 'lmb', 'key.lbutton'):
+            for k, card in self.cards.items(): card.setChecked(k == 'lmb')
         else:
-            self._custom_vis = raw_str
-            for k, btn in self.buttons.items():
-                btn.setChecked(k == 'normal')
+            for k, card in self.cards.items(): card.setChecked(k == 'normal')
         self._updating = False
 
-TYPE_PRESETS = [
-    ('all', 'All'),
-    ('desktop', 'Desktop'),
-    ('taskbar', 'Taskbar'),
-    ('computer', 'This PC'),
-    ('recyclebin', 'Recycle Bin'),
-    ('back', 'Background'),
-    ('dir', 'Folders'),
-    ('file', 'Files'),
-]
+
+class TypePill(QPushButton):
+    """
+    Interactive checkbox pill for 'Show in' locations.
+    """
+    def __init__(self, val, text, icon_code=None, parent=None):
+        super().__init__(parent)
+        self.val = val
+        self.title_text = text
+        self.icon_code = icon_code
+        self.setCheckable(True)
+        self.setFixedHeight(32)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(1.0, 1.0, self.width() - 2.0, self.height() - 2.0)
+        path = QPainterPath()
+        r = rect.height() / 2.0
+        path.addRoundedRect(rect, r, r)
+
+        is_checked = self.isChecked()
+        is_hover = self.underMouse()
+
+        if is_checked:
+            painter.fillPath(path, QColor(234, 153, 156, 32))
+            gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            gradient.setColorAt(0.0, QColor("#ea999c"))
+            gradient.setColorAt(1.0, QColor("#e78284"))
+            painter.setPen(QPen(gradient, 1.5))
+            painter.drawPath(path)
+
+            box_rect = QRectF(rect.left() + 7, (self.height() - 13) / 2.0, 13, 13)
+            box_path = QPainterPath()
+            box_path.addEllipse(box_rect)
+            painter.fillPath(box_path, QColor("#ea999c"))
+            painter.setPen(Qt.NoPen)
+            painter.drawPath(box_path)
+
+            painter.setFont(QFont("Segoe MDL2 Assets", 7, QFont.Bold))
+            painter.setPen(QColor("#ffffff"))
+            painter.drawText(box_rect, Qt.AlignCenter, "\uE73E")
+        else:
+            painter.fillPath(path, QColor(255, 255, 255, 14) if is_hover else QColor(255, 255, 255, 6))
+            painter.setPen(QPen(QColor(255, 255, 255, 55) if is_hover else QColor(255, 255, 255, 22), 1.5))
+            painter.drawPath(path)
+
+            box_rect = QRectF(rect.left() + 7, (self.height() - 13) / 2.0, 13, 13)
+            box_path = QPainterPath()
+            box_path.addEllipse(box_rect)
+            painter.setPen(QPen(QColor("#737994") if not is_hover else QColor("#b5bfe2"), 1.5))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(box_path)
+
+        cur_x = rect.left() + 24
+        if self.icon_code:
+            icon_font = QFont("Segoe MDL2 Assets", 8)
+            painter.setFont(icon_font)
+            painter.setPen(QColor("#ffffff") if is_checked else QColor("#9ca3af"))
+            ic_rect = QRectF(cur_x, 0, 12, self.height())
+            painter.drawText(ic_rect, Qt.AlignLeft | Qt.AlignVCenter, chr(self.icon_code))
+            cur_x += 14
+
+        text_font = QFont("Segoe UI Variable Display", 8)
+        text_font.setWeight(QFont.DemiBold if is_checked else QFont.Medium)
+        painter.setFont(text_font)
+        painter.setPen(QColor("#ffffff") if is_checked else QColor("#d1d5db"))
+        txt_rect = QRectF(cur_x, 0, rect.right() - cur_x - 2, self.height())
+        painter.drawText(txt_rect, Qt.AlignLeft | Qt.AlignVCenter, self.title_text)
+
+        painter.end()
+
 
 class TypeWidget(QWidget):
     valueChanged = pyqtSignal(str)
+
+    PRESETS = [
+        ('all', 'All', None),
+        ('desktop', 'Desktop', 0xE7F4),
+        ('taskbar', 'Taskbar', 0xE7E8),
+        ('computer', 'This PC', 0xE7F8),
+        ('recyclebin', 'Recycle', 0xE74D),
+        ('back', 'Background', 0xE8B9),
+        ('dir', 'Folders', 0xE8B7),
+        ('file', 'Files', 0xE8A5),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._updating = False
-        self.preset_checkboxes = {}
-        
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(4)
-        
-        # Grid of checkboxes for presets
-        grid_w = QWidget()
-        grid_lay = QGridLayout(grid_w)
-        grid_lay.setContentsMargins(0, 0, 0, 0)
-        grid_lay.setSpacing(8)
-        
-        cb_style = """
-            QCheckBox {
-                color: #ffffff;
-                font-size: 12px;
-            }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border-radius: 4px;
-                border: 1px solid #45475a;
-                background: #2a2a30;
-            }
-            QCheckBox::indicator:checked {
-                background: #dc143c;
-                border: 1px solid #dc143c;
-            }
-        """
-        
-        for i, (val, friendly) in enumerate(TYPE_PRESETS):
-            cb = QCheckBox(friendly)
-            cb.setStyleSheet(cb_style)
-            cb.setProperty("type_val", val)
-            cb.setCursor(Qt.PointingHandCursor)
-            self.preset_checkboxes[val] = cb
+        self._user_modified = False
+        self._initial_raw_type = ""
+        self._extra_types = []
+        self._has_invalid_syntax = False
+        self.pills = {}
+
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(6)
+
+        for i, (val, text, icon) in enumerate(self.PRESETS):
+            pill = TypePill(val, text, icon)
+            self.pills[val] = pill
             row = i // 4
             col = i % 4
-            grid_lay.addWidget(cb, row, col)
-            cb.toggled.connect(self._on_cb_toggled)
-            
-        main_layout.addWidget(grid_w)
-        
-        # Set default state
+            grid.addWidget(pill, row, col)
+            pill.toggled.connect(self._on_toggled)
+
         self.set_value("")
 
-    def _on_cb_toggled(self, checked):
-        if self._updating:
-            return
+    def _on_toggled(self, checked):
+        if self._updating: return
         sender = self.sender()
-        val = sender.property("type_val")
+        val = sender.val
         self._updating = True
-        if val == "all":
+        self._user_modified = True
+        if val == 'all':
             if checked:
-                for k, cb in self.preset_checkboxes.items():
-                    if k != "all":
-                        cb.setChecked(False)
+                for k, p in self.pills.items():
+                    if k != 'all': p.setChecked(False)
             else:
-                if not any(cb.isChecked() for k, cb in self.preset_checkboxes.items() if k != "all"):
-                    self.preset_checkboxes["all"].setChecked(True)
+                if not any(p.isChecked() for k, p in self.pills.items() if k != 'all'):
+                    self.pills['all'].setChecked(True)
         else:
             if checked:
-                self.preset_checkboxes["all"].setChecked(False)
+                self.pills['all'].setChecked(False)
             else:
-                if not any(cb.isChecked() for k, cb in self.preset_checkboxes.items() if k != "all"):
-                    self.preset_checkboxes["all"].setChecked(True)
+                if not any(p.isChecked() for k, p in self.pills.items() if k != 'all'):
+                    self.pills['all'].setChecked(True)
         self._updating = False
-        self._on_state_changed()
-
-    def _on_state_changed(self):
-        if self._updating:
-            return
         self.valueChanged.emit(self.get_value())
 
     def get_value(self):
-        if self.preset_checkboxes["all"].isChecked():
+        if not self._user_modified:
+            if not self._has_invalid_syntax and self._initial_raw_type:
+                return self._initial_raw_type
+            if not self._initial_raw_type:
+                return ""
+        if self.pills['all'].isChecked():
             return ""
-        parts = []
-        for val, _ in TYPE_PRESETS:
-            if val != "all" and self.preset_checkboxes[val].isChecked():
-                parts.append(val)
-        if not parts:
-            return ""
-        return "|".join(parts)
+        active = [k for k, p in self.pills.items() if p.isChecked() and k != 'all']
+        combined = []
+        for a in active:
+            if a not in combined:
+                combined.append(a)
+        for extra in self._extra_types:
+            if extra not in combined:
+                combined.append(extra)
+        return "|".join(combined)
 
-    def set_value(self, val_str):
+    def set_value(self, type_str):
         self._updating = True
-        val_str = str(val_str or '').strip('\'" ')
-        
-        if not val_str:
-            for k, cb in self.preset_checkboxes.items():
-                cb.setChecked(k == "all")
-            self._updating = False
-            return
-            
-        items = [i.strip().lower() for i in val_str.split('|') if i.strip()]
-        preset_vals = set(items)
-                
-        if not (preset_vals & set(p[0] for p in TYPE_PRESETS if p[0] != 'all')):
-            for k, cb in self.preset_checkboxes.items():
-                cb.setChecked(k == "all")
+        self._user_modified = False
+        self._initial_raw_type = str(type_str or "").strip().strip("'\"")
+        raw = self._initial_raw_type.lower()
+        self._extra_types = []
+        self._has_invalid_syntax = False
+
+        if not raw or raw == 'all':
+            self.pills['all'].setChecked(True)
+            for k, p in self.pills.items():
+                if k != 'all': p.setChecked(False)
         else:
-            self.preset_checkboxes["all"].setChecked(False)
-            for k, cb in self.preset_checkboxes.items():
-                if k != "all":
-                    cb.setChecked(k in preset_vals)
-                    
+            self.pills['all'].setChecked(False)
+            parts = [p.strip().strip("'\"") for p in raw.split('|') if p.strip()]
+            for part in parts:
+                low_p = part.lower()
+                if low_p in ('dir', 'directory'):
+                    self.pills['dir'].setChecked(True)
+                elif low_p == 'file':
+                    self.pills['file'].setChecked(True)
+                elif low_p == 'desktop':
+                    self.pills['desktop'].setChecked(True)
+                elif low_p == 'taskbar':
+                    self.pills['taskbar'].setChecked(True)
+                elif low_p in ('computer', 'drive'):
+                    self.pills['computer'].setChecked(True)
+                    if low_p == 'drive':
+                        self._extra_types.append(part)
+                elif low_p == 'recyclebin':
+                    self.pills['recyclebin'].setChecked(True)
+                elif low_p == 'back' or low_p.startswith('back.'):
+                    self.pills['back'].setChecked(True)
+                    if low_p.startswith('back.'):
+                        self._extra_types.append(part)
+                elif low_p in VALID_NIL_TYPES:
+                    self._extra_types.append(part)
+                else:
+                    self._has_invalid_syntax = True
+
+            if not any(p.isChecked() for k, p in self.pills.items() if k != 'all') and not self._extra_types:
+                self.pills['all'].setChecked(True)
+
         self._updating = False
 
 def _fuzzy_match(query, text):
@@ -379,14 +969,23 @@ def calculate_search_score(query, item):
     if not q:
         return True, 0
         
-    props = item.get('props', {})
-    title = str(props.get('title', '')).strip('\'" ').lower()
-    find = str(props.get('find', '')).strip('\'" ').lower()
-    file_name = os.path.basename(item.get('file', '')).replace('.nss', '').lower()
-    in_menu = str(props.get('in', '')).strip('\'" ').lower()
-    cmd = str(props.get('cmd', '')).strip('\'" ').lower()
-    tip = str(props.get('tip', '')).strip('\'" ').lower()
-    item_type = str(item.get('type', '')).lower()
+    title = item.get('_stitle')
+    if title is None:
+        props = item.get('props', {})
+        title = str(props.get('title', '')).strip('\'" ').lower()
+        find = str(props.get('find', '')).strip('\'" ').lower()
+        file_name = os.path.basename(item.get('file', '')).replace('.nss', '').lower()
+        in_menu = str(props.get('in', '')).strip('\'" ').lower()
+        cmd = str(props.get('cmd', '')).strip('\'" ').lower()
+        tip = str(props.get('tip', '')).strip('\'" ').lower()
+        item_type = str(item.get('type', '')).lower()
+    else:
+        find = item.get('_sfind', '')
+        file_name = item.get('_sfile', '')
+        in_menu = item.get('_sin_menu', '')
+        cmd = item.get('_scmd', '')
+        tip = item.get('_stip', '')
+        item_type = item.get('_stype', '')
     
     score = 0
     
@@ -433,13 +1032,27 @@ def calculate_search_score(query, item):
 
 class NSSItemModel(QAbstractListModel):
     def __init__(self, items=None, parent=None):
-        super().__init__(parent); self._items = items or []; self._filtered_items = self._items[:]
+        super().__init__(parent); self._items = []; self._filtered_items = []
+        if items: self.set_items(items)
     def rowCount(self, parent=QModelIndex()): return len(self._filtered_items)
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid() or role != Qt.UserRole: return None
         return self._filtered_items[index.row()]
     def set_items(self, items):
-        self.beginResetModel(); self._items = items; self._filtered_items = items[:]; self.endResetModel()
+        self.beginResetModel()
+        for it in (items or []):
+            if isinstance(it, dict):
+                props = it.get('props', {})
+                it['_stitle'] = str(props.get('title', '')).strip('\'" ').lower()
+                it['_sfind'] = str(props.get('find', '')).strip('\'" ').lower()
+                it['_sfile'] = os.path.basename(it.get('file', '')).replace('.nss', '').lower()
+                it['_sin_menu'] = str(props.get('in', '')).strip('\'" ').lower()
+                it['_scmd'] = str(props.get('cmd', '')).strip('\'" ').lower()
+                it['_stip'] = str(props.get('tip', '')).strip('\'" ').lower()
+                it['_stype'] = str(it.get('type', '')).lower()
+        self._items = items or []
+        self._filtered_items = self._items[:]
+        self.endResetModel()
     def filter(self, text, file_filter=None, type_tag=None, action_tag=None):
         self.beginResetModel()
         t = (text or '').strip().lower()
@@ -509,9 +1122,9 @@ class NSSItemDelegate(QStyledItemDelegate):
     def paint(self, painter, opt, index):
         data = index.data(Qt.UserRole); painter.save(); painter.setRenderHint(QPainter.Antialiasing)
         rect = opt.rect.adjusted(12, 6, -12, -6); is_hover = (opt.state & QStyle.State_MouseOver)
-        painter.setPen(Qt.NoPen); bg = QColor("#2a2a30") if is_hover else QColor("#121212")
-        bg.setAlpha(200 if is_hover else 140); painter.setBrush(bg); painter.drawRoundedRect(rect, 16, 16)
-        if is_hover: painter.setPen(QPen(QColor(220, 20, 60, 120), 1.5)); painter.drawRoundedRect(rect, 16, 16)
+        painter.setPen(Qt.NoPen); bg = QColor("#0E0E0E") if is_hover else QColor("#121212")
+        bg.setAlpha(220 if is_hover else 140); painter.setBrush(bg); painter.drawRoundedRect(rect, 16, 16)
+        if is_hover: painter.setPen(QPen(QColor(231, 130, 132, 120), 1.5)); painter.drawRoundedRect(rect, 16, 16)
         
         ty, props = data.get('type', 'item'), data.get('props', {})
         val = props.get('image') or props.get('icon') or ''
@@ -539,17 +1152,12 @@ class NSSItemDelegate(QStyledItemDelegate):
                     has_icon = True
             except: pass
 
-        if not has_icon and codes:
-            theme_cs = _get_theme_glyph_colors()
-            painter.setFont(QFont(NILESOFT_FONT_FAMILY, 28))
-            c1 = colors[0] if len(colors) > 0 else theme_cs[0]
-            painter.setPen(QColor(c1 or theme_cs[0]))
-            painter.drawText(icon_rect, Qt.AlignCenter, chr(codes[0]))
-            if len(codes) > 1:
-                c2 = colors[1] if len(colors) > 1 else theme_cs[1]
-                painter.setPen(QColor(c2 or theme_cs[1]))
-                painter.drawText(icon_rect, Qt.AlignCenter, chr(codes[1]))
-            has_icon = True
+        if not has_icon and (svg_content or codes or val):
+            pix = render_nss_asset_pixmap(val, size=icon_rect.width() - 12)
+            if pix and not pix.isNull():
+                target_r = QRect((icon_rect.width() - pix.width())//2 + icon_rect.x(), (icon_rect.height() - pix.height())//2 + icon_rect.y(), pix.width(), pix.height())
+                painter.drawPixmap(target_r, pix)
+                has_icon = True
             
         if not has_icon:
             # Try to load as image
@@ -618,54 +1226,67 @@ class NSSItemDelegate(QStyledItemDelegate):
             tx += (fm_b if font.bold() else fm_s).horizontalAdvance(text)
             
         if data.get('type') == 'modify':
-            if props.get('find'):
-                draw_part("Modify: ", "#dc143c", f_bold)
+            wid = str(props.get('where.id', '')).strip('\'" ')
+            if wid:
+                draw_part("Modify ID: ", "#e78284", f_bold)
+                draw_part(wid, "#ffffff", f_bold)
+                if props.get('title'):
+                    draw_part(" \u2192 ", "#A0A0A0", f_small)
+                    draw_part(props['title'].strip(chr(39)+chr(34)), "#e78284", f_bold)
+            elif props.get('find'):
+                draw_part("Modify: ", "#e78284", f_bold)
                 draw_part(props['find'].strip(chr(39)+chr(34)), "#ffffff", f_bold)
                 if props.get('title'):
                     draw_part(" \u2192 ", "#A0A0A0", f_small)
-                    draw_part(props['title'].strip(chr(39)+chr(34)), "#dc143c", f_bold)
+                    draw_part(props['title'].strip(chr(39)+chr(34)), "#e78284", f_bold)
             elif props.get('type'):
-                draw_part(f"All {props['type'].title()}s", "#dc143c", f_bold)
+                draw_part(f"All {props['type'].title()}s", "#e78284", f_bold)
                 if props.get('title'):
                     draw_part(" \u2192 ", "#A0A0A0", f_small)
-                    draw_part(props['title'].strip(chr(39)+chr(34)), "#dc143c", f_bold)
+                    draw_part(props['title'].strip(chr(39)+chr(34)), "#e78284", f_bold)
             else:
-                draw_part("Global Rule", "#dc143c", f_bold)
+                draw_part("Global Rule", "#e78284", f_bold)
         else:
             # item or menu - show title
-            t_str = props.get('title', props.get('find', 'Unnamed')).strip(chr(39)+chr(34))
+            raw_title = props.get('title') or props.get('find') or props.get('where') or props.get('cmd') or 'Unnamed'
+            t_str = str(raw_title).strip(chr(39)+chr(34))
             file_name = os.path.basename(data.get('file', ''))
             label = f"{file_name}: " if file_name else ""
-            draw_part(label, "#dc143c", f_bold)
+            draw_part(label, "#e78284", f_bold)
             draw_part(t_str, "#ffffff", f_bold)
             
         if props.get('in'):
             draw_part(" in ", "#A0A0A0", f_small)
-            draw_part(props['in'].strip(chr(39)+chr(34)), "#ff2a55", f_bold)
+            draw_part(props['in'].strip(chr(39)+chr(34)), "#ea999c", f_bold)
         
         # Badges / Summary
         bx = rect.x() + 85; by = rect.y() + 48; acts = []
-        if props.get('title'): acts.append(("Renamed", "#808080"))
-        if props.get('icon') or props.get('image'): acts.append(("Icons", "#4A90E2"))
+        if props.get('title'): acts.append(("Renamed", "#838ba7"))
+        if props.get('icon') or props.get('image'): acts.append(("Icons", "#8caaee"))
         v = props.get('vis', '').lower()
-        if v in ('vis.remove', 'vis.hidden', 'remove', 'hidden'): acts.append(("Hidden", "#dc143c"))
-        elif v and v != 'normal': acts.append(("Part Hidden", "#9B59B6"))
-        elif v: acts.append((f"Vis: {v}", "#dc143c"))
-        if props.get('menu'): acts.append(("Moved", "#E29E4A"))
-        if props.get('pos'): acts.append((f"Pos: {props['pos']}", "#4AE290"))
-        if props.get('sep'): acts.append(("Separator", "#F1C40F"))
+        if v in ('vis.remove', 'vis.hidden', 'remove', 'hidden'): acts.append(("Hidden", "#e78284"))
+        elif v and v != 'normal': acts.append(("Part Hidden", "#ca9ee6"))
+        elif v: acts.append((f"Vis: {v}", "#e78284"))
+        if 'menu' in props and props.get('menu') is not None: acts.append(("Moved", "#ef9f76"))
+        if props.get('pos'): acts.append((f"Pos: {props['pos']}", "#a6d189"))
+        if props.get('sep'): acts.append(("Separator", "#e5c890"))
         
-        painter.setFont(QFont("Inter", 8, QFont.Bold))
+        painter.setFont(QFont('Segoe UI Variable Display', 8, QFont.Bold))
         for txt, clr in acts:
-            tw = painter.fontMetrics().horizontalAdvance(txt) + 12
-            painter.setBrush(QColor(clr)); painter.setPen(Qt.NoPen)
-            br = QRect(bx, by, tw, 18); painter.drawRoundedRect(br, 9, 9)
-            painter.setPen(QColor("#000000"))
-            painter.drawText(br.adjusted(-1, -1, -1, -1), Qt.AlignCenter, txt)
-            painter.drawText(br.adjusted(1, -1, 1, -1), Qt.AlignCenter, txt)
-            painter.drawText(br.adjusted(-1, 1, -1, 1), Qt.AlignCenter, txt)
-            painter.drawText(br.adjusted(1, 1, 1, 1), Qt.AlignCenter, txt)
-            painter.setPen(QColor("#ffffff")); painter.drawText(br, Qt.AlignCenter, txt)
+            tw = painter.fontMetrics().horizontalAdvance(txt) + 16
+            br = QRectF(bx, by, tw, 20)
+            bpath = QPainterPath()
+            r = br.height() / 2.0
+            bpath.addRoundedRect(br, r, r)
+            c = QColor(clr)
+            bg_col = QColor(c.red(), c.green(), c.blue(), 38)
+            border_pen = QPen(QColor(c.red(), c.green(), c.blue(), 100), 1.2)
+            text_col = QColor('#c6d0f5')
+            painter.fillPath(bpath, bg_col)
+            painter.setPen(border_pen)
+            painter.drawPath(bpath)
+            painter.setPen(text_col)
+            painter.drawText(br, Qt.AlignCenter, txt)
             bx += tw + 6
             
         # Source / File
@@ -677,8 +1298,8 @@ class NSSItemDelegate(QStyledItemDelegate):
         if is_hover:
             is_local = src.lower() == 'modify.nss'
             btn_x = rect.right() - 45; btn_y = rect.y() + (rect.height() - 36) // 2
-            btns = [("\uE107", "#dc143c")] if is_local else [] # Delete (only for local)
-            btns.append(("\uE104", "#dc143c")) # Edit
+            btns = [("\uE107", "#e78284")] if is_local else [] # Delete (only for local)
+            btns.append(("\uE104", "#e78284")) # Edit
             
             for i, (icon, clr) in enumerate(btns):
                 br = QRect(btn_x, btn_y, 36, 36)
@@ -712,52 +1333,27 @@ class NSSItemDelegate(QStyledItemDelegate):
             if event.type() == QEvent.MouseButtonRelease:
                 mw, _ = self._get_mw_and_view(opt)
                 if not mw: return False
-                if del_rect.contains(pos): mw.delete_rule(data); return True
+                if del_rect.contains(pos):
+                    if hasattr(mw, 'delete_rule'): mw.delete_rule(data); return True
                 if edit_rect.contains(pos) or rect.contains(pos):
-                    if hasattr(mw, 'edit_rule'): mw.edit_rule(data)
+                    is_modify = (data.get('type') == 'modify' or os.path.basename(data.get('file', '')).lower() == 'modify.nss')
+                    if is_modify and hasattr(mw, 'edit_rule'): mw.edit_rule(data)
                     elif hasattr(mw, 'edit_item'): mw.edit_item(data)
+                    elif hasattr(mw, 'edit_rule'): mw.edit_rule(data)
                     return True
         return super().editorEvent(event, model, opt, index)
 
-class NonScrollComboBox(QComboBox):
-    def __init__(self, parent=None): super().__init__(parent); self.setFocusPolicy(Qt.StrongFocus)
-    def wheelEvent(self, e): e.ignore()
+class NonScrollComboBox(ModernComboBox):
+    def __init__(self, parent=None, context_key=""):
+        super().__init__(parent, context_key=context_key)
 
 class CustomMessageBox(QDialog):
     def __init__(self, parent=None):
-        super().__init__(parent); self.setWindowTitle("Message"); self.setFixedSize(350, 180); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.layout = QVBoxLayout(self); self.frame = QFrame(); self.frame.setStyleSheet("QFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 15px; }"); self.layout.addWidget(self.frame); self.content_layout = QVBoxLayout(self.frame); self.title_label = QLabel("Title"); self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; border: none;"); self.msg_label = QLabel(""); self.msg_label.setWordWrap(True); self.msg_label.setStyleSheet("color: #b0b0b0; border: none;"); self.ok_btn = QPushButton("OK"); self.ok_btn.setFixedSize(80, 32); self.ok_btn.setStyleSheet("QPushButton { background-color: #dc143c; color: #ffffff; border-radius: 8px; font-weight: bold; } QPushButton:hover { background-color: #dc143c; }"); self.ok_btn.clicked.connect(self.accept); self.content_layout.addWidget(self.title_label); self.content_layout.addWidget(self.msg_label); self.content_layout.addWidget(self.ok_btn, 0, Qt.AlignRight)
+        super().__init__(parent); self.setWindowTitle("Message"); self.setFixedSize(350, 180); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground); self.layout = QVBoxLayout(self); self.frame = QFrame(); self.frame.setStyleSheet("QFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 15px; }"); self.layout.addWidget(self.frame); self.content_layout = QVBoxLayout(self.frame); self.title_label = QLabel("Title"); self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; border: none;"); self.msg_label = QLabel(""); self.msg_label.setWordWrap(True); self.msg_label.setStyleSheet("color: #b0b0b0; border: none;"); self.ok_btn = QPushButton("OK"); self.ok_btn.setFixedSize(80, 32); self.ok_btn.setStyleSheet("QPushButton { background-color: #e78284; color: #ffffff; border-radius: 8px; font-weight: bold; } QPushButton:hover { background-color: #e78284; }"); self.ok_btn.clicked.connect(self.accept); self.content_layout.addWidget(self.title_label); self.content_layout.addWidget(self.msg_label); self.content_layout.addWidget(self.ok_btn, 0, Qt.AlignRight)
     def setText(self, text): self.title_label.setText(text)
     def setInformativeText(self, text): self.msg_label.setText(text)
 
-class FlowLayout(QLayout):
-    def __init__(self, parent=None, margin=0, spacing=-1):
-        super(FlowLayout, self).__init__(parent); self.setContentsMargins(margin, margin, margin, margin) if parent else None; self.setSpacing(spacing); self.itemList = []
-    def addItem(self, item): self.itemList.append(item)
-    def count(self): return len(self.itemList)
-    def itemAt(self, index): return self.itemList[index] if 0 <= index < len(self.itemList) else None
-    def takeAt(self, index): return self.itemList.pop(index) if 0 <= index < len(self.itemList) else None
-    def expandingDirections(self): return Qt.Orientations(Qt.Orientation(0))
-    def hasHeightForWidth(self): return True
-    def heightForWidth(self, width): return self.doLayout(QRect(0, 0, width, 0), True)
-    def setGeometry(self, rect): super(FlowLayout, self).setGeometry(rect); self.doLayout(rect, False)
-    def sizeHint(self): return self.minimumSize()
-    def minimumSize(self):
-        size = QSize()
-        for item in self.itemList:
-            if item.widget().isHidden(): continue
-            size = size.expandedTo(item.minimumSize())
-        size += QSize(2 * self.contentsMargins().top(), 2 * self.contentsMargins().top()); return size
-    def doLayout(self, rect, testOnly):
-        x, y, lineHeight = rect.x(), rect.y(), 0
-        for item in self.itemList:
-            wid = item.widget()
-            if wid.isHidden(): continue
-            spaceX = self.spacing() + wid.style().layoutSpacing(QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Horizontal)
-            spaceY = self.spacing() + wid.style().layoutSpacing(QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Vertical); nextX = x + item.sizeHint().width() + spaceX
-            if nextX - spaceX > rect.right() and lineHeight > 0: x, y = rect.x(), y + lineHeight + spaceY; nextX, lineHeight = x + item.sizeHint().width() + spaceX, 0
-            if not testOnly: item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
-            x, lineHeight = nextX, max(lineHeight, item.sizeHint().height())
-        return y + lineHeight - rect.y()
+
 
 # scan_nss_items moved to later in file with improved parameters
 
@@ -767,42 +1363,44 @@ class IDPopupDialog(QDialog):
     def setup_ui(self):
         self.frame = QFrame(self); self.frame.setObjectName("popupFrame")
         self.frame.setStyleSheet("""
-            #popupFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 12px; } 
-            QLabel { color: #333333; font-size: 10px; font-weight: bold; letter-spacing: 0.5px; border: none; background: transparent; padding-left: 2px; } 
-            QComboBox { background: #2a2a30; border: 1px solid #45475a; border-radius: 8px; padding: 8px; color: #ffffff; font-size: 12px; }
-            QComboBox:hover { border: 1px solid #dc143c; }
-            QComboBox::drop-down { border: none; width: 20px; }
-            QComboBox::down-arrow { image: url("icons/chevron_down.svg"); width: 14px; height: 14px; border: none; }
-            QComboBox::down-arrow:hover { image: url("icons/chevron_down_hover.svg"); }
-            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; color: #ffffff; outline: none; border-radius: 8px; padding: 6px; }
-            QComboBox QAbstractItemView::item { min-height: 24px; padding: 8px 12px; border-radius: 8px; margin: 2px; }
-            QComboBox QAbstractItemView::item:selected { background-color: rgba(255, 255, 255, 0.1); color: #ffffff; }
+            #popupFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 14px; } 
+            QLabel { color: #8d94a6; font-size: 10px; font-weight: bold; letter-spacing: 0.5px; border: none; background: transparent; padding-left: 2px; } 
         """)
-        layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.addWidget(self.frame); cl = QVBoxLayout(self.frame); cl.setContentsMargins(15, 12, 15, 15); cl.setSpacing(10)
+        layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.addWidget(self.frame); cl = QVBoxLayout(self.frame); cl.setContentsMargins(15, 14, 15, 15); cl.setSpacing(10)
         h1 = QLabel("MENU LOCATION"); cl.addWidget(h1)
-        self.m_box = QComboBox()
-        self.m_box.addItems(["None", "Main", "Options"])
+        self.m_box = ModernComboBox(self, context_key="menu")
+        m_opts = ["None", "Main", "Options"]
+        for cm in _get_custom_menus_from_nss():
+            if cm not in m_opts:
+                m_opts.append(cm)
+        self.m_box.addItems(m_opts)
         
+        curr_m = str(self.current_menu if self.current_menu is not None else '').strip('\'"')
+        curr_m_low = curr_m.lower()
         if self.current_menu is None: self.m_box.setCurrentText("None")
-        elif self.current_menu == "" or str(self.current_menu).lower() == "main": self.m_box.setCurrentText("Main")
-        elif str(self.current_menu).lower() in ("options", "title.options"): self.m_box.setCurrentText("Options")
-        else: self.m_box.setCurrentText("None")
+        elif not curr_m or curr_m_low in ("main", "menu.main"): self.m_box.setCurrentText("Main")
+        elif curr_m_low in ("options", "title.options"): self.m_box.setCurrentText("Options")
+        else:
+            if curr_m not in [self.m_box.itemText(i) for i in range(self.m_box.count())]:
+                self.m_box.addItem(curr_m)
+            self.m_box.setCurrentText(curr_m)
         
         cl.addWidget(self.m_box)
         h2 = QLabel("VISIBILITY"); cl.addWidget(h2)
-        self.v_box = QComboBox(); self.v_box.addItems(["None", "Shift", "Control", "Left Mouse"]); v_map = {"None": None, "Shift": "key.shift()", "Control": "key.control()", "Left Mouse": "key.lbutton()"}
+        self.v_box = ModernComboBox(self, context_key="vis"); self.v_box.addItems(["None", "Shift", "Control", "Left Mouse"]); v_map = {"None": None, "Shift": "key.shift()", "Control": "key.control()", "Left Mouse": "key.lbutton()"}
         for i in range(self.v_box.count()):
             if v_map[self.v_box.itemText(i)] == self.current_vis: self.v_box.setCurrentIndex(i); break
         cl.addWidget(self.v_box)
         self.save = QPushButton("Apply Changes"); self.save.setFixedHeight(34)
-        self.save.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; font-weight: bold; border-radius: 8px; border: none; margin-top: 5px; } QPushButton:hover { background: #dc143c; }")
+        self.save.setStyleSheet("QPushButton { background: #e78284; color: #ffffff; font-weight: bold; border-radius: 8px; border: none; margin-top: 5px; } QPushButton:hover { background: #e78284; }")
         self.save.clicked.connect(self.accept); cl.addWidget(self.save)
     def get_values(self):
         m_sel = self.m_box.currentText()
         m_val = None
-        if m_sel == "Main": m_val = ""
+        if m_sel == "None": m_val = None
+        elif m_sel == "Main": m_val = ""
         elif m_sel == "Options": m_val = "options"
-        elif m_sel != "None": m_val = m_sel
+        elif m_sel.strip(): m_val = m_sel.strip()
         
         v_sel = self.v_box.currentText()
         v_map = {"None": None, "Shift": "key.shift()", "Control": "key.control()", "Left Mouse": "key.lbutton()"}
@@ -815,22 +1413,24 @@ class RadioDot(QPushButton):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         rect = QRectF(4, 4, 12, 12)
         if self.isChecked():
-            p.setPen(Qt.NoPen); p.setBrush(QColor("#dc143c")); p.drawEllipse(rect)
+            p.setPen(Qt.NoPen); p.setBrush(QColor("#e78284")); p.drawEllipse(rect)
         else:
             p.setPen(QPen(QColor(255, 255, 255, 60), 1.5)); p.setBrush(Qt.NoBrush); p.drawEllipse(rect)
+        p.end()
 
 class IconSyncButton(QPushButton):
     def __init__(self, parent=None):
         super().__init__(parent); self.setFixedSize(28, 28); self.setCursor(Qt.PointingHandCursor)
-        self.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); } QPushButton:hover { background: rgba(220, 20, 60, 0.15); border: 1px solid #dc143c; }")
+        self.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); } QPushButton:hover { background: rgba(231, 130, 132, 0.15); border: 1px solid #e78284; }")
     def paintEvent(self, event):
         super().paintEvent(event); p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
-        c = QColor("#dc143c") if self.underMouse() else QColor("#ffffff")
+        c = QColor("#e78284") if self.underMouse() else QColor("#ffffff")
         p.setPen(QPen(c, 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         # Draw a circular arrow (Sync/Reload icon)
         rect = QRectF(7, 7, 14, 14); p.drawArc(rect, 40 * 16, 280 * 16)
         # Draw arrow head
         p.setBrush(c); p.drawPolygon(QPointF(17, 6), QPointF(21, 9), QPointF(17, 12))
+        p.end()
 
 class ColorPellet(QPushButton):
     def __init__(self, color, parent=None):
@@ -841,29 +1441,58 @@ class ColorPellet(QPushButton):
         p.setBrush(self.color); p.drawEllipse(2, 2, 18, 18)
         if self.underMouse():
             p.setPen(QPen(Qt.white, 2)); p.setBrush(Qt.NoBrush); p.drawEllipse(1, 1, 20, 20)
+        p.end()
 
 class FilterTag(QPushButton):
-    def __init__(self, text, color="#dc143c", parent=None):
-        super().__init__(text, parent); self.setCheckable(True); self.setFixedHeight(28); self.setCursor(Qt.PointingHandCursor)
-        c = QColor(color); r, g, b = c.red(), c.green(), c.blue()
-        self.setStyleSheet(f"""
-            FilterTag {{ background: rgba({r},{g},{b},0.15); border: 1px solid rgba({r},{g},{b},0.3); border-radius: 14px; color: transparent; padding: 0 14px; font-size: 11px; font-weight: 600; }}
-            FilterTag:hover {{ background: rgba({r},{g},{b},0.3); border: 1px solid rgba({r},{g},{b},0.5); }}
-            FilterTag:checked {{ background: rgb({r},{g},{b}); border: 1px solid rgb({r},{g},{b}); color: transparent; font-weight: bold; }}
-        """)
+    def __init__(self, text, color="#e78284", parent=None):
+        super().__init__(text, parent)
+        self.setCheckable(True)
+        self.setFixedHeight(28)
+        self.setCursor(Qt.PointingHandCursor)
+        self._color = QColor(color)
+        self.setFont(QFont('Segoe UI Variable Display', 9, QFont.Bold))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        w = fm.horizontalAdvance(self.text().strip()) + 26
+        return QSize(max(w, 58), 28)
 
     def paintEvent(self, event):
-        super().paintEvent(event)
-        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        r = rect.height() / 2.0
+        path.addRoundedRect(rect, r, r)
+        
+        is_checked = self.isChecked()
+        is_hover = self.underMouse()
+        c = self._color
+        
+        if is_checked:
+            bg_col = c
+            border_pen = QPen(c.lighter(115), 1.5)
+            text_col = QColor('#ffffff')
+        elif is_hover:
+            bg_col = QColor(c.red(), c.green(), c.blue(), 75)
+            border_pen = QPen(QColor(c.red(), c.green(), c.blue(), 180), 1.5)
+            text_col = QColor('#ffffff')
+        else:
+            bg_col = QColor(c.red(), c.green(), c.blue(), 38)
+            border_pen = QPen(QColor(c.red(), c.green(), c.blue(), 90), 1.5)
+            text_col = QColor('#c6d0f5')
+            
+        p.fillPath(path, bg_col)
+        p.setPen(border_pen)
+        p.drawPath(path)
+        
         p.setFont(self.font())
-        r = self.rect()
-        txt = self.text()
-        p.setPen(QColor("#000000"))
-        p.drawText(r.adjusted(-1, -1, -1, -1), Qt.AlignCenter, txt)
-        p.drawText(r.adjusted(1, -1, 1, -1), Qt.AlignCenter, txt)
-        p.drawText(r.adjusted(-1, 1, -1, 1), Qt.AlignCenter, txt)
-        p.drawText(r.adjusted(1, 1, 1, 1), Qt.AlignCenter, txt)
-        p.setPen(QColor("#ffffff")); p.drawText(r, Qt.AlignCenter, txt)
+        p.setPen(text_col)
+        p.drawText(self.rect(), Qt.AlignCenter, self.text())
 
 class FilterBar(QWidget):
     filter_changed = pyqtSignal(str)
@@ -875,67 +1504,255 @@ class FilterBar(QWidget):
             if i == 0: btn.setChecked(True)
         self.group.buttonClicked.connect(lambda b: self.filter_changed.emit(b.text()))
 
+def _resolve_icon_filepath(raw_path, nss_file=None, root_dir=None):
+    if not raw_path:
+        return None
+    root = root_dir or PROJECT_ROOT or (os.path.dirname(os.path.dirname(sys.executable)) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    s = str(raw_path).strip('\'" ')
+    m_res = re.match(r'image\.res\s*\(\s*[\'"]?([^\'",)]+)', s, re.I)
+    if m_res:
+        s = m_res.group(1).strip('\'" ')
+    s = re.sub(r'\s*\[[^\]]+\]$', '', s).strip('\'" ')
+    if '@app.dir' in s.lower():
+        clean = s.replace('@app.dir', '').replace('@APP.DIR', '').lstrip('\\/')
+        candidate = os.path.normpath(os.path.join(root, clean))
+        if os.path.exists(candidate):
+            return candidate
+    if os.path.isabs(s) and os.path.exists(s):
+        return os.path.normpath(s)
+    if nss_file:
+        cand1 = os.path.normpath(os.path.join(os.path.dirname(nss_file), s))
+        if os.path.exists(cand1):
+            return cand1
+    cand2 = os.path.normpath(os.path.join(root, s))
+    if os.path.exists(cand2):
+        return cand2
+    cand3 = os.path.normpath(os.path.join(root, 'imports', s))
+    if os.path.exists(cand3):
+        return cand3
+    return None
+
+def _get_or_create_original_icon(resolved_path, root_dir):
+    icons_dir = os.path.join(root_dir, 'imports', 'icons')
+    orig_dir = os.path.join(icons_dir, 'originals')
+    os.makedirs(orig_dir, exist_ok=True)
+    try:
+        if os.path.normpath(resolved_path).lower().startswith(os.path.normpath(orig_dir).lower()):
+            return resolved_path
+    except Exception:
+        pass
+    fname = os.path.basename(resolved_path)
+    clean_base = re.sub(r'_[a-f0-9]{6}(\.[a-zA-Z0-9]+)$', r'\1', fname, flags=re.I)
+    orig_candidate = os.path.join(orig_dir, clean_base)
+    if os.path.exists(orig_candidate):
+        return orig_candidate
+    stem, ext = os.path.splitext(clean_base)
+    for existing in os.listdir(orig_dir):
+        if existing.lower().startswith(stem.lower()):
+            return os.path.join(orig_dir, existing)
+    s_norm = os.path.normpath(resolved_path).lower()
+    path_hash = hashlib.md5(s_norm.encode('utf-8')).hexdigest()[:8]
+    stem_clean = re.sub(r'_[a-f0-9]{6}$', '', stem, flags=re.I)
+    if ext.lower() in ('.exe', '.dll', '.lnk', '.cpl'):
+        ext = '.png'
+        unique_orig_name = f"{stem_clean}_{path_hash}{ext}"
+        target_orig = os.path.join(orig_dir, unique_orig_name)
+        if not os.path.exists(target_orig):
+            src_img = _load_source_icon_qimage(resolved_path)
+            if src_img and not src_img.isNull():
+                try:
+                    src_img.save(target_orig, "PNG")
+                except Exception:
+                    pass
+        return target_orig if os.path.exists(target_orig) else resolved_path
+
+    unique_orig_name = f"{stem_clean}_{path_hash}{ext}"
+    target_orig = os.path.join(orig_dir, unique_orig_name)
+    if not os.path.exists(target_orig):
+        try:
+            shutil.copy2(resolved_path, target_orig)
+        except Exception:
+            pass
+    return target_orig if os.path.exists(target_orig) else resolved_path
+
+def _load_source_icon_qimage(orig_path):
+    ext = os.path.splitext(orig_path)[1].lower()
+    if ext == '.svg':
+        try:
+            from PyQt5.QtSvg import QSvgRenderer
+            renderer = QSvgRenderer(orig_path)
+            sz = renderer.defaultSize()
+            if sz.width() <= 0 or sz.height() <= 0:
+                sz = QSize(256, 256)
+            else:
+                scale = max(1, 256 // max(sz.width(), sz.height()))
+                sz = QSize(sz.width() * scale, sz.height() * scale)
+            img = QImage(sz, QImage.Format_ARGB32)
+            img.fill(Qt.transparent)
+            p = QPainter(img)
+            renderer.render(p)
+            p.end()
+            return img
+        except Exception:
+            pass
+    elif ext in ('.ico', '.exe', '.dll', '.lnk') or os.path.isdir(orig_path):
+        icon = QIcon(orig_path)
+        pm = icon.pixmap(256, 256)
+        if not pm.isNull():
+            return pm.toImage().convertToFormat(QImage.Format_ARGB32)
+    img = QImage(orig_path)
+    if not img.isNull():
+        return img.convertToFormat(QImage.Format_ARGB32)
+    icon = QIcon(orig_path)
+    pm = icon.pixmap(256, 256)
+    if not pm.isNull():
+        return pm.toImage().convertToFormat(QImage.Format_ARGB32)
+    return None
+
+def _filter_and_save_icon(orig_path, root_dir, mode, colors, subfolder=None):
+    src_img = _load_source_icon_qimage(orig_path)
+    if not src_img or src_img.isNull():
+        return None, None
+    orig_base = os.path.basename(orig_path)
+    stem = os.path.splitext(orig_base)[0]
+    stem_clean = re.sub(r'_[a-f0-9]{6}$', '', stem, flags=re.I)
+    hash_payload = f"{stem_clean}_{mode}_{colors}".lower()
+    filter_hash = hashlib.md5(hash_payload.encode('utf-8')).hexdigest()[:6]
+    dest_name = f"{stem_clean}_{filter_hash}.png"
+    icons_dir = os.path.join(root_dir, 'imports', 'icons')
+    target_dir = os.path.join(icons_dir, subfolder) if subfolder else icons_dir
+    os.makedirs(target_dir, exist_ok=True)
+    dest_path = os.path.join(target_dir, dest_name)
+    
+    rel_sub = f"icons\\{subfolder}\\{dest_name}" if subfolder else f"icons\\{dest_name}"
+    nss_path = f"@app.dir\\imports\\{rel_sub}"
+
+    if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+        return nss_path, dest_path
+
+    res = QImage(src_img.size(), QImage.Format_ARGB32)
+    res.fill(Qt.transparent)
+    p = QPainter(res)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.SmoothPixmapTransform)
+    p.drawImage(0, 0, src_img)
+    p.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    
+    w, h = src_img.width(), src_img.height()
+    if mode == 'rainbow':
+        grad = QLinearGradient(0, 0, 0, h)
+        rainbow_stops = [
+            (0.0, '#ff3b30'),
+            (0.18, '#ff9500'),
+            (0.36, '#ffcc00'),
+            (0.54, '#34c759'),
+            (0.72, '#00c7be'),
+            (0.85, '#007aff'),
+            (1.0, '#af52de'),
+        ]
+        for pos, c_hex in rainbow_stops:
+            grad.setColorAt(pos, QColor(c_hex))
+        p.fillRect(res.rect(), grad)
+    elif mode == 'gradient':
+        c1 = colors[0] if len(colors) > 0 else '#ffffff'
+        c2 = colors[1] if len(colors) > 1 else c1
+        grad = QLinearGradient(0, 0, w, h)
+        grad.setColorAt(0.0, QColor(c1))
+        grad.setColorAt(1.0, QColor(c2))
+        p.fillRect(res.rect(), grad)
+    else:
+        c1 = colors[0] if len(colors) > 0 else '#ffffff'
+        p.fillRect(res.rect(), QColor(c1))
+    p.end()
+    
+    try:
+        res.save(dest_path, "PNG")
+    except Exception:
+        import time
+        time.sleep(0.05)
+        try: res.save(dest_path, "PNG")
+        except: pass
+    return nss_path, dest_path
+
 class GlobalTintWorker(QObject):
     progress = pyqtSignal(int, int)
     status = pyqtSignal(str)
     finished = pyqtSignal()
-    def __init__(self, root, color, skip_manual_keys=None): super().__init__(); self.root = root; self.color = color; self.skip_manual_keys = skip_manual_keys or set()
+
+    def __init__(self, root, mode_or_color, colors=None, skip_manual_keys=None):
+        super().__init__()
+        self.root = root
+        if isinstance(mode_or_color, str) and mode_or_color in ('rainbow', 'gradient', 'solid'):
+            self.mode = mode_or_color
+            self.colors = colors or ['#ffffff']
+        elif isinstance(mode_or_color, (list, tuple)):
+            self.colors = list(mode_or_color)
+            self.mode = 'gradient' if len(self.colors) >= 2 and self.colors[0] != self.colors[1] else 'solid'
+        else:
+            self.mode = 'solid'
+            self.colors = [mode_or_color] if mode_or_color else ['#ffffff']
+        self.skip_manual_keys = skip_manual_keys or set()
+
     def run(self):
-        items = scan_nss_items(self.root); files = sorted(list(set(i['file'] for i in items)))
-        processable = []
-        for fp in files:
-            file_items = [i for i in items if i['file'] == fp]
-            for i in file_items:
-                item_key = f"{fp}:{i['start']}"
-                if item_key in self.skip_manual_keys: continue
-                p = i['props']; val = p.get('image') or p.get('icon') or ''
-                if val: processable.append((fp, i))
-        total = max(len(processable), 1)
-        processed = 0
-        file_ops = {}
-        for fp, i in processable:
-            self.status.emit(f"Processing {os.path.basename(fp)}... ({processed + 1}/{total})")
-            p = i['props']; val = p.get('image') or p.get('icon') or ''
-            codes = _extract_glyph_codes(val)
-            nv = None
-            if codes:
-                nv = _build_glyph_val(codes, [])
-            else:
-                path = _resolve_app_dir_path(val.strip('\'" '))
-                if (not path or not os.path.exists(path)) and fp:
-                    try_rel = os.path.join(os.path.dirname(fp), val.strip('\'" '))
-                    if os.path.exists(try_rel): path = try_rel
-                if path and os.path.exists(path):
-                    nv, _ = save_local_icon(path, self.color, True, subfolder='preview')
-                    if nv: nv = nv.strip('\'"')
-            if nv:
-                raw = read_file(fp)[i['start']:i.get('cmd_end', i['end'])]
-                new_raw = raw
-                for key in ('image', 'icon'):
-                    if key in new_raw:
-                        raw_val = p.get(key)
-                        if raw_val:
-                            base_n = os.path.basename(raw_val)
-                            pattern = rf'({key}\s*=\s*)([\'\"\[]?)(?:.*?[/\\\\])?{re.escape(base_n)}([\'\"\]]?)'
-                            if re.search(pattern, new_raw, re.I):
-                                if nv.startswith('\\u') or nv.startswith('['):
-                                    new_raw = re.sub(pattern, lambda m: f"{m.group(1)}{nv}", new_raw, count=1, flags=re.I)
-                                else:
-                                    new_raw = re.sub(pattern, lambda m: f"{m.group(1)}'{nv}'", new_raw, count=1, flags=re.I)
-                                break
-                if new_raw != raw:
-                    if fp not in file_ops: file_ops[fp] = []
-                    file_ops[fp].append((i, new_raw))
-            processed += 1
-            self.progress.emit(processed, total)
-        for fp, ops in file_ops.items():
-            ops.sort(key=lambda x: x[0]['start'], reverse=True); content = read_file(fp)
-            for i, new_raw in ops:
-                c_end = i.get('cmd_end', i['end'])
-                content = content[:i['start']] + new_raw + content[c_end:]
-            safe_file_write(fp, content)
-        self.progress.emit(total, total)
-        self.finished.emit()
+        try:
+            nss_files = []
+            sh = os.path.join(self.root, 'shell.nss')
+            if os.path.exists(sh):
+                nss_files.append(sh)
+            for d in ['imports', 'plugins']:
+                p = os.path.join(self.root, d)
+                if os.path.exists(p):
+                    for r, _, fns in os.walk(p):
+                        for f in fns:
+                            if f.endswith('.nss') and f != 'theme.nss':
+                                nss_files.append(os.path.join(r, f))
+
+            pattern = re.compile(r'(?P<key>image|icon)\s*=\s*(?P<val>\[[^\]]+\]|\'[^\']*\'|\"[^\"]*\"|image\.res\([^)]*\)|[^\s,;)]+)', re.I)
+            
+            file_matches = []
+            for fp in nss_files:
+                content = read_file(fp)
+                if not content:
+                    continue
+                for m in pattern.finditer(content):
+                    val_raw = m.group('val').strip('\'"[] ')
+                    if val_raw.startswith('<svg') or val_raw.startswith('\\u') or val_raw.startswith('0x'):
+                        continue
+                    if any(ext in val_raw.lower() for ext in ['.png', '.ico', '.svg', '.jpg', '.bmp', '.cur', 'image.', '\\', '/']):
+                        resolved = _resolve_icon_filepath(val_raw, fp, self.root)
+                        if resolved and os.path.exists(resolved) and not os.path.isdir(resolved):
+                            file_matches.append((fp, m, val_raw, resolved))
+
+            total = max(len(file_matches), 1)
+            processed = 0
+            file_replacements = {}
+
+            for fp, m, val_raw, resolved in file_matches:
+                fname = os.path.basename(fp)
+                self.status.emit(f"Filtering {fname}... ({processed + 1}/{total})")
+                
+                orig = _get_or_create_original_icon(resolved, self.root)
+                nss_path, _ = _filter_and_save_icon(orig, self.root, self.mode, self.colors)
+                if nss_path:
+                    if fp not in file_replacements:
+                        file_replacements[fp] = []
+                    file_replacements[fp].append((m.start('val'), m.end('val'), f"'{nss_path}'"))
+                
+                processed += 1
+                self.progress.emit(processed, total)
+
+            for fp, replacements in file_replacements.items():
+                replacements.sort(key=lambda x: x[0], reverse=True)
+                content = read_file(fp)
+                for start, end, new_val in replacements:
+                    content = content[:start] + new_val + content[end:]
+                safe_file_write(fp, content)
+
+            self.progress.emit(total, total)
+        except Exception as e:
+            print(f"[GlobalTintWorker] Error: {e}")
+        finally:
+            self.finished.emit()
 
 def _find_target_executable_or_shortcut(cmd_or_title):
     if not cmd_or_title: return None
@@ -1005,7 +1822,7 @@ def _update_label_asset(lbl, val, nss_path=None, cmd=None):
     for c in lbl.findChildren(QWidget): c.deleteLater()
     lbl.setPixmap(QPixmap()); lbl.setText("")
     if not val:
-        lbl.setText("\u2726"); lbl.setStyleSheet("color: rgba(220, 20, 60, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
+        lbl.setText("\u2726"); lbl.setStyleSheet("color: rgba(231, 130, 132, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
         return
     svg_content = _extract_svg_content(val)
     if svg_content:
@@ -1090,7 +1907,7 @@ def _update_label_asset(lbl, val, nss_path=None, cmd=None):
             target_h = max(20, (lbl.height() if lbl.height() > 0 else 46) - 10)
             lbl.setPixmap(pm.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             return
-    lbl.setText("\uE12B"); lbl.setFont(QFont('Segoe MDL2 Assets', 18)); lbl.setStyleSheet("color: #dc143c; background: transparent;")
+    lbl.setText("\uE12B"); lbl.setFont(QFont('Segoe MDL2 Assets', 18)); lbl.setStyleSheet("color: #e78284; background: transparent;")
 def _build_glyph_val(codes, colors=None):
     if not codes: return ""
     colors = colors or []
@@ -1146,7 +1963,7 @@ def _get_new_asset_value(val, old_color, new_color, idx=None):
 
 class ImportedItemCard(QFrame):
     def __init__(self, data, parent=None):
-        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: rgba(255, 255, 255, 0.07); border: 1px solid rgba(220, 20, 60, 0.2); }")
+        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: #121212; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: #0E0E0E; border: 1px solid rgba(231, 130, 132, 0.4); }")
         self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(15, 10, 15, 10); self.main_layout.setSpacing(15); self.main_layout.setAlignment(Qt.AlignVCenter)
         
         self.icon_label = QLabel(self); self.icon_label.setFixedSize(40, 40); self.icon_label.setAlignment(Qt.AlignCenter)
@@ -1154,7 +1971,7 @@ class ImportedItemCard(QFrame):
         
         self.sb = QPushButton("\uE117", self); self.sb.setFixedSize(24, 24); self.sb.setCursor(Qt.PointingHandCursor); self.sb.setToolTip("Sync with Global Theme")
         self.sb.setFont(QFont('Segoe MDL2 Assets', 10))
-        self.sb.setStyleSheet("QPushButton { background: transparent; border: none; color: #b0b0b0; } QPushButton:hover { color: #dc143c; }")
+        self.sb.setStyleSheet("QPushButton { background: transparent; border: none; color: #b0b0b0; } QPushButton:hover { color: #e78284; }")
         self.sb.clicked.connect(self.sync_to_theme); self.main_layout.addWidget(self.sb)
 
         self.iw = QWidget(self); self.iw.setStyleSheet("background: transparent; border: none;")
@@ -1179,9 +1996,9 @@ class ImportedItemCard(QFrame):
         cmd_val = data.get('cmd') or data.get('path') or ''
         _update_label_asset(self.icon_label, val, self.data.get('file'), cmd=cmd_val)
         title = data.get('title', 'No Title'); typ = self.data.get('type', 'item').title()
-        self.title_label.setText(f"{typ}: <span style='color: #dc143c;'>{title}</span>")
+        self.title_label.setText(f"{typ}: <span style='color: #e78284;'>{title}</span>")
         fname = os.path.basename(self.data.get('file', 'unknown'))
-        self.desc_label.setText(f"Source: <span style='color: #ff2a55;'>{fname}</span>" + (f" \u2022 Cmd: <span style='color: #b0b0b0;'>{data['cmd'][:50]}...</span>" if 'cmd' in data else ""))
+        self.desc_label.setText(f"Source: <span style='color: #ea999c;'>{fname}</span>" + (f" \u2022 Cmd: <span style='color: #b0b0b0;'>{data['cmd'][:50]}...</span>" if 'cmd' in data else ""))
         
         while self.c_lay.count():
             it = self.c_lay.takeAt(0); (it.widget().deleteLater() if it.widget() else None)
@@ -1204,12 +2021,12 @@ class ImportedItemCard(QFrame):
             sb = QPushButton("\uE72C")
             sb.setFixedSize(24, 24); sb.setCursor(Qt.PointingHandCursor)
             sb.setToolTip("Sync with Theme")
-            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(220, 20, 60, 0.1); color: #dc143c; border-color: #dc143c; }")
+            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(231, 130, 132, 0.1); color: #e78284; border-color: #e78284; }")
             sb.clicked.connect(self.sync_to_theme)
             self.c_lay.addWidget(sb)
 
-        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #ffffff; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #dc143c; color: white; }"
-        self.ab.setFixedSize(38, 38); self.ab.setStyleSheet(btn_style.replace("#ffffff", "#dc143c")); self.ab.setText("\uE72B")
+        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #ffffff; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #e78284; color: white; }"
+        self.ab.setFixedSize(38, 38); self.ab.setStyleSheet(btn_style.replace("#ffffff", "#e78284")); self.ab.setText("\uE72B")
         self.eb.setFixedSize(38, 38); self.eb.setStyleSheet(btn_style); self.eb.setText("\uE104")
         self.ab.show() if (colors or _extract_glyph_codes(val)) else self.ab.hide()
 
@@ -1258,20 +2075,116 @@ class ImportedItemCard(QFrame):
 
 class IDEntryWidget(QFrame):
     changed = pyqtSignal()
-    def __init__(self, id_text, formatted_name, initial_menu=None, initial_vis=None, initial_hidden=False, parent=None):
-        super().__init__(parent); self.id_text = id_text; self.menu = initial_menu; self.vis = initial_vis; self.is_hidden = initial_hidden; self.setFixedSize(240, 60); self.setObjectName("idEntryWidget"); self.update_style(); layout = QHBoxLayout(self); layout.setContentsMargins(15, 0, 10, 0); self.label = QLabel(formatted_name); self.label.setStyleSheet("font-size: 13px; color: white; background: transparent;"); layout.addWidget(self.label, 1); btn_c = QFrame(); btn_c.setStyleSheet("background: rgba(0,0,0,0.15); border-radius: 12px; padding: 2px;"); bl = QHBoxLayout(btn_c); bl.setContentsMargins(2, 2, 2, 2); bl.setSpacing(2); self.h_btn = QPushButton("\uE708"); self.h_btn.setFixedSize(24, 24); self.h_btn.setCursor(Qt.PointingHandCursor); self.h_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #dc143c; }"); self.h_btn.clicked.connect(self.toggle_hide); bl.addWidget(self.h_btn); self.e_btn = QPushButton("\uE104"); self.e_btn.setFixedSize(24, 24); self.e_btn.setCursor(Qt.PointingHandCursor); self.e_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #dc143c; }"); self.e_btn.clicked.connect(self.show_popup); bl.addWidget(self.e_btn); layout.addWidget(btn_c); self.update_label_state()
-    def update_style(self): self.setStyleSheet(f"#idEntryWidget {{ background-color: rgba(255, 255, 255, 0.05); border-radius: 15px; border: 1px solid {'rgba(220, 20, 60, 0.4)' if (self.menu or self.vis) else 'rgba(255, 255, 255, 0.03)'}; }} #idEntryWidget:hover {{ background-color: rgba(255, 255, 255, 0.08); border: 1px solid rgba(220, 20, 60, 0.2); }}")
+    def __init__(self, id_text, formatted_name, initial_menu=None, initial_vis=None, initial_hidden=False, custom_props=None, parent=None):
+        super().__init__(parent)
+        self.id_text = id_text
+        self.default_name = id_text.replace("id.", "").replace("_", " ").title()
+        self.formatted_name = formatted_name or self.default_name
+        self.menu = initial_menu
+        self.vis = initial_vis
+        self.is_hidden = initial_hidden
+        self.custom_props = custom_props.copy() if custom_props else {}
+        self.setFixedSize(240, 60)
+        self.setObjectName("idEntryWidget")
+        self.update_style()
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 0, 10, 0)
+        
+        self.label = QLabel(self.formatted_name)
+        self.label.setStyleSheet("font-size: 13px; color: white; background: transparent;")
+        layout.addWidget(self.label, 1)
+        
+        btn_c = QFrame()
+        btn_c.setStyleSheet("background: rgba(0,0,0,0.15); border-radius: 12px; padding: 2px;")
+        bl = QHBoxLayout(btn_c)
+        bl.setContentsMargins(2, 2, 2, 2)
+        bl.setSpacing(2)
+        
+        self.h_btn = QPushButton("\uE7B3")
+        self.h_btn.setFixedSize(24, 24)
+        self.h_btn.setCursor(Qt.PointingHandCursor)
+        self.h_btn.clicked.connect(self.toggle_hide)
+        bl.addWidget(self.h_btn)
+        
+        self.e_btn = QPushButton("\uE104")
+        self.e_btn.setFixedSize(24, 24)
+        self.e_btn.setCursor(Qt.PointingHandCursor)
+        self.e_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 10px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; } QPushButton:hover { color: #e78284; }")
+        self.e_btn.clicked.connect(self.show_popup)
+        bl.addWidget(self.e_btn)
+        
+        layout.addWidget(btn_c)
+        self.update_label_state()
+
+    def update_style(self):
+        has_custom = bool(self.menu or self.vis or self.custom_props)
+        self.setStyleSheet(f"#idEntryWidget {{ background-color: rgba(255, 255, 255, 0.05); border-radius: 15px; border: 1px solid {'rgba(231, 130, 132, 0.4)' if has_custom else 'rgba(255, 255, 255, 0.03)'}; }} #idEntryWidget:hover {{ background-color: rgba(255, 255, 255, 0.08); border: 1px solid rgba(231, 130, 132, 0.2); }}")
+
     def update_label_state(self):
-        self.label.setGraphicsEffect(None); self.label.setStyleSheet(f"font-size: 13px; color: {'#333333' if self.is_hidden else 'white'}; background: transparent;")
-        self.h_btn.setStyleSheet(f"QPushButton {{ background: {'#dc143c' if self.is_hidden else 'transparent'}; border: none; border-radius: 10px; color: {'#1e2030' if self.is_hidden else '#b0b0b0'}; font-family: 'Segoe MDL2 Assets'; }}")
-    def toggle_hide(self): self.is_hidden = not self.is_hidden; self.update_label_state(); self.changed.emit()
+        self.label.setGraphicsEffect(None)
+        self.label.setStyleSheet(f"font-size: 13px; color: {'#555555' if self.is_hidden else 'white'}; background: transparent;")
+        self.h_btn.setText("\uED1A" if self.is_hidden else "\uE7B3")
+        self.h_btn.setToolTip("Unhide" if self.is_hidden else "Hide")
+        self.h_btn.setStyleSheet(f"QPushButton {{ background: {'#e78284' if self.is_hidden else 'transparent'}; border: none; border-radius: 10px; color: {'#1e2030' if self.is_hidden else '#b0b0b0'}; font-family: 'Segoe MDL2 Assets'; font-size: 12px; }} QPushButton:hover {{ color: {'#1e2030' if self.is_hidden else '#e78284'}; }}")
+
+    def toggle_hide(self):
+        self.is_hidden = not self.is_hidden
+        if getattr(self, 'custom_props', None):
+            if self.is_hidden:
+                self.custom_props['vis'] = 'vis.remove'
+                self.vis = 'vis.remove'
+            else:
+                self.custom_props.pop('vis', None)
+                self.vis = None
+        self.update_label_state()
+        self.changed.emit()
+
     def show_popup(self):
-        d = IDPopupDialog(self, self.menu, self.vis); d.setFixedWidth(200); pos = self.e_btn.mapToGlobal(QPoint(-d.width() + self.e_btn.width(), self.e_btn.height() + 5)); d.move(pos)
-        if d.exec_(): self.menu, self.vis = d.get_values(); self.update_style(); self.changed.emit()
+        initial_props = getattr(self, 'custom_props', {}).copy()
+        initial_props['where.id'] = self.id_text
+        if 'menu' not in initial_props and self.menu:
+            initial_props['menu'] = self.menu
+        if 'vis' not in initial_props and self.vis:
+            initial_props['vis'] = self.vis
+        if 'title' not in initial_props:
+            initial_props['title'] = self.formatted_name if self.formatted_name != self.default_name else ''
+
+        parent_window = self.window()
+        file_path = getattr(parent_window, 'filepath', '')
+        data = {
+            'type': f'ID ({self.id_text})',
+            'file': file_path,
+            'props': initial_props
+        }
+
+        d = ImportEditorDialog(data, parent_window)
+        if d.exec_():
+            new_props = d.get_props()
+            new_props['where.id'] = self.id_text
+            clean_id_name = self.id_text.replace("id.", "").strip()
+            first_word = clean_id_name.split('_')[0].strip().lower()
+            if first_word:
+                new_props['find'] = f"'{first_word}'"
+            self.custom_props = new_props
+            self.menu = new_props.get('menu')
+            self.vis = new_props.get('vis')
+            raw_title = str(new_props.get('title', '')).strip('\'"')
+            if raw_title:
+                self.formatted_name = raw_title
+            else:
+                self.formatted_name = self.default_name
+            self.label.setText(self.formatted_name)
+            
+            v_low = str(self.vis or '').lower()
+            self.is_hidden = ('remove' in v_low or 'hidden' in v_low)
+            self.update_label_state()
+            self.update_style()
+            self.changed.emit()
 
 class ModificationRuleCard(QFrame):
     def __init__(self, data, parent=None):
-        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: rgba(255, 255, 255, 0.07); border: 1px solid rgba(220, 20, 60, 0.2); }")
+        super().__init__(parent); self.data = data; self.setObjectName("ruleCard"); self.setFixedHeight(100); self.setStyleSheet("#ruleCard { background-color: #121212; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); } #ruleCard:hover { background-color: #0E0E0E; border: 1px solid rgba(231, 130, 132, 0.4); }")
         self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(15, 12, 15, 12); self.main_layout.setSpacing(15)
         
         self.il = QLabel(self); self.il.setFixedSize(40, 40); self.il.setAlignment(Qt.AlignCenter)
@@ -1288,11 +2201,11 @@ class ModificationRuleCard(QFrame):
         self.bl_w = QWidget(self); self.bl_w.setStyleSheet("background: transparent; border: none;")
         self.bl = QHBoxLayout(self.bl_w); self.bl.setContentsMargins(0, 0, 0, 0); self.bl.setSpacing(8); self.bl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.eb = QPushButton(self.bl_w); self.db = QPushButton(self.bl_w)
-        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #ffffff; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #dc143c; color: white; }"
+        btn_style = "QPushButton { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 19px; color: #ffffff; font-family: 'Segoe MDL2 Assets'; font-size: 16px; } QPushButton:hover { background: rgba(255, 255, 255, 0.15); border: 1px solid #e78284; color: white; }"
         for b in (self.eb, self.db): 
             b.setFixedSize(38, 38); b.setStyleSheet(btn_style); b.setCursor(Qt.PointingHandCursor); self.bl.addWidget(b)
         self.eb.setText("\uE104"); self.db.setText("\uE107")
-        self.db.setStyleSheet(self.db.styleSheet() + "QPushButton:hover { color: #dc143c; border-color: #dc143c; }")
+        self.db.setStyleSheet(self.db.styleSheet() + "QPushButton:hover { color: #e78284; border-color: #e78284; }")
         self.main_layout.addWidget(self.bl_w)
         self.update_ui()
         
@@ -1303,8 +2216,10 @@ class ModificationRuleCard(QFrame):
         
         # Build a friendly Target Title
         target = "Global Rule"
-        if data.get('find'): target = f"Modify: <span style='color: #dc143c;'>{data['find'].strip(chr(39)+chr(34))}</span>"
-        elif data.get('type'): target = f"All <span style='color: #ff2a55;'>{data['type'].title()}s</span>"
+        if data.get('where.id'): target = f"ID: <span style='color: #e78284;'>{data['where.id'].strip(chr(39)+chr(34))}</span>"
+        elif data.get('find'): target = f"Modify: <span style='color: #e78284;'>{data['find'].strip(chr(39)+chr(34))}</span>"
+        elif data.get('where'): target = f"Rule: <span style='color: #e78284;'>{data['where'].strip(chr(39)+chr(34))}</span>"
+        elif data.get('type'): target = f"All <span style='color: #ea999c;'>{data['type'].title()}s</span>"
         if data.get('in'): target += f" <span style='color: #333333;'>in</span> <span style='color: #b0b0b0;'>{data['in'].strip(chr(39)+chr(34))}</span>"
         self.tl.setText(target)
         
@@ -1313,16 +2228,21 @@ class ModificationRuleCard(QFrame):
         if data.get('title'): acts.append(f"Rename to <span style='color: #ffffff;'>'{data['title'].strip(chr(39)+chr(34))}'</span>")
         
         v = data.get('vis', '').lower()
-        if 'remove' in v or 'hidden' in v: acts.append("<span style='color: #dc143c;'>Hidden</span>")
-        elif v and v != 'normal': acts.append(f"Vis: <span style='color: #dc143c;'>{v}</span>")
+        if 'remove' in v or 'hidden' in v: acts.append("<span style='color: #e78284;'>Hidden</span>")
+        elif v and v != 'normal': acts.append(f"Vis: <span style='color: #e78284;'>{v}</span>")
         
-        m = data.get('menu', '').lower()
-        if m: 
-            m_name = m.split('.')[-1].title() if '.' in m else m.title()
-            acts.append(f"Move to <span style='color: #dc143c;'>{m_name}</span>")
+        if 'menu' in data and data.get('menu') is not None:
+            m = str(data.get('menu', '')).strip('\'"')
+            if not m or m.lower() in ("main", "menu.main"):
+                acts.append("Move to <span style='color: #e78284;'>Main</span>")
+            elif m.lower() in ("options", "title.options"):
+                acts.append("Move to <span style='color: #e78284;'>Options</span>")
+            else:
+                m_name = m.split('.')[-1].title() if '.' in m else m.title()
+                acts.append(f"Move to <span style='color: #e78284;'>{m_name}</span>")
             
-        if data.get('pos'): acts.append(f"Pos: <span style='color: #dc143c;'>{data['pos']}</span>")
-        if any(k in data for k in ('icon', 'image')): acts.append("<span style='color: #dc143c;'>New Icon</span>")
+        if data.get('pos'): acts.append(f"Pos: <span style='color: #e78284;'>{data['pos']}</span>")
+        if any(k in data for k in ('icon', 'image')): acts.append("<span style='color: #e78284;'>New Icon</span>")
         if data.get('sep'): acts.append("<span style='color: #333333;'>Separator</span>")
         
         self.dl.setText(" \u2022 ".join(acts) if acts else "No modifications defined")
@@ -1348,7 +2268,7 @@ class ModificationRuleCard(QFrame):
             sb = QPushButton("\uE117")
             sb.setFixedSize(24, 24); sb.setCursor(Qt.PointingHandCursor)
             sb.setToolTip("Sync with Theme")
-            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(220, 20, 60, 0.1); color: #dc143c; border-color: #dc143c; }")
+            sb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #b0b0b0; font-family: 'Segoe MDL2 Assets'; font-size: 11px; } QPushButton:hover { background: rgba(231, 130, 132, 0.1); color: #e78284; border-color: #e78284; }")
             sb.clicked.connect(self.sync_to_theme)
             self.c_lay.addWidget(sb)
 
@@ -1415,100 +2335,39 @@ def _resolve_app_dir_path(icon_str):
         return os.path.normpath(os.path.join(root, rel_path))
     return icon_str
 
-def save_local_icon(source_path, tint_color, tint_enabled, subfolder=None):
-    import sys, os, shutil, hashlib
-    from PyQt5.QtGui import QPixmap, QImage, QColor
+def save_local_icon(source_path, tint_color, tint_enabled, subfolder=None, mode=None):
     root = PROJECT_ROOT or (os.path.dirname(os.path.dirname(sys.executable)) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    icons_dir = os.path.join(root, 'imports', 'icons')
-    target_dir = os.path.join(icons_dir, subfolder) if subfolder else icons_dir
-    os.makedirs(target_dir, exist_ok=True)
-    orig_dir = os.path.join(icons_dir, 'originals'); os.makedirs(orig_dir, exist_ok=True)
-    
-    # Generate a unique base name for this source path to avoid collisions
-    s_norm = os.path.normpath(source_path).lower()
-    path_hash = hashlib.md5(s_norm.encode('utf-8')).hexdigest()[:8]
-    fname, fext = os.path.splitext(os.path.basename(source_path))
-    unique_base = f"{fname}_{path_hash}{fext}"
-    
-    # If source is a tinted one, try finding its original in the originals folder
-    if source_path.startswith(icons_dir) and not source_path.startswith(orig_dir):
-        # Remove the color hash suffix (e.g., _abcdef) if present to find the original's name
-        base = re.sub(r'_[a-f0-9]{6}(\.(?:png|ico|bmp|svg))$', r'\1', os.path.basename(source_path), flags=re.I)
-        p_orig = os.path.join(orig_dir, base)
-        if os.path.exists(p_orig): source_path = p_orig
-    
-    # Ensure source is in originals
-    if not source_path.startswith(orig_dir):
-        dest_orig = os.path.join(orig_dir, unique_base)
-        if not os.path.exists(dest_orig): shutil.copy2(source_path, dest_orig)
-        source_path = dest_orig
-        
-    # Final destination name (tinted or not)
-    name, ext = os.path.splitext(os.path.basename(source_path))
-    if tint_enabled: 
-        ext = '.png'
-        # Include a hash of the color to make it permanent and unique
-        c_hash = hashlib.md5(str(tint_color).lower().encode()).hexdigest()[:6]
-        # Remove any previous color hash if it exists to avoid double hashing
-        name = re.sub(r'_[a-f0-9]{6}$', '', name)
-        dest_name = f"{name}_{c_hash}{ext}"
-    else: 
+    orig = _get_or_create_original_icon(source_path, root)
+    if not tint_enabled:
+        icons_dir = os.path.join(root, 'imports', 'icons')
+        target_dir = os.path.join(icons_dir, subfolder) if subfolder else icons_dir
+        os.makedirs(target_dir, exist_ok=True)
+        name, ext = os.path.splitext(os.path.basename(orig))
         dest_name = f"{name}{ext}"
-        
-    dest_path = os.path.join(target_dir, dest_name)
-    
-    if tint_enabled:
-        if source_path.lower().endswith('.svg'):
-            # For SVGs, we read as text and replace the color attributes
+        dest_path = os.path.join(target_dir, dest_name)
+        if not os.path.exists(dest_path) or not os.path.samefile(orig, dest_path):
             try:
-                with open(source_path, 'r', encoding='utf-8') as f: svg_data = f.read()
-                # Replace fill/stroke with tint_color, but only if they aren't 'none'
-                def sub_color(m):
-                    attr, quote, val = m.group(1), m.group(2), m.group(3)
-                    if val.lower() == 'none': return m.group(0)
-                    return f'{attr}={quote}{tint_color}{quote}'
-                
-                new_svg = re.sub(r'(fill|stroke)=([\'"])(.*?)\2', sub_color, svg_data, flags=re.I)
-                with open(dest_path, 'w', encoding='utf-8') as f: f.write(new_svg)
-            except: shutil.copy2(source_path, dest_path)
-        else:
-            pm = QPixmap()
-            try:
-                with open(source_path, 'rb') as f: data = f.read()
-                pm.loadFromData(data)
-            except: pass
+                shutil.copy2(orig, dest_path)
+            except Exception:
+                pass
+        rel_path = f"icons\\{subfolder}\\{dest_name}" if subfolder else f"icons\\{dest_name}"
+        return f"@app.dir\\imports\\{rel_path}", dest_path
 
-            if not pm.isNull():
-                img = pm.toImage().convertToFormat(QImage.Format_ARGB32); color = QColor(tint_color)
-                for y in range(img.height()):
-                    for x in range(img.width()):
-                        c = img.pixelColor(x, y)
-                        if c.alpha() > 0: img.setPixelColor(x, y, QColor(color.red(), color.green(), color.blue(), c.alpha()))
-                try:
-                    img.save(dest_path, "PNG")
-                except:
-                    # If save fails due to lock, we might try a temp name or just ignore if it's just a preview
-                    # but here it's meant to be permanent.
-                    import time
-                    for _ in range(3):
-                        try: 
-                            if os.path.exists(dest_path): os.remove(dest_path)
-                            img.save(dest_path, "PNG"); break
-                        except: time.sleep(0.1)
-            else: 
-                try: shutil.copy2(source_path, dest_path)
-                except: pass
-    else: 
-        if not os.path.exists(dest_path) or not os.path.samefile(source_path, dest_path):
-            try:
-                shutil.copy2(source_path, dest_path)
-            except Exception as e:
-                # If it fails with WinError 1224, the file is already there and in use
-                # Since we are not tinting, and the file exists, we can often safely ignore it
-                if not os.path.exists(dest_path): raise e
-        
-    rel_path = f"icons\\{subfolder}\\{dest_name}" if subfolder else f"icons\\{dest_name}"
-    return f"@app.dir\\imports\\{rel_path}", dest_path
+    if mode is None:
+        if str(tint_color).lower() == 'rainbow':
+            mode = 'rainbow'
+            colors = []
+        elif isinstance(tint_color, (list, tuple)) and len(tint_color) >= 2:
+            mode = 'gradient'
+            colors = list(tint_color)
+        else:
+            mode = 'solid'
+            colors = [tint_color] if isinstance(tint_color, str) else ['#ffffff']
+    else:
+        colors = tint_color if isinstance(tint_color, (list, tuple)) else [tint_color]
+
+    nss_path, dest_path = _filter_and_save_icon(orig, root, mode, colors, subfolder=subfolder)
+    return nss_path, dest_path
 
 def _extract_img_path_and_color(value):
 
@@ -1567,7 +2426,7 @@ def _extract_all_colors(value):
 def _detect_font_from_value(value):
     return "Nilesoft Shell"
 
-_THEME_COLOR_CACHE = ['#dc143c', '#ff2a55']
+_THEME_COLOR_CACHE = ['#e78284', '#ea999c']
 _LAST_THEME_MTIME = 0
 
 def _get_theme_glyph_colors():
@@ -1601,8 +2460,16 @@ class GlyphPreviewLabel(QLabel):
         _init_nilesoft_font()
         self.setAlignment(Qt.AlignCenter); self.setStyleSheet("background: transparent;")
     def paintEvent(self, event):
-        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing); p.setRenderHint(QPainter.SmoothPixmapTransform)
-        metadata = getattr(GlyphBrowserDialog, '_glyphs_cache', {})
+        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing); p.setRenderHint(QPainter.SmoothPixmapTransform); p.setRenderHint(QPainter.TextAntialiasing)
+        metadata = getattr(GlyphBrowserDialog, '_glyphs_cache', None)
+        if not metadata:
+            from utils import get_glyphs_data
+            data = get_glyphs_data() or {}
+            metadata = {}
+            for k, itm in data.items():
+                try: code_int = int(k, 16)
+                except ValueError: code_int = k
+                metadata[code_int] = itm
         def_cs = _get_theme_glyph_colors()
         w_avail = self.width()
         h_avail = self.height()
@@ -1625,7 +2492,8 @@ class GlyphPreviewLabel(QLabel):
                 else:
                     if isinstance(code, int):
                         font_size = int(draw_size * 0.72)
-                        font = QFont(self.font_families[i] if i < len(self.font_families) else self.font_family, font_size)
+                        font = QFont(self.font_families[i] if i < len(self.font_families) else self.font_family)
+                        font.setPixelSize(font_size)
                         p.setFont(font)
                         p.setPen(QColor(c_hex))
                         p.drawText(self.rect(), Qt.AlignCenter, chr(code))
@@ -1673,7 +2541,7 @@ class ManualSyncConflictDialog(QDialog):
         self.checkboxes = []
         for idx, item in enumerate(self.manual_items):
             card = QFrame(); card.setStyleSheet("background: rgba(255, 255, 255, 0.05); border-radius: 12px;"); card_lay = QHBoxLayout(card)
-            cb = QCheckBox(); cb.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #333333; background: transparent; } QCheckBox::indicator:checked { background: #dc143c; border: 2px solid #dc143c; }"); cb.setChecked(False); cb.setProperty("item_idx", idx); self.checkboxes.append(cb); card_lay.addWidget(cb)
+            cb = QCheckBox(); cb.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #333333; background: transparent; } QCheckBox::indicator:checked { background: #e78284; border: 2px solid #e78284; }"); cb.setChecked(False); cb.setProperty("item_idx", idx); self.checkboxes.append(cb); card_lay.addWidget(cb)
             val = item['props'].get('image') or item['props'].get('icon') or ''; codes = _extract_glyph_codes(val); colors = _extract_all_colors(val)
             prev = GlyphPreviewLabel(codes, size=24, font_family=NILESOFT_FONT_FAMILY, colors=colors); prev.setFixedSize(36, 36); card_lay.addWidget(prev)
             title = QLabel(item['props'].get('title', 'Unknown Item')); title.setStyleSheet("color: white; font-weight: bold; font-size: 14px;"); card_lay.addWidget(title)
@@ -1681,14 +2549,14 @@ class ManualSyncConflictDialog(QDialog):
         scroll.setWidget(self.scroll_widget); cl.addWidget(scroll)
         btns = QHBoxLayout(); btns.addStretch()
         skip_all = QPushButton("Skip All"); skip_all.clicked.connect(self.reject); skip_all.setStyleSheet("background: #2a2a30; color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
-        sync_btn = QPushButton("Sync Selected"); sync_btn.clicked.connect(self.accept); sync_btn.setStyleSheet("background: #dc143c; color: #ffffff; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
+        sync_btn = QPushButton("Sync Selected"); sync_btn.clicked.connect(self.accept); sync_btn.setStyleSheet("background: #e78284; color: #ffffff; padding: 10px 20px; border-radius: 10px; font-weight: bold;")
         btns.addWidget(skip_all); btns.addWidget(sync_btn); cl.addLayout(btns)
     def get_selected_indices(self): return [cb.property("item_idx") for cb in self.checkboxes if cb.isChecked()]
 
 class AddSVGDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent); self.setWindowTitle("Add Custom SVG Icon"); self.setMinimumWidth(480); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; }")
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(231, 130, 132, 0.6); border-radius: 8px; padding: 6px 12px; }")
         self.created_key = None
         self._drag_pos = None
         self.setup_ui()
@@ -1714,11 +2582,11 @@ class AddSVGDialog(QDialog):
         h = QLabel("Add Custom SVG Icon"); h.setStyleSheet("font-size: 17px; font-weight: bold; color: white;"); cl.addWidget(h)
         
         cl.addWidget(QLabel("Icon Title / Name:"))
-        self.name_inp = QLineEdit(); self.name_inp.setPlaceholderText("e.g. Valorant, Discord, Custom Logo")
+        self.name_inp = PillLineEdit("e.g. Discord")
         cl.addWidget(self.name_inp)
 
         cl.addWidget(QLabel("Search Keywords (comma-separated):"))
-        self.kw_inp = QLineEdit(); self.kw_inp.setPlaceholderText("e.g. game, riot, fps, shooter, play")
+        self.kw_inp = PillLineEdit("e.g. chrome, refresh, download")
         cl.addWidget(self.kw_inp)
 
         cl.addWidget(QLabel("SVG Content or Path(s):"))
@@ -1730,7 +2598,7 @@ class AddSVGDialog(QDialog):
         btns = QHBoxLayout()
         cancel_btn = QPushButton("Cancel"); cancel_btn.setCursor(Qt.PointingHandCursor); cancel_btn.setStyleSheet("QPushButton { background: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 16px; } QPushButton:hover { background: #45475a; }")
         cancel_btn.clicked.connect(self.reject)
-        save_btn = QPushButton("Add Icon"); save_btn.setCursor(Qt.PointingHandCursor); save_btn.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
+        save_btn = QPushButton("Add Icon"); save_btn.setCursor(Qt.PointingHandCursor); save_btn.setStyleSheet("QPushButton { background: #e78284; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ea999c; }")
         save_btn.clicked.connect(self.save_svg)
         btns.addStretch(); btns.addWidget(cancel_btn); btns.addWidget(save_btn)
         cl.addLayout(btns)
@@ -1803,9 +2671,7 @@ class GlyphBrowserDialog(QDialog):
         h = QLabel("Glyph Browser"); h.setStyleSheet("font-size: 18px; font-weight: bold; color: white;"); cl.addWidget(h)
         desc = QLabel("Select up to 2 glyphs. Single = image, Dual = layered icon."); desc.setStyleSheet("color: #888888; font-size: 12px;"); cl.addWidget(desc)
         top_row = QHBoxLayout()
-        self.search_inp = QLineEdit(); self.search_inp.setPlaceholderText("Search glyphs or keywords...")
-        self.search_inp.setStyleSheet("background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 8px 12px; color: #ffffff; font-size: 13px;")
-        
+        self.search_inp = PillSearchInput("Search glyphs or keywords...")
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(40)
@@ -1813,33 +2679,16 @@ class GlyphBrowserDialog(QDialog):
         self.search_inp.textChanged.connect(lambda: self.search_timer.start())
         top_row.addWidget(self.search_inp, 1)
 
-        self.upload_img_btn = QPushButton("\uE8E5")
-        self.upload_img_btn.setFont(QFont('Segoe MDL2 Assets', 12))
-        self.upload_img_btn.setFixedSize(38, 38)
-        self.upload_img_btn.setCursor(Qt.PointingHandCursor)
-        self.upload_img_btn.setToolTip("Upload Custom Image/Icon")
-        self.upload_img_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                border-radius: 10px;
-                color: #e0e0e0;
-            }
-            QPushButton:hover {
-                background: rgba(220, 20, 60, 0.2);
-                border: 1px solid #dc143c;
-                color: #ffffff;
-            }
-        """)
+        self.upload_img_btn = UploadIconButton()
         self.upload_img_btn.clicked.connect(self._upload_custom_icon)
         top_row.addWidget(self.upload_img_btn)
         
-        self.preview_frame = QFrame(); self.preview_frame.setFixedSize(56, 44)
-        self.preview_frame.setStyleSheet("background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);")
-        self.preview_layout = QVBoxLayout(self.preview_frame); self.preview_layout.setContentsMargins(0, 0, 0, 0)
+        self.preview_frame = GlyphPreviewFrame()
+        self.preview_layout = QVBoxLayout(self.preview_frame)
+        self.preview_layout.setContentsMargins(0, 0, 0, 0)
         self._update_preview()
         top_row.addWidget(self.preview_frame)
-        self.sel_label = QLabel(self._selection_text()); self.sel_label.setStyleSheet("color: #dc143c; font-size: 12px; font-weight: bold;"); self.sel_label.setFixedWidth(110)
+        self.sel_label = QLabel(self._selection_text()); self.sel_label.setStyleSheet("color: #e78284; font-size: 12px; font-weight: bold;"); self.sel_label.setFixedWidth(110)
         top_row.addWidget(self.sel_label)
         cl.addLayout(top_row)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setStyleSheet("background: transparent; border: none;")
@@ -1850,7 +2699,7 @@ class GlyphBrowserDialog(QDialog):
         self.glyph_list.setSpacing(4)
         self.glyph_list.setMovement(QListWidget.Static)
         self.glyph_list.setSelectionMode(QListWidget.MultiSelection)
-        self.glyph_list.setStyleSheet("QListWidget { background: transparent; border: none; outline: none; } QListWidget::item { background: rgba(255,255,255,0.04); border-radius: 8px; margin: 2px; } QListWidget::item:hover { background: rgba(255,255,255,0.1); } QListWidget::item:selected { background: rgba(220, 20, 60, 0.2); border: 1px solid #dc143c; }")
+        self.glyph_list.setStyleSheet("QListWidget { background: transparent; border: none; outline: none; } QListWidget::item { background: rgba(255,255,255,0.04); border-radius: 8px; margin: 2px; } QListWidget::item:hover { background: rgba(255,255,255,0.1); } QListWidget::item:selected { background: rgba(231, 130, 132, 0.2); border: 1px solid #e78284; }")
         self.glyph_list.itemClicked.connect(self.on_item_clicked)
         self.glyph_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
         cl.addWidget(self.glyph_list, 1)
@@ -1860,39 +2709,34 @@ class GlyphBrowserDialog(QDialog):
         self._batch_size = 80
         self._populate_list(self.all_codes)
         btns = QHBoxLayout()
-        color_area = QHBoxLayout(); color_area.setSpacing(6)
-        self.color1_enabled = QCheckBox(); self.color1_enabled.setFixedSize(16, 16)
+        color_area = QHBoxLayout(); color_area.setSpacing(8)
+        theme_cs = _get_theme_glyph_colors()
+        self.color1_enabled = ModernCheckBox()
         self.color1_enabled.setToolTip("Enable color for glyph 1")
         self.color1_enabled.setChecked(self.glyph_colors[0] is not None)
-        self.color1_btn = QPushButton(); self.color1_btn.setFixedSize(28, 28); self.color1_btn.setCursor(Qt.PointingHandCursor)
-        self.color1_btn.setToolTip("Color for Glyph 1")
-        theme_cs = _get_theme_glyph_colors()
-        self._update_color_btn(self.color1_btn, self.glyph_colors[0] or theme_cs[0])
-        self.color1_btn.clicked.connect(lambda: self._open_color_picker(0))
+        self.color1_btn = ColorCircleButton(self.glyph_colors[0] or theme_cs[0], tooltip="Color for Glyph 1")
         self.color1_btn.setEnabled(self.color1_enabled.isChecked())
+        self.color1_btn.colorSelected.connect(lambda hex_c: self._on_glyph_color_selected(0, hex_c))
         self.color1_enabled.stateChanged.connect(lambda s: (self.color1_btn.setEnabled(bool(s)), self._on_color_toggle(0, bool(s))))
         color_area.addWidget(self.color1_enabled); color_area.addWidget(self.color1_btn)
-        c1l = QLabel("G1"); c1l.setStyleSheet("color: #888888; font-size: 10px;"); color_area.addWidget(c1l)
-        color_area.addSpacing(8)
-        self.color2_enabled = QCheckBox(); self.color2_enabled.setFixedSize(16, 16)
+        c1l = QLabel("G1"); c1l.setStyleSheet("color: #c6d0f5; font-size: 11px; font-weight: bold;"); color_area.addWidget(c1l)
+        color_area.addSpacing(10)
+        self.color2_enabled = ModernCheckBox()
         self.color2_enabled.setToolTip("Enable color for glyph 2")
         self.color2_enabled.setChecked(self.glyph_colors[1] is not None)
-        self.color2_btn = QPushButton(); self.color2_btn.setFixedSize(28, 28); self.color2_btn.setCursor(Qt.PointingHandCursor)
-        self.color2_btn.setToolTip("Color for Glyph 2")
-        theme_cs = _get_theme_glyph_colors()
-        self._update_color_btn(self.color2_btn, self.glyph_colors[1] or theme_cs[1])
-        self.color2_btn.clicked.connect(lambda: self._open_color_picker(1))
+        self.color2_btn = ColorCircleButton(self.glyph_colors[1] or theme_cs[1], tooltip="Color for Glyph 2")
         self.color2_btn.setEnabled(self.color2_enabled.isChecked())
+        self.color2_btn.colorSelected.connect(lambda hex_c: self._on_glyph_color_selected(1, hex_c))
         self.color2_enabled.stateChanged.connect(lambda s: (self.color2_btn.setEnabled(bool(s)), self._on_color_toggle(1, bool(s))))
         color_area.addWidget(self.color2_enabled); color_area.addWidget(self.color2_btn)
-        c2l = QLabel("G2"); c2l.setStyleSheet("color: #888888; font-size: 10px;"); color_area.addWidget(c2l)
+        c2l = QLabel("G2"); c2l.setStyleSheet("color: #c6d0f5; font-size: 11px; font-weight: bold;"); color_area.addWidget(c2l)
         btns.addLayout(color_area)
         btns.addStretch()
-        clear_btn = QPushButton("Clear"); clear_btn.setCursor(Qt.PointingHandCursor); clear_btn.setStyleSheet("QPushButton { background: #45475a; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #333333; }")
+        clear_btn = PillPushButton("Clear", "reset", height=34)
         clear_btn.clicked.connect(self.clear_selection)
-        cancel_btn = QPushButton("Cancel"); cancel_btn.setCursor(Qt.PointingHandCursor); cancel_btn.setStyleSheet("QPushButton { background: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 16px; } QPushButton:hover { background: #45475a; }")
+        cancel_btn = PillPushButton("Cancel", "secondary", height=34)
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = QPushButton("Apply"); ok_btn.setCursor(Qt.PointingHandCursor); ok_btn.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
+        ok_btn = PillPushButton("Apply", "primary", height=34)
         ok_btn.clicked.connect(self.apply_selection)
         btns.addWidget(clear_btn); btns.addWidget(cancel_btn); btns.addWidget(ok_btn)
         cl.addLayout(btns)
@@ -1908,29 +2752,29 @@ class GlyphBrowserDialog(QDialog):
                 self.accept()
         
     def _update_color_btn(self, btn, color_hex):
-        btn.setStyleSheet(f"QPushButton {{ background-color: {color_hex}; border-radius: 14px; border: 2px solid rgba(255,255,255,0.2); }} QPushButton:hover {{ border: 2px solid white; }} QPushButton:disabled {{ opacity: 0.3; background-color: #45475a; }}")
+        if hasattr(btn, 'set_color'):
+            btn.set_color(color_hex)
+        else:
+            btn.setStyleSheet(f"background-color: {color_hex};")
+
+    def _on_glyph_color_selected(self, idx, hex_c):
+        self.glyph_colors[idx] = hex_c
+        self._update_preview()
+
     def _on_color_toggle(self, idx, enabled):
         if enabled:
             if self.glyph_colors[idx] is None:
                 def_cs = _get_theme_glyph_colors()
                 self.glyph_colors[idx] = def_cs[idx]
-                self._update_color_btn(self.color1_btn if idx == 0 else self.color2_btn, self.glyph_colors[idx])
+                btn = self.color1_btn if idx == 0 else self.color2_btn
+                self._update_color_btn(btn, self.glyph_colors[idx])
         else:
             self.glyph_colors[idx] = None
         self._update_preview()
+
     def _open_color_picker(self, idx):
-        from theme_editor_widget import MinimalColorPickerDialog
-        def_cs = _get_theme_glyph_colors()
-        current_c = self.glyph_colors[idx] or def_cs[idx]
-        dlg = MinimalColorPickerDialog(current_c, f"glyph_{idx}", self)
-        dlg.default_checkbox.hide()
-        def on_color(key, color):
-            hex_c = color.name()
-            self.glyph_colors[idx] = hex_c
-            self._update_color_btn(self.color1_btn if idx == 0 else self.color2_btn, hex_c)
-            self._update_preview()
-        dlg.colorSelected.connect(on_color)
-        dlg.exec_()
+        btn = self.color1_btn if idx == 0 else self.color2_btn
+        btn.click()
 
     def on_item_clicked(self, item):
         code = item.data(Qt.UserRole)
@@ -2195,10 +3039,17 @@ class GlyphBrowserDialog(QDialog):
             c2 = self.glyph_colors[1] if not hasattr(self, 'color2_enabled') or self.color2_enabled.isChecked() else None
             metadata, _ = self._load_glyphs_metadata()
             font_families = [NILESOFT_FONT_FAMILY for _ in self.selected]
-            pw = GlyphPreviewLabel(self.selected, size=44, font_family=NILESOFT_FONT_FAMILY, colors=[c1, c2], font_families=font_families); pw.setFixedSize(50, 44)
-            self.preview_layout.addWidget(pw); pw.show()
+            pw = GlyphPreviewLabel(self.selected, size=36, font_family=NILESOFT_FONT_FAMILY, colors=[c1, c2], font_families=font_families)
+            pw.setStyleSheet("background: transparent; border: none;")
+            pw.setFixedSize(50, 36)
+            self.preview_layout.addWidget(pw)
+            pw.show()
         else:
-            pl = QLabel("\u2726"); pl.setAlignment(Qt.AlignCenter); pl.setStyleSheet("color: #333333; font-size: 24px; background: transparent;"); self.preview_layout.addWidget(pl); pl.show()
+            pl = QLabel("\u2726")
+            pl.setAlignment(Qt.AlignCenter)
+            pl.setStyleSheet("color: #444444; font-size: 20px; background: transparent; border: none;")
+            self.preview_layout.addWidget(pl)
+            pl.show()
     def paintEvent(self, event):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         from PyQt5.QtGui import QBrush
@@ -2232,7 +3083,7 @@ class LocalIconTintDialog(QDialog):
         preview_layout = QHBoxLayout(); preview_layout.addWidget(self.preview); cl.addLayout(preview_layout)
         opt_layout = QHBoxLayout()
         self.toggle = QCheckBox("Apply Tint Color")
-        self.toggle.setStyleSheet("QCheckBox { color: #ffffff; font-size: 13px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #45475a; background: #2a2a30; } QCheckBox::indicator:checked { background: #dc143c; border: 1px solid #dc143c; }")
+        self.toggle.setStyleSheet("QCheckBox { color: #ffffff; font-size: 13px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #45475a; background: #2a2a30; } QCheckBox::indicator:checked { background: #e78284; border: 1px solid #e78284; }")
         self.toggle.toggled.connect(self.on_toggle)
         opt_layout.addWidget(self.toggle)
         self.color_btn = QPushButton()
@@ -2243,7 +3094,7 @@ class LocalIconTintDialog(QDialog):
         btns = QHBoxLayout()
         cancel = QPushButton("Cancel"); cancel.setStyleSheet("QPushButton { background: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #45475a; }")
         cancel.clicked.connect(self.reject)
-        ok = QPushButton("Apply"); ok.setStyleSheet("QPushButton { background: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ff2a55; }")
+        ok = QPushButton("Apply"); ok.setStyleSheet("QPushButton { background: #e78284; color: #ffffff; border-radius: 10px; padding: 8px 16px; font-weight: bold; } QPushButton:hover { background: #ea999c; }")
         ok.clicked.connect(self.accept_result)
         btns.addStretch(); btns.addWidget(cancel); btns.addWidget(ok); cl.addLayout(btns)
         self.update_ui()
@@ -2305,10 +3156,10 @@ class ImportEditorDialog(QDialog):
         self.data = data or {}
         self.props = data.get('props', {}).copy()
         self.embed_mode = embed_mode
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(570)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(231, 130, 132, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
         self._drag_pos = None
         self.setup_ui()
 
@@ -2328,76 +3179,85 @@ class ImportEditorDialog(QDialog):
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
-            #mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
+            #mainFrame { background-color: #0E0E0E; border: 1px solid #1e2130; border-radius: 20px; } 
             QLabel { color: #ffffff; font-size: 12px; } 
-            QLineEdit { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; selection-background-color: #dc143c; } 
-            QLineEdit:focus { border: 1px solid #dc143c; }
-            QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; }
-            QComboBox:hover, QComboBox:focus { border: 1px solid #dc143c; }
-            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
-            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } 
-            QPushButton#saveBtn:hover { background-color: #ff2a55; }
-            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 18px; }
-            QPushButton#cancelBtn:hover { background-color: #45475a; }
+            QLineEdit { background-color: #121212; border: 1px solid #242738; border-radius: 10px; padding: 7px 12px; color: #ffffff; selection-background-color: #ea999c; font-size: 12px; } 
+            QLineEdit:focus { border: 1px solid #ea999c; }
+            QPushButton#saveBtn { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ea999c, stop:1 #e78284); color: #ffffff; border-radius: 10px; padding: 8px 20px; font-weight: bold; font-size: 12px; border: none; } 
+            QPushButton#saveBtn:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4770, stop:1 #e01b44); }
+            QPushButton#cancelBtn { background-color: #121212; border: 1px solid #282b3c; color: #d1d5db; border-radius: 10px; padding: 8px 18px; font-size: 12px; }
+            QPushButton#cancelBtn:hover { background-color: #0E0E0E; color: #ffffff; }
         """)
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.addWidget(self.mf)
-        cl = QVBoxLayout(self.mf); cl.setContentsMargins(18, 16, 18, 16); cl.setSpacing(10)
+        cl = QVBoxLayout(self.mf); cl.setContentsMargins(20, 20, 20, 20); cl.setSpacing(14)
         
+        # Header Row
         if not self.embed_mode:
-            h = QLabel(f"Edit {self.data.get('type', 'Item').title()}"); h.setStyleSheet("font-size: 16px; font-weight: bold; color: white;"); cl.addWidget(h)
+            h_row = QHBoxLayout()
+            ic_badge = QLabel("\uE70F")
+            ic_badge.setFixedSize(36, 36)
+            ic_badge.setFont(QFont("Segoe MDL2 Assets", 14))
+            ic_badge.setAlignment(Qt.AlignCenter)
+            ic_badge.setStyleSheet("background: rgba(234, 153, 156, 0.15); border: 1px solid #ea999c; border-radius: 10px; color: #ea999c;")
+            h_row.addWidget(ic_badge)
+
+            h_titles = QVBoxLayout()
+            h_titles.setSpacing(2)
+            t1 = QLabel(f"Edit {self.data.get('type', 'Item').title()}"); t1.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+            t2 = QLabel("Adjust properties and appearance."); t2.setStyleSheet("font-size: 11px; color: #8d94a6;")
+            h_titles.addWidget(t1); h_titles.addWidget(t2)
+            h_row.addLayout(h_titles, 1)
+
+            close_btn = QPushButton("\uE711")
+            close_btn.setFixedSize(30, 30)
+            close_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+            close_btn.setCursor(Qt.PointingHandCursor)
+            close_btn.setStyleSheet("QPushButton { background: #121212; border: 1px solid #282b3c; border-radius: 8px; color: #9ca3af; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #ea999c; color: #ffffff; }")
+            close_btn.clicked.connect(self.reject)
+            h_row.addWidget(close_btn)
+            cl.addLayout(h_row)
         
-        ag = QFrame(); ag.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); al = QGridLayout(ag); al.setVerticalSpacing(8); al.setHorizontalSpacing(10); cl.addWidget(ag)
+        ag = QFrame(); ag.setObjectName("importGroup"); ag.setStyleSheet("#importGroup { background: transparent; } #importGroup > QLabel, #importGroup QLabel { font-size: 13px; font-weight: bold; color: #ffffff; background: transparent; padding: 0; border: none; }"); al = QGridLayout(ag); al.setVerticalSpacing(12); al.setHorizontalSpacing(14); al.setContentsMargins(0, 0, 0, 0); cl.addWidget(ag)
         
-        self.t_inp = QLineEdit(self.props.get('title', '').strip('\'\"')); al.addWidget(QLabel("Title:"), 0, 0); al.addWidget(self.t_inp, 0, 1)
+        self.t_inp = PillLineEdit("Enter a title")
+        self.t_inp.setText(self.props.get('title', '').strip('\'\"'))
+        al.addWidget(QLabel("Title:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addWidget(self.t_inp, 0, 1)
         
         ic_row = QHBoxLayout()
-        ic_row.setSpacing(6)
+        ic_row.setSpacing(8)
         
-        self.c_container = QWidget()
-        self.c_lay = QHBoxLayout(self.c_container)
-        self.c_lay.setContentsMargins(0, 0, 0, 0)
-        self.c_lay.setSpacing(4)
-        self.c_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        
-        self.ic_prev_lbl = ClickablePreviewLabel()
-        self.ic_prev_lbl.setFixedSize(46, 46)
-        self.ic_prev_lbl.setAlignment(Qt.AlignCenter)
-        self.ic_prev_lbl.setToolTip("Click to Browse Glyphs / Upload Icon")
-        self.ic_prev_lbl.setStyleSheet("""
-            ClickablePreviewLabel {
-                background: rgba(255,255,255,0.05); 
-                border-radius: 12px; 
-                border: 1px solid rgba(255,255,255,0.12);
-            }
-            ClickablePreviewLabel:hover {
-                border: 1px solid #dc143c;
-                background: rgba(220, 20, 60, 0.12);
-            }
-        """)
+        self.ic_prev_lbl = AnimatedGlowPreviewLabel()
         self.ic_prev_lbl.clicked.connect(self._open_glyph_browser)
         
-        self.ic_inp = QLineEdit(self.props.get('icon') or self.props.get('image') or '')
-        self.ic_inp.setPlaceholderText("e.g. \\uE102, image path, or image.res(...)")
+        self.c_container = QWidget()
+        self.c_container.setStyleSheet("background: transparent; border: none;")
+        self.c_lay = QHBoxLayout(self.c_container)
+        self.c_lay.setContentsMargins(0, 0, 0, 0)
+        self.c_lay.setSpacing(6)
+        self.c_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        self.ic_inp = PillLineEdit("Icon Path")
+        self.ic_inp.setText(self.props.get('icon') or self.props.get('image') or '')
         self.ic_inp.textChanged.connect(self._update_colors_ui)
-        self.ic_inp.textChanged.connect(lambda t: _update_label_asset(self.ic_prev_lbl, t))
+        self.ic_inp.textChanged.connect(lambda t: self.ic_prev_lbl.set_asset(t))
         
         btn_action_style = """
             QPushButton {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                background: #121212;
+                border: 1px solid #242738;
                 border-radius: 10px;
-                color: #e0e0e0;
+                color: #9ca3af;
                 padding: 0;
             }
             QPushButton:hover {
-                background: rgba(220, 20, 60, 0.2);
-                border: 1px solid #dc143c;
+                background: rgba(234, 153, 156, 0.2);
+                border: 1px solid #ea999c;
                 color: #ffffff;
             }
         """
 
         self.ic_inherit = QPushButton("\uE777")
-        self.ic_inherit.setFont(QFont('Segoe MDL2 Assets', 13))
+        self.ic_inherit.setFont(QFont('Segoe MDL2 Assets', 12))
         self.ic_inherit.setFixedSize(34, 34)
         self.ic_inherit.setCursor(Qt.PointingHandCursor)
         self.ic_inherit.setToolTip("Inherit Icon from Target Command/File")
@@ -2405,16 +3265,16 @@ class ImportEditorDialog(QDialog):
         self.ic_inherit.clicked.connect(self._inherit_icon)
 
         self.ic_remove = QPushButton("\uE74D")
-        self.ic_remove.setFont(QFont('Segoe MDL2 Assets', 13))
+        self.ic_remove.setFont(QFont('Segoe MDL2 Assets', 12))
         self.ic_remove.setFixedSize(34, 34)
         self.ic_remove.setCursor(Qt.PointingHandCursor)
         self.ic_remove.setToolTip("Remove Icon")
         self.ic_remove.setStyleSheet("""
             QPushButton {
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: #121212;
+                border: 1px solid #242738;
                 border-radius: 10px;
-                color: #888888;
+                color: #9ca3af;
                 padding: 0;
             }
             QPushButton:hover {
@@ -2425,32 +3285,29 @@ class ImportEditorDialog(QDialog):
         """)
         self.ic_remove.clicked.connect(lambda: self.ic_inp.setText(""))
 
-        ic_row.addWidget(self.c_container)
         ic_row.addWidget(self.ic_prev_lbl)
+        ic_row.addWidget(self.c_container)
         ic_row.addWidget(self.ic_inp, 1)
         if not self.embed_mode:
             ic_row.addWidget(self.ic_inherit)
             ic_row.addWidget(self.ic_remove)
-        al.addWidget(QLabel("Icon/Image:"), 1, 0); al.addLayout(ic_row, 1, 1)
-        _update_label_asset(self.ic_prev_lbl, self.ic_inp.text()); self._update_colors_ui()
+        al.addWidget(QLabel("Icon / Image:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addLayout(ic_row, 1, 1)
+        self.ic_prev_lbl.set_asset(self.ic_inp.text()); self._update_colors_ui()
 
-        self.p_box = NonScrollComboBox(); self.p_box.addItems(ModifyRuleEditorDialog.POS_OPTIONS)
-        self.p_box.setFixedWidth(110)
-        p_val = str(self.props.get('pos', '')).strip('\'"')
-        (self.p_box.setCurrentText(p_val) if p_val in ModifyRuleEditorDialog.POS_OPTIONS else (self.p_box.addItem(p_val), self.p_box.setCurrentText(p_val)))
-        
-        v_val = str(self.props.get('vis', ''))
         self.vis_widget = VisibilityWidget()
-        self.vis_widget.set_value(v_val)
-        al.addWidget(QLabel("Visibility:"), 2, 0); al.addWidget(self.vis_widget, 2, 1)
+        self.vis_widget.set_value(str(self.props.get('vis', '')))
+        al.addWidget(QLabel("Visibility:"), 2, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addWidget(self.vis_widget, 2, 1)
 
         self.type_widget = TypeWidget()
         self.type_widget.set_value(self.props.get('type', ''))
-        al.addWidget(QLabel("Show in:"), 3, 0); al.addWidget(self.type_widget, 3, 1)
+        al.addWidget(QLabel("Show in:"), 3, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addWidget(self.type_widget, 3, 1)
         
         m_opts = ["None", "Main", "Options"]
-        self.m_box = NonScrollComboBox(); self.m_box.addItems(m_opts)
-        self.m_box.setFixedWidth(130)
+        for cm in _get_custom_menus_from_nss():
+            if cm not in m_opts:
+                m_opts.append(cm)
+        self.m_box = ModernComboBox(context_key="menu"); self.m_box.addItems(m_opts)
+        self.m_box.setFixedWidth(150)
         
         curr_m = str(self.props.get('menu', '')).strip('\'"')
         curr_m_low = curr_m.lower()
@@ -2462,33 +3319,48 @@ class ImportEditorDialog(QDialog):
                 self.m_box.addItem(curr_m)
             self.m_box.setCurrentText(curr_m)
         
-        self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"])
-        self.sep_box.setFixedWidth(130)
+        self.p_box = ModernComboBox(context_key="pos"); self.p_box.addItems(ModifyRuleEditorDialog.POS_OPTIONS)
+        self.p_box.setFixedWidth(150)
+        p_val = str(self.props.get('pos', '')).strip('\'"')
+        (self.p_box.setCurrentText(p_val) if p_val in ModifyRuleEditorDialog.POS_OPTIONS else (self.p_box.addItem(p_val), self.p_box.setCurrentText(p_val)))
+
+        self.sep_box = ModernComboBox(context_key="sep"); self.sep_box.addItems(["None", "Before", "After", "Both"])
+        self.sep_box.setFixedWidth(150)
         curr_sep = str(self.props.get('sep', '')).strip('\'"')
         if curr_sep:
             if curr_sep.lower() in ('true', '1'): self.sep_box.setCurrentText("Before")
             else: self.sep_box.setCurrentText(curr_sep.title())
+        else:
+            self.sep_box.setCurrentText("None")
 
-        m_row = QHBoxLayout()
-        m_row.addWidget(self.m_box)
-        m_row.addStretch()
-        al.addWidget(QLabel("Move to:"), 4, 0)
-        al.addLayout(m_row, 4, 1)
+        pos_move_row = QHBoxLayout()
+        pos_move_row.setContentsMargins(0, 0, 0, 0)
+        pos_move_row.setSpacing(14)
+        pos_move_row.addWidget(self.m_box)
+        
+        pos_lbl = QLabel("Position:")
+        pos_move_row.addWidget(pos_lbl)
+        pos_move_row.addWidget(self.p_box)
+        pos_move_row.addStretch()
 
-        p_row = QHBoxLayout()
-        p_row.addWidget(self.p_box)
-        p_row.addStretch()
-        al.addWidget(QLabel("Position:"), 5, 0)
-        al.addLayout(p_row, 5, 1)
+        al.addWidget(QLabel("Move to:"), 4, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        al.addLayout(pos_move_row, 4, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
-        sep_row = QHBoxLayout()
-        sep_row.addWidget(self.sep_box)
-        sep_row.addStretch()
-        al.addWidget(QLabel("Separator:"), 6, 0)
-        al.addLayout(sep_row, 6, 1)
+        al.addWidget(QLabel("Separator:"), 5, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        al.addWidget(self.sep_box, 5, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         if not self.embed_mode:
-            btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Changes"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
+            btns = QHBoxLayout()
+            c = PillPushButton("Cancel", "secondary", height=34)
+            c.setFixedWidth(85)
+            c.clicked.connect(self.reject)
+            s = PillPushButton("Save Changes", "primary", height=34)
+            s.setFixedWidth(110)
+            s.clicked.connect(self.accept)
+            btns.addStretch()
+            btns.addWidget(c)
+            btns.addWidget(s)
+            cl.addLayout(btns)
             
         self.ic_inp.textChanged.connect(lambda: self.reload_requested.emit())
         self.t_inp.textChanged.connect(lambda: self.reload_requested.emit())
@@ -2514,38 +3386,45 @@ class ImportEditorDialog(QDialog):
     def _update_colors_ui(self):
         if not hasattr(self, 'c_lay'): return
         while self.c_lay.count():
-            it = self.c_lay.takeAt(0); (it.widget().deleteLater() if it.widget() else None)
-        colors = _extract_all_colors(self.ic_inp.text()); theme_cs = _get_theme_glyph_colors(); codes = _extract_glyph_codes(self.ic_inp.text())
-        for i in range(max(len(codes) if codes else (1 if self.ic_inp.text() else 0), len(colors))):
-            if i >= 2: break
+            it = self.c_lay.takeAt(0)
+            if it.widget(): it.widget().deleteLater()
+        colors = _extract_all_colors(self.ic_inp.text())
+        theme_cs = _get_theme_glyph_colors()
+        codes = _extract_glyph_codes(self.ic_inp.text())
+        num_pellets = len(codes) if codes else (len(colors) if colors else 1)
+        for i in range(min(max(num_pellets, len(colors)), 2)):
             c = colors[i] if i < len(colors) else None
-            btn = ColorPellet(c or theme_cs[min(i, 1)]); btn.clicked.connect(lambda checked, idx=i, oc=c: self._pick_color(idx, oc)); self.c_lay.addWidget(btn)
+            btn = ColorCircleButton(c or theme_cs[min(i, 1)], tooltip=f"Color for Glyph {i+1}")
+            btn.colorSelected.connect(lambda hex_c, idx=i, oc=c: self._on_color_chosen(idx, oc, hex_c))
+            self.c_lay.addWidget(btn)
         if codes and any(colors):
-            sync_btn = IconSyncButton(self)
+            sync_btn = QPushButton("\uE777")
+            sync_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+            sync_btn.setFixedSize(26, 26)
+            sync_btn.setCursor(Qt.PointingHandCursor)
+            sync_btn.setStyleSheet("QPushButton { background: #121212; border: 1px solid #363a4f; border-radius: 13px; color: #9ca3af; } QPushButton:hover { border: 1px solid #ea999c; color: #ffffff; }")
             sync_btn.setToolTip("Sync with Theme (Remove custom colors)")
             sync_btn.clicked.connect(self._reset_glyph_colors)
-            self.c_lay.insertWidget(0, sync_btn)
+            self.c_lay.addWidget(sync_btn)
+
+    def _on_color_chosen(self, idx, old_color, hex_color):
+        val = self.ic_inp.text().strip()
+        codes = _extract_glyph_codes(val)
+        if codes:
+            new_val = _get_new_asset_value(val, old_color, hex_color, idx=idx)
+            self.ic_inp.setText(new_val)
+            if hasattr(self, 'ic_prev_lbl'): self.ic_prev_lbl.set_asset(new_val)
+        else:
+            path, _ = _extract_img_path_and_color(val)
+            resolved = _resolve_app_dir_path(path)
+            if resolved and os.path.exists(resolved):
+                new_asset_path, _ = save_local_icon(resolved, hex_color, True)
+                self.ic_inp.setText(f"'{new_asset_path}'")
+                if hasattr(self, 'ic_prev_lbl'): self.ic_prev_lbl.set_asset(f"'{new_asset_path}'")
 
     def _reset_glyph_colors(self):
         codes = _extract_glyph_codes(self.ic_inp.text())
         if codes: self.ic_inp.setText(_build_glyph_val(codes, []))
-    def _pick_color(self, idx, old_color):
-        theme_cs = _get_theme_glyph_colors()
-        dlg = MinimalColorPickerDialog(old_color or theme_cs[min(idx, 1)], f"svg_c_{idx}", self); dlg.default_checkbox.hide()
-        
-        def on_color(key, hex_color):
-            val = self.ic_inp.text().strip()
-            codes = _extract_glyph_codes(val)
-            if codes:
-                self.ic_inp.setText(_get_new_asset_value(val, old_color, hex_color, idx=idx))
-            else:
-                path, _ = _extract_img_path_and_color(val)
-                resolved = _resolve_app_dir_path(path)
-                if resolved and os.path.exists(resolved):
-                    new_asset_path, _ = save_local_icon(resolved, hex_color, True)
-                    self.ic_inp.setText(f"'{new_asset_path}'")
-        
-        dlg.colorSelected.connect(on_color); dlg.exec_()
     def _open_glyph_browser(self):
         orig = self.ic_inp.text().strip()
         dlg = GlyphBrowserDialog(orig, self)
@@ -2561,7 +3440,10 @@ class ImportEditorDialog(QDialog):
     def get_props(self):
         p = self.props.copy()
         title_val = self.t_inp.text().strip()
-        p['title'] = f"'{title_val}'" if title_val and ' ' in title_val else title_val
+        if title_val:
+            p['title'] = f"'{title_val}'" if ' ' in title_val else title_val
+        else:
+            p.pop('title', None)
         p['pos'] = self.p_box.currentText()
         vis_val = self.vis_widget.get_value()
         if vis_val:
@@ -2570,15 +3452,17 @@ class ImportEditorDialog(QDialog):
             p.pop('vis', None)
 
         type_val = self.type_widget.get_value()
-        if type_val:
+        if type_val and type_val.lower() != 'all':
             p['type'] = type_val
         else:
-            p.pop('type', None)
+            p['type'] = None
         
         m_sel = self.m_box.currentText()
-        if m_sel == "None": p['menu'] = None
+        if m_sel == "None": p.pop('menu', None)
         elif m_sel == "Main": p['menu'] = ""
         elif m_sel == "Options": p['menu'] = "options"
+        elif m_sel.strip(): p['menu'] = m_sel.strip()
+        else: p.pop('menu', None)
         
         icon_val = self.ic_inp.text().strip()
         if not icon_val:
@@ -2607,16 +3491,35 @@ class ImportEditorDialog(QDialog):
             'image': 'Icon / Image',
             'icon': 'Icon / Image'
         }
+        def normalize_vis(v):
+            vl = str(v or '').strip('\'" ').lower().replace('"', '').replace("'", "").replace(" ", "")
+            if not vl or vl in ("normal", "alwaysvisible", "vis.normal", "1"):
+                return ""
+            if ('key.shift' in vl or 'key.control' in vl or 'key.ctrl' in vl or 'key.lbutton' in vl or 'key.caps' in vl) and 'hidden' in vl:
+                return "main"
+            if vl in ("vis.remove", "key.remove", "vis.hidden", "key.hidden", "remove", "hidden", "0"):
+                return "hide"
+            if vl in ("key.shift()", "vis.shift()", "vis.shift", "shift", "key.shift"):
+                return "shift"
+            if vl in ("key.control()", "key.ctrl()", "vis.control()", "vis.control", "vis.ctrl", "control", "ctrl", "key.control", "key.ctrl"):
+                return "ctrl"
+            if vl in ("key.capslock()", "key.caps()", "vis.capslock()", "vis.capslock", "vis.caps", "capslock", "caps", "key.capslock", "key.caps"):
+                return "caps"
+            if vl in ("key.lbutton()", "key.lmb()", "vis.lbutton()", "vis.lbutton", "vis.lmb", "lbutton", "lmb", "key.lbutton"):
+                return "lmb"
+            return vl
+
         def format_user_friendly(prop_key, val):
             val_clean = str(val or '').strip('\'" ')
             if prop_key == 'vis':
-                vl = val_clean.lower().strip()
-                if not vl or vl in ("normal", "always visible", "vis.normal", "1"): return "Normal"
-                if vl in ("vis.remove", "key.remove", "vis.hidden", "key.hidden", "remove", "hidden", "0"): return "Hide"
-                if vl in ("key.shift()", "vis.shift", "shift", "key.shift"): return "Shift"
-                if vl in ("key.control()", "key.ctrl()", "vis.control", "vis.ctrl", "control", "ctrl", "key.control", "key.ctrl"): return "Ctrl"
-                if vl in ("key.capslock()", "key.caps()", "vis.capslock", "vis.caps", "capslock", "caps", "key.capslock", "key.caps"): return "Caps"
-                if vl in ("key.lbutton()", "key.lmb()", "vis.lbutton", "vis.lmb", "lbutton", "lmb", "key.lbutton"): return "LMB"
+                norm = normalize_vis(val_clean)
+                if not norm: return "Normal"
+                if norm == "main": return "Main"
+                if norm == "hide": return "Hide"
+                if norm == "shift": return "Shift"
+                if norm == "ctrl": return "Ctrl"
+                if norm == "caps": return "Caps"
+                if norm == "lmb": return "LMB"
                 return val_clean
             if prop_key == 'sep':
                 vl = val_clean.lower()
@@ -2625,9 +3528,14 @@ class ImportEditorDialog(QDialog):
                 if vl == "both": return "Both"
                 if vl in ("false", "0", "none", ""): return "None"
                 return val_clean.title()
+            if prop_key == 'type':
+                if not val_clean or val_clean.lower() == 'all': return "All"
+                return val_clean
             if prop_key == 'menu':
+                if val is None: return "None"
                 vl = val_clean.lower()
-                if not vl or vl in ("none", "main", "menu.main"): return "Main"
+                if vl == "none": return "None"
+                if not vl or vl in ("main", "menu.main"): return "Main"
                 if vl in ("options", "title.options"): return "Options"
                 return val_clean
             return val_clean or "(empty)"
@@ -2636,15 +3544,34 @@ class ImportEditorDialog(QDialog):
             v1 = str(p1.get(k, '')).strip('\'" ')
             v2 = str(p2.get(k, '')).strip('\'" ')
             if k == 'vis':
-                v1_low = v1.lower()
-                v2_low = v2.lower()
-                v1_norm = "" if v1_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v1_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v1_low)
-                v2_norm = "" if v2_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v2_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v2_low)
-                if v1_norm == v2_norm: continue
+                if normalize_vis(v1) == normalize_vis(v2):
+                    continue
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2)} ➔ {format_user_friendly(k, v1)}")
+                continue
+            if k == 'type':
+                v1_clean = str(p1.get('type') or '').strip('\'" ')
+                v2_clean = str(p2.get('type') or '').strip('\'" ')
+                set1 = set(p.strip().lower() for p in v1_clean.split('|') if p.strip() and p.strip().lower() not in ('all', '*'))
+                set2 = set(p.strip().lower() for p in v2_clean.split('|') if p.strip() and p.strip().lower() not in ('all', '*'))
+                set1 = {'dir' if x == 'directory' else x for x in set1}
+                set2 = {'dir' if x == 'directory' else x for x in set2}
+                if set1 == set2:
+                    continue
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2_clean)} ➔ {format_user_friendly(k, v1_clean)}")
+                continue
             if k == 'menu':
-                v1_norm = "" if v1.lower() in ("none", "main", "menu.main") else v1
-                v2_norm = "" if v2.lower() in ("none", "main", "menu.main") else v2
+                v1_raw = p1.get('menu')
+                v2_raw = p2.get('menu')
+                if v1_raw is None and v2_raw is None:
+                    continue
+                v1_norm = "None" if v1_raw is None else ("Main" if str(v1_raw).strip('\'"').lower() in ("", "main", "menu.main") else str(v1_raw).strip('\'"'))
+                v2_norm = "None" if v2_raw is None else ("Main" if str(v2_raw).strip('\'"').lower() in ("", "main", "menu.main") else str(v2_raw).strip('\'"'))
                 if v1_norm.lower() == v2_norm.lower(): continue
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2_raw)} ➔ {format_user_friendly(k, v1_raw)}")
+                continue
             if k == 'sep':
                 v1_norm = "true" if v1.lower() in ("true", "1") else "false" if v1.lower() in ("false", "0", "none", "") else v1.lower()
                 v2_norm = "true" if v2.lower() in ("true", "1") else "false" if v2.lower() in ("false", "0", "none", "") else v2.lower()
@@ -2674,21 +3601,85 @@ class ImportEditorDialog(QDialog):
                 return
         super().reject()
 
+class TabGridScrollArea(QScrollArea):
+    """Scrollable tab grid showing 1, 2, or 3 rows adaptively, capped at 3 rows max with visible vertical scrollbar if >3 rows."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical {
+                background: rgba(255, 255, 255, 0.04);
+                width: 8px;
+                margin: 2px 0 2px 2px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(234, 153, 156, 0.6);
+                border-radius: 4px;
+                min-height: 24px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #ea999c;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+
+    def update_grid_geometry(self):
+        w = self.widget()
+        if not w or not w.layout():
+            return
+        vp_w = self.viewport().width()
+        if vp_w <= 10:
+            vp_w = (self.parent().width() - 40) if self.parent() else 600
+        needed_h = w.layout().heightForWidth(vp_w)
+        if needed_h <= 50:
+            # 1 row
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.setFixedHeight(needed_h + 4)
+        elif needed_h <= 90:
+            # 2 rows
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.setFixedHeight(needed_h + 4)
+        elif needed_h <= 130:
+            # 3 rows
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.setFixedHeight(needed_h + 4)
+        else:
+            # > 3 rows: clamp to exactly 3 rows (122px) and show permanent vertical scrollbar
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+            self.setFixedHeight(122)
+            
+        w.setMinimumHeight(needed_h)
+        w.setMaximumHeight(needed_h)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_grid_geometry()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.update_grid_geometry()
+
+
 class MultiItemEditDialog(QDialog):
     def __init__(self, items, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(650, 680)
+        self.setFixedSize(720, 780)
         self._drag_pos = None
+        self.items = items
+        self.editors = [None] * len(items)
         
         main_frame = QFrame(self)
         main_frame.setObjectName("multiMainFrame")
         main_frame.setStyleSheet("""
-            #multiMainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }
-            QTabWidget::pane { border: 1px solid #2a2a30; border-radius: 12px; background: transparent; }
-            QTabBar::tab { background: rgba(255,255,255,0.05); color: #b0b0b0; padding: 6px 14px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; height: 26px; font-weight: bold; }
-            QTabBar::tab:selected { background: rgba(220, 20, 60, 0.2); color: #dc143c; border: 1px solid rgba(220, 20, 60, 0.4); }
+            #multiMainFrame { background-color: #121214; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; }
         """)
         
         dlg_layout = QVBoxLayout(self)
@@ -2696,14 +3687,14 @@ class MultiItemEditDialog(QDialog):
         dlg_layout.addWidget(main_frame)
         
         layout = QVBoxLayout(main_frame)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(12)
         
         # Header titlebar
         title_bar = QHBoxLayout()
         title_label = QLabel("Edit Items/Menus")
         title_label.setFont(QFont('Segoe UI Variable Display', 15, QFont.Bold))
-        title_label.setStyleSheet("color: white;")
+        title_label.setStyleSheet("color: #ffffff; background: transparent; border: none;")
         title_bar.addWidget(title_label)
         title_bar.addStretch()
         
@@ -2711,64 +3702,86 @@ class MultiItemEditDialog(QDialog):
         close_btn.setFont(QFont('Segoe MDL2 Assets', 10))
         close_btn.setFixedSize(28, 28)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #b0b0b0; } QPushButton:hover { background: rgba(220,20,60,0.2); color: #dc143c; }")
+        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #b0b0b0; } QPushButton:hover { background: rgba(231, 130, 132, 0.2); color: #e78284; }")
         close_btn.clicked.connect(self.reject)
         title_bar.addWidget(close_btn)
         layout.addLayout(title_bar)
         
-        embed_style = """
+        self._embed_style = """
             #mainFrame { background: transparent; border: none; }
             QLabel { color: #ffffff; font-size: 12px; } 
-            QLineEdit { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; selection-background-color: #dc143c; } 
-            QLineEdit:focus { border: 1px solid #dc143c; }
-            QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 6px 10px; color: #ffffff; }
-            QComboBox:hover, QComboBox:focus { border: 1px solid #dc143c; }
-            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
+            QLineEdit { background-color: #1e1e24; border: 1px solid #363a4f; border-radius: 10px; padding: 6px 10px; color: #ffffff; selection-background-color: #e78284; } 
+            QLineEdit:focus { border: 1px solid #e78284; }
         """
-        self.editors = []
+        
         if len(items) == 1:
             editor = ImportEditorDialog(items[0], self, embed_mode=True)
-            editor.mf.setStyleSheet(embed_style)
+            editor.mf.setStyleSheet(self._embed_style)
             layout.addWidget(editor)
-            self.editors.append((items[0], editor))
+            self.editors[0] = editor
         else:
-            self.tabs = QTabWidget()
+            self.tab_scroll = TabGridScrollArea(self)
+            container = QWidget()
+            container.setStyleSheet("background: transparent;")
+            self.tab_layout = FlowLayout(container, margin=2, spacing=8)
+            self.tab_group = QButtonGroup(self)
+            self.tab_group.setExclusive(True)
+            self.tab_buttons = []
+            
             for idx, item in enumerate(items):
                 title = str(item['props'].get('title', '')).strip('\'"') or f"Item {idx+1}"
-                editor = ImportEditorDialog(item, self, embed_mode=True)
-                editor.mf.setStyleSheet(embed_style)
+                raw_icon = item['props'].get('image') or item['props'].get('icon') or ''
+                pix = render_nss_asset_pixmap(raw_icon, size=20)
                 
-                # Render exact icon thumbnail using editor's preview label
-                tab_icon = None
-                if hasattr(editor, 'ic_prev_lbl'):
-                    pix = editor.ic_prev_lbl.grab()
-                    if not pix.isNull():
-                        tab_icon = QIcon(pix)
-                
-                if tab_icon and not tab_icon.isNull():
-                    self.tabs.addTab(editor, tab_icon, title)
+                btn = PillTabButton(title, height=32, icon_size=20)
+                if pix and not pix.isNull():
+                    btn.setIcon(QIcon(pix))
                 else:
-                    self.tabs.addTab(editor, title)
-                self.editors.append((item, editor))
-            layout.addWidget(self.tabs)
+                    btn.setIcon(get_mdl2_icon(0xE71D, 20, '#ea999c'))
+                    
+                self.tab_group.addButton(btn, idx)
+                self.tab_layout.addWidget(btn)
+                self.tab_buttons.append(btn)
+                btn.clicked.connect(lambda _, i=idx: self._switch_tab(i))
+                if idx == 0:
+                    btn.setChecked(True)
+                    
+            self.tab_scroll.setWidget(container)
+            self.tab_scroll.update_grid_geometry()
+            layout.addWidget(self.tab_scroll)
+            
+            self.editor_stack = QStackedWidget(self)
+            layout.addWidget(self.editor_stack)
+            self._switch_tab(0)
 
-        # Global Save / Cancel action bar
+        # Global Save / Cancel action bar with PillPushButton
         action_bar = QHBoxLayout()
         action_bar.addStretch()
         
-        cancel_b = QPushButton("Cancel")
-        cancel_b.setCursor(Qt.PointingHandCursor)
-        cancel_b.setStyleSheet("QPushButton { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } QPushButton:hover { background-color: #45475a; }")
+        cancel_b = PillPushButton("Cancel", "secondary", height=34)
         cancel_b.clicked.connect(self.reject)
         action_bar.addWidget(cancel_b)
         
-        save_b = QPushButton("Save Changes")
-        save_b.setCursor(Qt.PointingHandCursor)
-        save_b.setStyleSheet("QPushButton { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } QPushButton:hover { background-color: #ff2a55; }")
+        save_b = PillPushButton("Save Changes", "primary", height=34)
         save_b.clicked.connect(self.on_save_all)
         action_bar.addWidget(save_b)
         
         layout.addLayout(action_bar)
+
+    def _switch_tab(self, idx):
+        if idx < 0 or idx >= len(self.items):
+            return
+        if self.editors[idx] is None:
+            editor = ImportEditorDialog(self.items[idx], self, embed_mode=True)
+            editor.mf.setStyleSheet(self._embed_style)
+            self.editors[idx] = editor
+            self.editor_stack.addWidget(editor)
+        self.editor_stack.setCurrentWidget(self.editors[idx])
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, 'tab_scroll'):
+            self.tab_scroll.update_grid_geometry()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -2785,11 +3798,12 @@ class MultiItemEditDialog(QDialog):
 
     def get_changes(self):
         all_changes = []
-        for item, editor in self.editors:
-            c = editor.get_changes()
-            item_title = str(item['props'].get('title', '')).strip('\'"') or 'Untitled'
-            for line in c:
-                all_changes.append(f"[{item_title}] {line}")
+        for idx, editor in enumerate(self.editors):
+            if editor:
+                c = editor.get_changes()
+                item_title = str(self.items[idx]['props'].get('title', '')).strip('\'"') or f"Item {idx+1}"
+                for line in c:
+                    all_changes.append(f"[{item_title}] {line}")
         return all_changes
 
     def is_dirty(self):
@@ -2812,123 +3826,846 @@ class MultiItemEditDialog(QDialog):
         self.accept()
 
     def save_all(self):
-        for item, editor in self.editors:
-            save_imported_item(item, editor.get_props())
+        saved_any = False
+        for idx, editor in enumerate(self.editors):
+            if editor and editor.get_changes():
+                save_imported_item(self.items[idx], editor.get_props())
+                saved_any = True
+        return saved_any
+
+
+class SingleItemListView(QListView):
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if delta != 0:
+            num_steps = delta / 120.0
+            item_h = 100
+            scroll_delta = int(-num_steps * item_h)
+            sb = self.verticalScrollBar()
+            sb.setValue(sb.value() + scroll_delta)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+
+def is_nss_file_enabled(fp, shell_nss_path):
+    if not shell_nss_path or not os.path.exists(shell_nss_path):
+        return False
+    if os.path.abspath(fp) == os.path.abspath(shell_nss_path):
+        return True
+    fname = os.path.basename(fp).lower()
+    try:
+        content = read_file(shell_nss_path)
+        if not content:
+            return False
+        for line in content.splitlines():
+            s = line.strip()
+            if s.startswith("//") or s.startswith("#") or s.startswith("/*"):
+                continue
+            if s.lower().startswith("import"):
+                m = re.search(r"import\s+['\"]([^'\"]+)['\"]", s, re.I)
+                if m:
+                    imported = m.group(1).replace('\\', '/')
+                    if os.path.basename(imported).lower() == fname:
+                        return True
+                else:
+                    parts = s.split()
+                    if len(parts) >= 2:
+                        imported = parts[1].strip(';\'"').replace('\\', '/')
+                        if os.path.basename(imported).lower() == fname:
+                            return True
+        return False
+    except Exception:
+        return False
+
+
+def toggle_nss_file_import(fp, shell_nss_path, root):
+    if not shell_nss_path or not os.path.exists(shell_nss_path):
+        return False
+    if os.path.abspath(fp) == os.path.abspath(shell_nss_path):
+        return True
+    fname = os.path.basename(fp)
+    fname_lower = fname.lower()
+    enabled = is_nss_file_enabled(fp, shell_nss_path)
+    
+    content = read_file(shell_nss_path)
+    if not content and os.path.exists(shell_nss_path):
+        return enabled
+    
+    lines = content.splitlines(True)
+    if enabled:
+        new_lines = []
+        for line in lines:
+            s = line.strip()
+            if s.lower().startswith("import"):
+                m = re.search(r"import\s+['\"]?([^'\";\s]+)", s, re.I)
+                if m and os.path.basename(m.group(1).replace('\\', '/')).lower() == fname_lower:
+                    continue
+            new_lines.append(line)
+        safe_file_write(shell_nss_path, "".join(new_lines))
+        return False
+    else:
+        try:
+            rel_path = os.path.relpath(fp, root).replace('\\', '/')
+        except Exception:
+            rel_path = f"imports/{fname}"
+        
+        import_stmt = f"import '{rel_path}'\n"
+        last_import_idx = -1
+        for i, line in enumerate(lines):
+            if line.strip().lower().startswith("import"):
+                last_import_idx = i
+        
+        if last_import_idx != -1:
+            lines.insert(last_import_idx + 1, import_stmt)
+        else:
+            lines.insert(0, import_stmt)
+        
+        safe_file_write(shell_nss_path, "".join(lines))
+        return True
+
+
+class CustomRulesButton(QPushButton):
+    def __init__(self, text="  Custom Rules", parent=None):
+        super().__init__(text, parent)
+        self.setFixedHeight(40)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFont(QFont('Segoe UI Variable Display', 10, QFont.Bold))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        self._is_active = False
+
+    def set_active(self, is_active):
+        if self._is_active != is_active:
+            self._is_active = is_active
+            self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 14, 14)
+
+        is_hov = self.underMouse()
+        if self._is_active:
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0.0, QColor(234, 153, 156, 140))
+            grad.setColorAt(0.5, QColor(231, 130, 132, 100))
+            grad.setColorAt(1.0, QColor(202, 158, 230, 80))
+            p.fillPath(path, grad)
+            p.setPen(QPen(QColor(255, 255, 255, 170 if is_hov else 130), 1.6))
+            p.drawPath(path)
+            text_color = QColor('#ffffff')
+            icon_color = QColor('#ffffff')
+        elif is_hov:
+            p.fillPath(path, QColor(234, 153, 156, 35))
+            p.setPen(QPen(QColor(234, 153, 156, 120), 1.5))
+            p.drawPath(path)
+            text_color = QColor('#ffffff')
+            icon_color = QColor('#ea999c')
+        else:
+            p.fillPath(path, QColor(234, 153, 156, 16))
+            p.setPen(QPen(QColor(234, 153, 156, 50), 1.5))
+            p.drawPath(path)
+            text_color = QColor('#ea999c')
+            icon_color = QColor('#ea999c')
+
+        icon_pix = get_mdl2_icon(0xE15E, 16, icon_color.name()).pixmap(16, 16)
+        p.drawPixmap(14, int((self.height() - 16) / 2.0), icon_pix)
+        p.setFont(self.font())
+        p.setPen(text_color)
+        p.drawText(38, int((self.height() + self.fontMetrics().ascent() - self.fontMetrics().descent()) / 2.0), self.text().strip())
+
+
+class AllImportsButton(QPushButton):
+    def __init__(self, text="  All Imports", parent=None):
+        super().__init__(text, parent)
+        self.setFixedHeight(40)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFont(QFont('Segoe UI Variable Display', 10, QFont.Bold))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        self._is_all = True
+
+    @property
+    def _is_active(self):
+        return self._is_all
+        
+    def set_active(self, is_all):
+        if self._is_all != is_all:
+            self._is_all = is_all
+            self.update()
+        
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 14, 14)
+        
+        is_hov = self.underMouse()
+        if self._is_all:
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0.0, QColor(231, 130, 132, 65))
+            grad.setColorAt(0.45, QColor(202, 158, 230, 48))
+            grad.setColorAt(1.0, QColor(140, 170, 238, 38))
+            p.fillPath(path, grad)
+            p.setPen(QPen(QColor(255, 255, 255, 85 if not is_hov else 115), 1.5))
+            p.drawPath(path)
+            text_color = QColor('#ffffff')
+        elif is_hov:
+            p.fillPath(path, QColor(255, 255, 255, 22))
+            p.setPen(QPen(QColor(255, 255, 255, 45), 1.5))
+            p.drawPath(path)
+            text_color = QColor('#ffffff')
+        else:
+            p.fillPath(path, QColor(255, 255, 255, 14))
+            p.setPen(QPen(QColor(255, 255, 255, 25), 1.5))
+            p.drawPath(path)
+            text_color = QColor('#8c92a4')
+            
+        icon_pix = get_mdl2_icon(0xE8B5, 16, text_color.name()).pixmap(16, 16)
+        p.drawPixmap(14, int((self.height() - 16) / 2.0), icon_pix)
+        p.setFont(self.font())
+        p.setPen(text_color)
+        p.drawText(38, int((self.height() + self.fontMetrics().ascent() - self.fontMetrics().descent()) / 2.0), self.text().strip())
+
+AllFilesButton = AllImportsButton
+
+
+class CircularIconButton(QPushButton):
+    def __init__(self, icon_code, color="#a6d189", hover_color=None, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(28, 28)
+        self.setCursor(Qt.PointingHandCursor)
+        self._icon_code = icon_code
+        self._color = QColor(color)
+        self._hover_color = QColor(hover_color) if hover_color else self._color.lighter(120)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        
+    def set_icon_and_color(self, icon_code, color, hover_color=None):
+        self._icon_code = icon_code
+        self._color = QColor(color)
+        self._hover_color = QColor(hover_color) if hover_color else self._color.lighter(120)
+        self.update()
+        
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        is_hov = self.underMouse()
+        c = self._hover_color if is_hov else self._color
+        
+        bg_alpha = 55 if is_hov else 28
+        border_alpha = 190 if is_hov else 95
+        
+        p.setBrush(QColor(c.red(), c.green(), c.blue(), bg_alpha))
+        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), border_alpha), 1.5))
+        p.drawEllipse(rect)
+        
+        icon_pix = get_mdl2_icon(self._icon_code, 14, c.name()).pixmap(14, 14)
+        p.drawPixmap(int((self.width() - 14) / 2.0), int((self.height() - 14) / 2.0), icon_pix)
+
+
+class FileItemButton(QPushButton):
+    def __init__(self, text, is_active=False, is_enabled=True, is_shell=False, parent=None):
+        super().__init__(text, parent)
+        self.setFixedHeight(34)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFont(QFont('Segoe UI Variable Display', 10, QFont.Bold))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        self.is_active = is_active
+        self.is_enabled = is_enabled
+        self.is_shell = is_shell
+        
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 12, 12)
+        
+        is_hov = self.underMouse()
+        
+        if not self.is_enabled and not self.is_shell:
+            if self.is_active:
+                bg = QColor(231, 130, 132, 40)
+                pen = QPen(QColor(231, 130, 132, 120), 1.5)
+                fg = QColor('#e78284')
+            elif is_hov:
+                bg = QColor(255, 255, 255, 22)
+                pen = QPen(QColor(255, 255, 255, 50), 1.5)
+                fg = QColor('#ffffff')
+            else:
+                bg = QColor(35, 38, 52, 130)
+                pen = QPen(QColor('#51576d'), 1.5, Qt.DashLine)
+                fg = QColor('#737994')
+        else:
+            if self.is_active:
+                grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+                grad.setColorAt(0.0, QColor(231, 130, 132, 60))
+                grad.setColorAt(1.0, QColor(231, 130, 132, 25))
+                bg = grad
+                pen = QPen(QColor(231, 130, 132, 140), 1.5)
+                fg = QColor('#ffffff')
+            elif is_hov:
+                bg = QColor(255, 255, 255, 25)
+                pen = QPen(QColor(255, 255, 255, 55), 1.5)
+                fg = QColor('#ffffff')
+            else:
+                bg = QColor(255, 255, 255, 12)
+                pen = QPen(QColor(255, 255, 255, 25), 1.5)
+                fg = QColor('#c6d0f5')
+                
+        p.fillPath(path, bg)
+        p.setPen(pen)
+        p.drawPath(path)
+        
+        p.setFont(self.font())
+        p.setPen(fg)
+        p.drawText(int(rect.left() + 14), int((self.height() + self.fontMetrics().ascent() - self.fontMetrics().descent()) / 2.0), self.text())
 
 
 class ImportsWidget(QWidget):
     reload_requested = pyqtSignal()
-    def __init__(self, project_root, shell_nss_path=None, parent=None):
-        super().__init__(parent); self.root = project_root; self.shell_nss_path = shell_nss_path; self.curr_filter = None; self.main_layout = QHBoxLayout(self); self.main_layout.setContentsMargins(0, 10, 0, 0); self.setup_ui()
+    rules_saved = pyqtSignal()
+    def __init__(self, project_root, shell_nss_path=None, modify_nss_path=None, parent=None):
+        super().__init__(parent)
+        self.root = project_root
+        self.shell_nss_path = shell_nss_path
+        self.modify_nss_path = modify_nss_path or os.path.join(self.root, 'imports', 'modify.nss')
+        self.curr_filter = "rules"
+        self.custom_rules = []
+        self.imported_items = []
+        self.is_dirty = False
+        self.original_content = read_file(self.modify_nss_path)
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 10, 0, 0)
+        self.setup_ui()
+
     def setup_ui(self):
-        self.side = QFrame(); self.side.setFixedWidth(210); self.side.setStyleSheet("background: rgba(0,0,0,0.2); border-radius: 15px;")
-        self.sl = QVBoxLayout(self.side); self.sl.setAlignment(Qt.AlignTop); self.sl.setContentsMargins(5, 15, 5, 15); self.sl.setSpacing(8)
-        lbl = QLabel("FILES"); lbl.setStyleSheet("color: #333333; font-size: 10px; font-weight: bold; margin: 10px 0 5px 10px; background: transparent;")
+        self.side = QFrame()
+        self.side.setObjectName("sideFilesPanel")
+        self.side.setFixedWidth(240)
+        self.side.setStyleSheet("#sideFilesPanel { background: rgba(0,0,0,0.22); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.04); }")
+        self.sl = QVBoxLayout(self.side)
+        self.sl.setAlignment(Qt.AlignTop)
+        self.sl.setContentsMargins(8, 14, 8, 14)
+        self.sl.setSpacing(10)
+        
+        lbl = QLabel("FILES")
+        lbl.setStyleSheet("color: #70707c; font-size: 11px; font-weight: bold; margin: 4px 0 2px 8px; background: transparent; border: none; letter-spacing: 0.5px;")
         self.sl.addWidget(lbl)
-        self.all_btn = QPushButton("All Files"); self.all_btn.setFixedHeight(36); self.all_btn.clicked.connect(lambda: self.set_file_filter(None))
-        self.all_btn.setStyleSheet("QPushButton { background: rgba(49, 50, 68, 0.6); color: #dc143c; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid rgba(220, 20, 60, 0.1); } QPushButton:hover { background: #2a2a30; }")
-        self.sl.addWidget(self.all_btn)
-        self.f_scroll = QScrollArea(); self.f_scroll.setWidgetResizable(True); self.f_scroll.setStyleSheet("background: transparent; border: none;")
-        self.file_cont = QWidget(); self.file_cont.setStyleSheet("background: transparent;")
-        self.file_l = QVBoxLayout(self.file_cont); self.file_l.setContentsMargins(5,0,5,0); self.file_l.setSpacing(5); self.file_l.setAlignment(Qt.AlignTop)
-        self.f_scroll.setWidget(self.file_cont); self.sl.addWidget(self.f_scroll)
+        
+        # 1. Custom Rules Button (top, distinct look, NOT grouped in container)
+        self.rules_btn = CustomRulesButton("  Custom Rules")
+        self.rules_btn.clicked.connect(lambda: self.set_file_filter("rules"))
+        self.sl.addWidget(self.rules_btn)
+        
+        # 2. Imports Group Container (groups 'All Imports' and scrollable .nss files)
+        self.imports_container = QFrame()
+        self.imports_container.setObjectName("importsContainer")
+        self.imports_container.setStyleSheet("#importsContainer { background: rgba(0,0,0,0.16); border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.04); }")
+        ic_l = QVBoxLayout(self.imports_container)
+        ic_l.setContentsMargins(6, 8, 6, 8)
+        ic_l.setSpacing(6)
+        
+        self.all_btn = AllImportsButton("  All Imports")
+        self.all_btn.clicked.connect(lambda: self.set_file_filter(None))
+        ic_l.addWidget(self.all_btn)
+        
+        self.f_scroll = QScrollArea()
+        self.f_scroll.setWidgetResizable(True)
+        self.f_scroll.setStyleSheet("background: transparent; border: none;")
+        self.file_cont = QWidget()
+        self.file_cont.setStyleSheet("background: transparent;")
+        self.file_l = QVBoxLayout(self.file_cont)
+        self.file_l.setContentsMargins(0, 0, 0, 0)
+        self.file_l.setSpacing(4)
+        self.file_l.setAlignment(Qt.AlignTop)
+        self.f_scroll.setWidget(self.file_cont)
+        ic_l.addWidget(self.f_scroll, 1)
+        
+        self.sl.addWidget(self.imports_container, 1)
         self.main_layout.addWidget(self.side)
         
-        cr = QWidget(); crl = QVBoxLayout(cr); crl.setContentsMargins(0, 0, 0, 0); self.main_layout.addWidget(cr)
-        head = QHBoxLayout(); self.search = QLineEdit(); self.search.setPlaceholderText("Search items/menus..."); self.search.textChanged.connect(self.filter_items)
-        self.search.setStyleSheet("QLineEdit { background: rgba(255,255,255,0.05); border: 1px solid #2a2a30; border-radius: 15px; padding: 10px 15px; color: white; }")
-        head.addWidget(self.search); crl.addLayout(head)
+        cr = QWidget()
+        crl = QVBoxLayout(cr)
+        crl.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.addWidget(cr)
         
-        self.type_tags = FilterBar([("All", "#45475a"), ("Item", "#45475a"), ("Menu", "#45475a")])
+        head = QHBoxLayout()
+        self.search = PillLineEdit("Search items/menus...")
+        self.search.textChanged.connect(self.filter_items)
+        head.addWidget(self.search, 1)
+        
+        self.new_rule_btn = PillPushButton("+ New Rule", "primary", height=34)
+        self.new_rule_btn.setFixedWidth(100)
+        self.new_rule_btn.clicked.connect(self.add_new_rule_dialog)
+        head.addWidget(self.new_rule_btn)
+        
+        crl.addLayout(head)
+        
+        self.type_tags = FilterBar([("All", "#51576d"), ("Item", "#51576d"), ("Menu", "#51576d")])
         self.type_tags.filter_changed.connect(lambda _: self.filter_items())
         crl.addWidget(self.type_tags)
 
         self.action_tags = FilterBar([
-            ("All", "#2a2a30"), ("Renamed", "#808080"), ("Icons", "#4A90E2"), 
-            ("Hidden", "#dc143c"), ("Part Hidden", "#9B59B6"), ("Moved", "#E29E4A"), 
-            ("Position", "#4AE290"), ("Separator", "#F1C40F")
+            ("All", "#51576d"), ("Renamed", "#838ba7"), ("Icons", "#8caaee"), 
+            ("Hidden", "#e78284"), ("Part Hidden", "#ca9ee6"), ("Moved", "#ef9f76"), 
+            ("Position", "#a6d189"), ("Separator", "#e5c890")
         ])
         self.action_tags.filter_changed.connect(lambda _: self.filter_items())
         crl.addWidget(self.action_tags)
         
-        self.view = QListView(); self.view.setStyleSheet("background: transparent; border: none;")
+        self.view = SingleItemListView()
+        self.view.setStyleSheet("background: transparent; border: none;")
         self.view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.view.setSpacing(0); self.view.setMouseTracking(True)
-        self.model = NSSItemModel(); self.view.setModel(self.model)
-        self.delegate = NSSItemDelegate(self.view); self.view.setItemDelegate(self.delegate)
+        self.view.setSpacing(0)
+        self.view.setMouseTracking(True)
+        self.model = NSSItemModel()
+        self.view.setModel(self.model)
+        self.delegate = NSSItemDelegate(self.view)
+        self.view.setItemDelegate(self.delegate)
         crl.addWidget(self.view)
         
-        QTimer.singleShot(200, self.refresh)
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: #e78284; font-weight: 500;")
+        crl.addWidget(self.status_label)
+        
+        self._is_loaded = False
+        self.set_file_filter("rules")
 
     def refresh(self):
+        self._is_loaded = True
+        content = read_file(self.modify_nss_path)
+        self.custom_rules = extract_custom_rules(content)
+        for r in self.custom_rules:
+            r['file'] = self.modify_nss_path
+
         all_items = scan_nss_items(self.root, self.shell_nss_path)
-        # ONLY show item and menu definitions in the Imports tab
-        # Skip menus that have no title, no icon, and no nested items (logic-only menus)
         items = []
         for i in all_items:
-            if i['type'] == 'item':
+            if i.get('type') == 'item':
                 items.append(i)
-            elif i['type'] == 'menu':
+            elif i.get('type') == 'menu':
                 p = i.get('props', {})
-                # Hide grouped items pattern (no title + expanded=true)
-                if not p.get('title') and str(p.get('expanded', '')).lower() == 'true':
+                if not p.get('title') and not p.get('icon') and not p.get('image') and str(p.get('expanded', '')).lower() == 'true':
                     continue
-                
                 has_visual = p.get('title') or p.get('icon') or p.get('image')
                 if has_visual or i.get('has_children'):
                     items.append(i)
         
-        items.sort(key=lambda x: (x['type'] != 'menu', x['props'].get('title', '').lower()))
-        self.model.set_items(items); self.update_file_filters(items)
+        items.sort(key=lambda x: (x.get('type') != 'menu', str(x.get('props', {}).get('title') or x.get('props', {}).get('find') or x.get('props', {}).get('where') or '').lower()))
+        self.imported_items = items
+        
+        if self.curr_filter == "rules":
+            self.model.set_items(self.custom_rules)
+            self.type_tags.hide()
+            self.search.setPlaceholderText("Search custom rules...")
+        else:
+            self.model.set_items(self.imported_items)
+            self.type_tags.show()
+            self.search.setPlaceholderText("Search items/menus...")
+            
+        self.refresh_sidebar_highlights()
         self.filter_items()
 
+    def refresh_rules(self, preserve_item=None):
+        content = read_file(self.modify_nss_path)
+        new_rules = extract_custom_rules(content)
+        for r in new_rules:
+            r['file'] = self.modify_nss_path
+            
+        if preserve_item is not None:
+            p_props = preserve_item.get('props', {})
+            target_key = (
+                str(p_props.get('find', '')).strip('\'" ').lower(),
+                str(p_props.get('where.id', '')).strip('\'" ').lower(),
+                str(p_props.get('in', '')).strip('\'" ').lower(),
+                str(p_props.get('where', '')).strip('\'" ').lower()
+            )
+            for nr in new_rules:
+                nr_props = nr.get('props', {})
+                nr_key = (
+                    str(nr_props.get('find', '')).strip('\'" ').lower(),
+                    str(nr_props.get('where.id', '')).strip('\'" ').lower(),
+                    str(nr_props.get('in', '')).strip('\'" ').lower(),
+                    str(nr_props.get('where', '')).strip('\'" ').lower()
+                )
+                if nr_key == target_key and any(target_key):
+                    preserve_item['start'] = nr.get('start')
+                    preserve_item['end'] = nr.get('end')
+                    preserve_item['cmd_end'] = nr.get('cmd_end')
+                    break
+        self.custom_rules = new_rules
+        if self.curr_filter == "rules":
+            self.model.set_items(self.custom_rules)
+            self.filter_items()
+
     def filter_items(self):
-        type_tag = self.type_tags.group.checkedButton().text()
-        action_tag = self.action_tags.group.checkedButton().text()
-        self.model.filter(self.search.text(), self.curr_filter, type_tag=type_tag, action_tag=action_tag)
+        ab = self.action_tags.group.checkedButton()
+        action_tag = ab.text() if ab else "All"
+        if self.curr_filter == "rules":
+            self.model.filter(self.search.text(), action_tag=action_tag)
+        else:
+            cb = self.type_tags.group.checkedButton()
+            type_tag = cb.text() if cb else "All"
+            self.model.filter(self.search.text(), self.curr_filter, type_tag=type_tag, action_tag=action_tag)
 
     def set_file_filter(self, fp):
-        self.curr_filter = fp; self.filter_items(); self.refresh_sidebar_highlights()
+        self.curr_filter = fp
+        if fp == "rules":
+            self.rules_btn.set_active(True)
+            self.all_btn.set_active(False)
+            self.type_tags.hide()
+            self.search.setPlaceholderText("Search custom rules...")
+            self.model.set_items(self.custom_rules)
+        else:
+            self.rules_btn.set_active(False)
+            self.all_btn.set_active(fp is None)
+            self.type_tags.show()
+            self.search.setPlaceholderText("Search items/menus...")
+            self.model.set_items(self.imported_items)
+        self.filter_items()
+        self.refresh_sidebar_highlights()
 
     def update_file_filters(self, items):
-        for i in reversed(range(self.file_l.count())): (w.setParent(None) if (w := self.file_l.itemAt(i).widget()) else None)
-        files = sorted(list(set(i['file'] for i in items)))
+        while self.file_l.count():
+            it = self.file_l.takeAt(0)
+            wid = it.widget()
+            if wid:
+                wid.setParent(None)
+                wid.deleteLater()
+        
+        files = []
+        if self.shell_nss_path and os.path.exists(self.shell_nss_path):
+            files.append(os.path.abspath(self.shell_nss_path))
+        
+        shell_abs = os.path.abspath(self.shell_nss_path) if self.shell_nss_path else None
+        scanned_files = list(set(i['file'] for i in items if i.get('file')))
+        other_files = [f for f in scanned_files if not (shell_abs and os.path.abspath(f) == shell_abs)]
+        other_files.sort(key=lambda sf: os.path.basename(sf).lower())
+        files.extend(other_files)
+        
         for fp in files:
             name = os.path.basename(fp).replace('.nss', '')
             display_name = name
-            if self.shell_nss_path and os.path.abspath(fp) == os.path.abspath(self.shell_nss_path):
+            is_shell = bool(self.shell_nss_path and os.path.abspath(fp) == os.path.abspath(self.shell_nss_path))
+            if is_shell:
                 display_name = "shell.nss"
             
-            fw = QWidget(); fl = QHBoxLayout(fw); fl.setContentsMargins(5, 0, 5, 0); fl.setSpacing(5)
+            is_enabled = is_nss_file_enabled(fp, self.shell_nss_path)
+            is_active = (self.curr_filter == fp)
             
-            # Edit button
-            eb = QPushButton("\uE104"); eb.setFixedSize(28, 28); eb.setFont(QFont('Segoe MDL2 Assets', 10))
-            eb.setToolTip("Open in Editor"); eb.setCursor(Qt.PointingHandCursor)
-            eb.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border: none; border-radius: 14px; color: #dc143c; } QPushButton:hover { background: rgba(255,255,255,0.1); }")
+            fw = QWidget()
+            fl = QHBoxLayout(fw)
+            fl.setContentsMargins(2, 2, 2, 2)
+            fl.setSpacing(6)
+            
+            eb = CircularIconButton(0xE104, '#c6d0f5', '#ffffff')
+            eb.setToolTip("Open in Editor")
             eb.clicked.connect(lambda _, x=fp: os.startfile(x))
             fl.addWidget(eb)
 
-            # Main button
-            btn = QPushButton(display_name); btn.setFixedHeight(34); btn.setCursor(Qt.PointingHandCursor)
+            if is_shell:
+                tb = CircularIconButton(0xE73E, '#8caaee')
+                tb.setToolTip("Master Configuration File")
+            elif is_enabled:
+                tb = CircularIconButton(0xE73E, '#a6d189', '#e78284')
+                tb.setToolTip("Enabled in shell.nss (Click to Disable)")
+                tb.clicked.connect(lambda _, f=fp: self.toggle_file_enabled(f))
+            else:
+                tb = CircularIconButton(0xE8F8, '#e78284', '#a6d189')
+                tb.setToolTip("Disabled (Click to Enable in shell.nss)")
+                tb.clicked.connect(lambda _, f=fp: self.toggle_file_enabled(f))
+            fl.addWidget(tb)
+
+            btn = FileItemButton(display_name, is_active=is_active, is_enabled=is_enabled, is_shell=is_shell)
             btn.clicked.connect(lambda _, f=fp: self.set_file_filter(f))
-            
-            is_active = (self.curr_filter == fp)
-            bg = "rgba(220, 20, 60, 0.15)" if is_active else "transparent"
-            fg = "#dc143c" if is_active else "#b0b0b0"
-            border = "1px solid rgba(220, 20, 60, 0.3)" if is_active else "none"
-            btn.setStyleSheet(f"QPushButton {{ background: {bg}; color: {fg}; border-radius: 10px; text-align: left; padding-left: 10px; border: {border}; font-weight: {'bold' if is_active else 'normal'}; }} QPushButton:hover {{ background: rgba(255,255,255,0.05); }}")
             fl.addWidget(btn, 1)
 
             self.file_l.addWidget(fw)
 
+    def toggle_file_enabled(self, fp):
+        toggle_nss_file_import(fp, self.shell_nss_path, self.root)
+        self.refresh()
+        self.reload_requested.emit()
+
     def refresh_sidebar_highlights(self):
-        self.all_btn.setStyleSheet(f"QPushButton {{ background: {'rgba(220, 20, 60, 0.1)' if not self.curr_filter else 'rgba(49, 50, 68, 0.6)'}; color: {'#dc143c' if not self.curr_filter else '#b0b0b0'}; border-radius: 10px; text-align: left; padding-left: 12px; font-weight: bold; margin: 0 5px; border: 1px solid {'rgba(220, 20, 60, 0.4)' if not self.curr_filter else 'rgba(220, 20, 60, 0.1)'}; }}")
-        self.update_file_filters(self.model._items)
+        is_rules = (self.curr_filter == "rules")
+        is_all = (self.curr_filter is None)
+        self.rules_btn.set_active(is_rules)
+        self.all_btn.set_active(is_all)
+        self.update_file_filters(self.imported_items)
 
     def edit_item(self, data):
         d = ImportEditorDialog(data, self)
         d.reload_requested.connect(self.reload_requested.emit)
-        if d.exec_(): save_imported_item(data, d.get_props()); self.refresh(); self.reload_requested.emit()
+        if d.exec_():
+            save_imported_item(data, d.get_props())
+            self.refresh()
+            self.reload_requested.emit()
+
+    def _get_bulk_sections(self):
+        content = read_file(self.modify_nss_path)
+        return {
+            'hide': extract_ids_from_section(content, "hide"),
+            'more': extract_ids_from_section(content, "more"),
+            'shift': extract_ids_from_section(content, "shift")
+        }
+
+    def _remove_id_from_bulk_sections(self, raw_id, base_content=None):
+        if not raw_id:
+            return base_content if base_content is not None else read_file(self.modify_nss_path)
+        clean_id = raw_id.strip('\'" ')
+        if not clean_id.startswith('id.'):
+            clean_id = f"id.{clean_id}"
+        clean_bare = clean_id.replace("id.", "")
+        content = base_content if base_content is not None else read_file(self.modify_nss_path)
+        for sec in ("hide", "more", "shift"):
+            ids = extract_ids_from_section(content, sec)
+            orig_len = len(ids)
+            ids = [i for i in ids if i.strip() not in (clean_id, clean_bare)]
+            if len(ids) != orig_len:
+                if sec == "hide":
+                    content = update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", ids)
+                elif sec == "more":
+                    content = update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", ids)
+                elif sec == "shift":
+                    content = update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", ids)
+        return content
+
+    def edit_rule(self, item):
+        props = item.get('props', {})
+        orig_props = props.copy()
+        d = ModifyRuleEditorDialog(props, existing_rules=self.custom_rules, bulk_sections=self._get_bulk_sections(), parent=self)
+
+        def handle_preview(nd):
+            item['props'] = nd
+            self.model.layoutChanged.emit()
+
+        d.live_update.connect(handle_preview)
+
+        if d.exec_():
+            updated_data = d.get_data()
+            target_wid = str(updated_data.get('where.id', '')).lower().strip('\'" ')
+            target_find = str(updated_data.get('find', '')).lower().strip('\'" ')
+            
+            matched_idx = -1
+            for idx, r in enumerate(self.custom_rules):
+                if r is item or (r.get('start') is not None and r.get('start') == item.get('start') and r.get('type') == item.get('type')):
+                    matched_idx = idx
+                    break
+                rp = r.get('props', {})
+                r_wid = str(rp.get('where.id', '')).lower().strip('\'" ')
+                r_find = str(rp.get('find', '')).lower().strip('\'" ')
+                if target_wid and (r_wid == target_wid or f"id.{r_wid}" == target_wid or r_wid.replace("id.", "") == target_wid.replace("id.", "")):
+                    matched_idx = idx
+                    break
+                if not target_wid and target_find and r_find == target_find:
+                    matched_idx = idx
+                    break
+
+            if is_rule_complete(updated_data):
+                if matched_idx >= 0:
+                    self.custom_rules[matched_idx]['props'] = updated_data
+                else:
+                    self.custom_rules.insert(0, item)
+                    item['props'] = updated_data
+            elif matched_idx >= 0:
+                self.custom_rules.pop(matched_idx)
+
+            self.save_all_modifications()
+            self.refresh_rules()
+            self.reload_requested.emit()
+        else:
+            item['props'] = orig_props
+            self.refresh_rules()
+
+    def add_new_rule_dialog(self):
+        d = ModifyRuleEditorDialog(existing_rules=self.custom_rules, bulk_sections=self._get_bulk_sections(), parent=self)
+        temp_item = {'type': 'modify', 'props': {}, 'file': self.modify_nss_path, '_is_temp': True}
+
+        def handle_new_preview(nd):
+            temp_item['props'] = nd
+            self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
+            self.custom_rules.insert(0, temp_item)
+            self.model.layoutChanged.emit()
+
+        d.live_update.connect(handle_new_preview)
+
+        if d.exec_():
+            final_data = d.get_data()
+            self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
+            
+            target_wid = str(final_data.get('where.id', '')).lower().strip('\'" ')
+            target_find = str(final_data.get('find', '')).lower().strip('\'" ')
+            matched_idx = -1
+            for idx, r in enumerate(self.custom_rules):
+                rp = r.get('props', {})
+                r_wid = str(rp.get('where.id', '')).lower().strip('\'" ')
+                r_find = str(rp.get('find', '')).lower().strip('\'" ')
+                if target_wid and (r_wid == target_wid or f"id.{r_wid}" == target_wid or r_wid.replace("id.", "") == target_wid.replace("id.", "")):
+                    matched_idx = idx
+                    break
+                if not target_wid and target_find and r_find == target_find:
+                    matched_idx = idx
+                    break
+
+            if is_rule_complete(final_data):
+                if matched_idx >= 0:
+                    self.custom_rules[matched_idx]['props'] = final_data
+                else:
+                    new_item = {'type': 'modify', 'props': final_data, 'file': self.modify_nss_path}
+                    self.custom_rules.insert(0, new_item)
+            elif matched_idx >= 0:
+                self.custom_rules.pop(matched_idx)
+
+            self.save_all_modifications()
+            self.set_file_filter("rules")
+            self.reload_requested.emit()
+        else:
+            self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
+            self.model.set_items(self.custom_rules)
+            self.filter_items()
+
+    def delete_rule(self, item):
+        if item in self.custom_rules:
+            self.custom_rules.remove(item)
+            self.save_all_modifications()
+            if self.curr_filter == "rules":
+                self.model.set_items(self.custom_rules)
+                self.filter_items()
+            self.reload_requested.emit()
+
+    def save_all_modifications(self, preserve_item=None, base_content=None, status_msg="Rules Saved"):
+        try:
+            content = base_content if base_content is not None else read_file(self.modify_nss_path)
+            start_m, end_m = "// -- iMA Managed --", "// -- End iMA Managed --"
+            managed = []
+            
+            self.custom_rules = [r for r in self.custom_rules if is_rule_complete(r.get('props', {}))]
+
+            for item in self.custom_rules:
+                wid = item.get('props', {}).get('where.id')
+                if wid:
+                    content = self._remove_id_from_bulk_sections(wid, base_content=content)
+
+            seen_targets = set()
+            deduped = []
+            for item in self.custom_rules:
+                p = item.get('props', {})
+                target_key = (
+                    str(p.get('find', '')).strip('\'" ').lower(),
+                    str(p.get('where.id', '')).strip('\'" ').lower(),
+                    str(p.get('in', '')).strip('\'" ').lower(),
+                    str(p.get('where', '')).strip('\'" ').lower(),
+                    str(p.get('type', '')).strip('\'" ').lower()
+                )
+                if target_key in seen_targets and any(target_key):
+                    continue
+                if any(target_key):
+                    seen_targets.add(target_key)
+                deduped.append(item)
+            self.custom_rules = deduped
+
+            for item in self.custom_rules:
+                data = item.get('props', {})
+                if not is_rule_complete(data):
+                    continue
+
+                pts = []
+                pr = ['find', 'where.id', 'type', 'where', 'in', 'pos', 'title', 'menu', 'vis', 'icon', 'image']
+                for k in pr:
+                    v = data.get(k)
+                    if v is not None and (str(v).strip() != '' or k in ('menu', 'title')):
+                        pts.append(format_nss_value(k, v))
+                
+                for k, v in data.items(): 
+                    if k not in pr and k not in ('sep', '_order', 'file', 'start', 'end', '_is_temp') and str(v).strip() != '':
+                        pts.append(format_nss_value(k, v))
+                
+                if data.get('sep'):
+                    sv = data['sep']
+                    if sv is True: pts.append("sep=before")
+                    else: pts.append(f"sep={sv}")
+
+                if pts:
+                    managed.append(f"    modify({ ' '.join(pts) })")
+            
+            block = f"{start_m}\n" + "\n".join(managed) + f"\n{end_m}"
+            
+            s_re = re.compile(r"//\s*--\s*iMA\s*Managed\s*--", re.IGNORECASE)
+            e_re = re.compile(r"//\s*--\s*End\s*iMA\s*Managed\s*--", re.IGNORECASE)
+            
+            s_match = s_re.search(content)
+            if s_match:
+                e_matches = list(e_re.finditer(content[s_match.end():]))
+                if e_matches:
+                    last_e = e_matches[-1]
+                    end_pos = s_match.end() + last_e.end()
+                    new_content = content[:s_match.start()].rstrip() + "\n\n" + block + "\n" + content[end_pos:].lstrip()
+                else:
+                    new_content = content[:s_match.start()].rstrip() + "\n\n" + block + "\n"
+            else:
+                lines = content.splitlines()
+                rem = []
+                for l in lines:
+                    sl = l.strip()
+                    if re.match(r'^modify\s*\(.*?\)\s*$', sl, re.IGNORECASE) and "where=this.id(" not in sl: continue
+                    rem.append(l)
+                new_content = "\n".join(rem).rstrip() + "\n\n" + block + "\n"
+            
+            def on_success(fp):
+                if hasattr(NSSCacheManager, '_cache') and self.modify_nss_path in NSSCacheManager._cache:
+                    del NSSCacheManager._cache[self.modify_nss_path]
+                self.show_status(status_msg)
+                self.refresh_rules(preserve_item=preserve_item)
+                self.rules_saved.emit()
+                self.reload_requested.emit()
+                
+            def on_error(fp, err):
+                self.show_error(f"Save failed: {err}")
+                
+            from utils import global_undo_stack, FileChangeCommand
+            old_content = read_file(self.modify_nss_path)
+            cmd = FileChangeCommand(self.modify_nss_path, old_content, new_content, on_success, on_error)
+            global_undo_stack.push(cmd)
+            self.is_dirty = False
+            
+        except Exception as e:
+            self.show_error(f"Save setup failed: {str(e)}")
+
+    def revert_changes(self):
+        if self.is_dirty:
+            safe_file_write(self.modify_nss_path, self.original_content)
+            self.is_dirty = False
+            self.show_status("Changes Reverted")
+            self.refresh_rules()
+            self.reload_requested.emit()
+
+    def show_status(self, t):
+        self.status_label.setText(t)
+        self.status_label.setStyleSheet("color: #e78284;")
+        QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+
+    def show_error(self, t):
+        m = CustomMessageBox(self)
+        m.setText("Error")
+        m.setInformativeText(t)
+        m.exec_()
+
     def pick_item_color(self, data, idx):
         from theme_editor_widget import MinimalColorPickerDialog
         p = data['props']; val = (p.get('image') or p.get('icon') or '').strip('\'" ')
@@ -2962,405 +4699,321 @@ class ImportsWidget(QWidget):
         dlg.colorSelected.connect(on_color); dlg.exec_()
 
 
-def scan_nss_items(root, shell_nss_path=None):
-    items = []
-    if shell_nss_path and os.path.exists(shell_nss_path):
-        try:
-            content = read_file(shell_nss_path)
-            if content:
-                find_items_and_menus.current_file = shell_nss_path
-                for m in find_items_and_menus(content):
-                    m['file'] = shell_nss_path
-                    items.append(m)
-        except: pass
-
-    paths = [os.path.join(root, 'imports'), os.path.join(root, 'plugins')]
-    for p in paths:
-        if not os.path.exists(p): continue
-        for r, _, files in os.walk(p):
-            for f in files:
-                if f.endswith('.nss') and f not in ('theme.nss', 'modify.nss'):
-                    fp = os.path.join(r, f)
-                    try:
-                        find_items_and_menus.current_file = fp
-                        content = read_file(fp)
-                        matches = find_items_and_menus(content)
-                        for m in matches: m['file'] = fp; items.append(m)
-                    except: pass
-    return items
-
-
-
-class NSSLexer:
-    def __init__(self, text):
-        self.text = text; self.pos = 0
-    def tokenize(self):
-        tokens = []
-        while self.pos < len(self.text):
-            ch = self.text[self.pos]
-            if ch.isspace(): self.pos += 1; continue
-            if ch == '/' and self.pos + 1 < len(self.text):
-                if self.text[self.pos+1] == '/':
-                    start = self.pos
-                    while self.pos < len(self.text) and self.text[self.pos] != '\n': self.pos += 1
-                    tokens.append(('COMMENT', self.text[start:self.pos], start)); continue
-                if self.text[self.pos+1] == '*':
-                    start = self.pos; self.pos += 2
-                    while self.pos + 1 < len(self.text) and self.text[self.pos:self.pos+2] != '*/': self.pos += 1
-                    self.pos += 2; tokens.append(('COMMENT', self.text[start:self.pos], start)); continue
-            if ch in ("'", '"'):
-                start = self.pos
-                if ch == "'" and self.text[self.pos:self.pos+3] == "'''":
-                    self.pos += 3
-                    while self.pos < len(self.text):
-                        if self.text[self.pos:self.pos+3] == "'''":
-                            self.pos += 3
-                            break
-                        self.pos += 1
-                    tokens.append(('STRING', self.text[start:self.pos], start)); continue
-                elif ch == '"' and self.text[self.pos:self.pos+3] == '"""':
-                    self.pos += 3
-                    while self.pos < len(self.text):
-                        if self.text[self.pos:self.pos+3] == '"""':
-                            self.pos += 3
-                            break
-                        self.pos += 1
-                    tokens.append(('STRING', self.text[start:self.pos], start)); continue
-                else:
-                    qc = ch; self.pos += 1
-                    while self.pos < len(self.text):
-                        if self.text[self.pos] == qc and self.text[self.pos-1] != '\\': self.pos += 1; break
-                        self.pos += 1
-                    tokens.append(('STRING', self.text[start:self.pos], start)); continue
-            if ch.isalpha() or ch in ('@', '_', '$', '#', '\\'):
-                start = self.pos; self.pos += 1
-                while self.pos < len(self.text) and (self.text[self.pos].isalnum() or self.text[self.pos] in ('.', '_', '\\', '#', '-')): self.pos += 1
-                tokens.append(('IDENTIFIER', self.text[start:self.pos], start)); continue
-            if ch.isdigit():
-                start = self.pos
-                while self.pos < len(self.text) and (self.text[self.pos].isdigit() or self.text[self.pos] == '.'): self.pos += 1
-                tokens.append(('NUMBER', self.text[start:self.pos], start)); continue
-            tokens.append((ch, ch, self.pos)); self.pos += 1
-        return tokens
-
-def parse_nss_args(text, tokens):
-    props = {}; order = []; i = 0
-    while i < len(tokens):
-        t_type, t_val, t_pos = tokens[i]
-        if t_type == 'COMMENT' or t_val == ',': i += 1; continue
-        if i + 1 < len(tokens) and tokens[i+1][1] == '=':
-            key = t_val; i += 2; v_start_pos = tokens[i][2] if i < len(tokens) else t_pos
-            pc, bc, last_pos = 0, 0, v_start_pos
-            while i < len(tokens):
-                vt_type, vt_val, vt_pos = tokens[i]
-                if pc == 0 and bc == 0:
-                    if vt_val in (',', ')'): break
-                    if i + 1 < len(tokens) and tokens[i+1][1] == '=': break
-                if vt_val == '(':
-                    pc += 1
-                elif vt_val == ')':
-                    if pc > 0:
-                        pc -= 1
-                    else:
-                        break
-                elif vt_val == '[': bc += 1
-                elif vt_val == ']': bc -= 1
-                last_pos = vt_pos + len(vt_val); i += 1
-            val = text[v_start_pos:last_pos].strip()
-            # If the extracted value is wrapped in single quotes, keep it clean
-            props[key] = val; order.append(key)
-        else:
-            if t_type == 'IDENTIFIER': props[t_val] = True; order.append(t_val)
-            i += 1
-    props['_order'] = order; return props
-
-def find_items_and_menus(content, types=('modify', 'item', 'menu')):
-    lexer = NSSLexer(content)
-    tokens = lexer.tokenize()
-    results = []
-    i = 0
-    while i < len(tokens):
-        t_type, t_val, t_pos = tokens[i]
-        if t_type == 'IDENTIFIER' and t_val.lower() in [t.lower() for t in types]:
-            start_pos = t_pos
-            header_end = start_pos + len(t_val)
-            
-            # Find command header boundary (...)
-            has_paren = False
-            if i + 1 < len(tokens) and tokens[i+1][1] == '(':
-                has_paren = True; i += 2
-                arg_tokens = []; pc, bc = 1, 0
-                while i < len(tokens) and pc > 0:
-                    vt_val = tokens[i][1]
-                    if vt_val == '(': pc += 1
-                    elif vt_val == ')': pc -= 1
-                    elif vt_val == '[': bc += 1
-                    elif vt_val == ']': bc -= 1
-                    if pc > 0: arg_tokens.append(tokens[i])
-                    i += 1
-                header_end = tokens[i-1][2] + len(tokens[i-1][1])
-                props = parse_nss_args(content, arg_tokens)
-            else:
-                # No parentheses, scan until newline or block
-                props = {}; i += 1
-                while i < len(tokens):
-                    if tokens[i][1] in ('\n', '{'): break
-                    header_end = tokens[i][2] + len(tokens[i][1])
-                    i += 1
-            
-            # Peek for optional body { ... }
-            block_end = header_end
-            has_children = False
-            raw_inner = ""
-            temp_i = i
-            while temp_i < len(tokens) and tokens[temp_i][0] == 'COMMENT': temp_i += 1
-            if temp_i < len(tokens) and tokens[temp_i][1] == '{':
-                body_start_idx = temp_i
-                bc_body = 1; temp_i += 1
-                while temp_i < len(tokens) and bc_body > 0:
-                    vt_type, vt_val, vt_pos = tokens[temp_i]
-                    if vt_val == '{': bc_body += 1
-                    elif vt_val == '}': bc_body -= 1
-                    elif vt_type == 'IDENTIFIER' and vt_val.lower() in ('item', 'menu', 'modify'):
-                        has_children = True
-                    temp_i += 1
-                block_end = tokens[temp_i-1][2] + 1
-                raw_inner = content[tokens[body_start_idx][2]:block_end]
-            
-            results.append({
-                'type': t_val, 
-                'start': start_pos, 
-                'end': block_end, 
-                'cmd_end': header_end, 
-                'props': props,
-                'has_children': has_children,
-                'raw_inner': raw_inner,
-                'file': getattr(find_items_and_menus, 'current_file', ''),
-                'indent': content[:start_pos].split('\n')[-1] if '\n' in content[:start_pos] else ''
-            })
-        else:
-            i += 1
-    return results
-
-def format_nss_value(k, v):
-    if not isinstance(v, str): v = str(v)
-    if v.lower() in ('true', 'false', 'none'): v = v.lower()
-    if v == '': return f"{k}=''"
-    v = v.strip()
-    
-    # Strip unnecessary enclosing parentheses if it's wrapping a single path/string (e.g. ('C:/...'))
-    while v.startswith('(') and v.endswith(')'):
-        inner = v[1:-1].strip()
-        # Only strip if it's not a multi-term expression or Nilesoft function call
-        if inner.startswith("'") or inner.startswith('"') or ('\\' in inner or '/' in inner):
-            v = inner
-        else:
-            break
-
-    # Normalize: strip existing quotes to prevent nesting
-    while (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
-        # Only strip if it's a simple wrap, don't strip if quotes are part of an expression (e.g. ['A', 'B'])
-        if v.startswith('[') or (v.count("'") + v.count('"')) > 2:
-            if v.startswith("''") and v.endswith("''"):
-                v = v[2:-2]
-                continue
-            break
-        v = v[1:-1]
-    
-    v = v.strip()
-    
-    # Check if ALREADY quoted
-    is_quoted = (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"'))
-    if is_quoted:
-        return f"{k}={v}"
-
-    is_wrapped = v.startswith('[') and v.endswith(']')
-    is_image_res = v.lower().startswith('image.res(') and v.endswith(')')
-    is_image_svg = v.lower().startswith('image.svg(') and v.endswith(')')
-    is_path = ('\\' in v or '/' in v or ':' in v) and not (is_image_res or is_image_svg)
-    is_expression = '(' in v and ')' in v and not (is_image_res or is_image_svg or is_path)
-    is_complex = ('@if' in v or '@sel' in v or 'key.' in v or is_expression) and not is_path
-    
-    nilesoft_prefixes = (
-        'vis.', 'key.', 'clr.', 'sys.', 'app.', 'this.', 'id.', 'menu.', 'tip.', 'sel.', 'title.',
-        'command.', 'io.', 'str.', 'reg.', 'path.', 'theme.', 'icon.', 'image.', 'window.', 
-        'cursor.', 'process.', 'user.', 'computer.', 'dt.', 'color.', 'file.', 'dir.',
-        '@app.', '@sel.', '@clipboard.', '@sys.', '@path.', '@user.', '@dt.', 'item.', 'menu.'
-    )
-    is_nilesoft_obj = any(v.lower().startswith(p) for p in nilesoft_prefixes)
-    is_glyph = v.startswith('\\u') or v.startswith('0x') or (len(v) == 1 and ord(v) > 0xE000)
-    
-    keywords = (
-        'true', 'false', 'none', 'inherit', 'parent', 'all', 'auto', 'before', 'after', 
-        'both', 'top', 'bottom', 'middle', 'left', 'right', 'contains', 'starts', 'ends', 
-        'exact', 'single', 'multiple', 'if', 'else', 'any', 'not', 'and', 'or', 'normal', 'hidden', 'remove'
-    )
-    has_space = ' ' in v
-    has_dot = '.' in v
-    
-    # Force quotes for find, title, menu, in, cmd, and path strings
-    if k in ('find', 'title', 'menu', 'in', 'cmd', 'path') and not (is_wrapped or is_complex or is_nilesoft_obj or is_glyph or is_image_res or is_image_svg):
-        return f"{k}='{v}'"
-
-    if is_path:
-        return f"{k}='{v}'"
-
-    has_pipe = '|' in v
-    
-    should_not_quote = is_wrapped or is_complex or is_nilesoft_obj or is_glyph or is_image_res or is_image_svg or \
-                       (v.isdigit() and not has_dot) or v.lower() in keywords
-    
-    if has_pipe and not (is_expression or is_complex):
-        should_not_quote = False
-
-    if should_not_quote:
-        if has_space and not (is_wrapped or is_expression or is_complex or is_image_res or is_image_svg):
-            return f"{k}='{v}'"
-        return f"{k}={v}"
-    
-    return f"{k}='{v}'"
-
-def save_imported_item(data, new_props):
-    fp = data['file']; content = read_file(fp)
-    if not content: return
-    find_items_and_menus.current_file = fp
-    items = find_items_and_menus(content)
-    target = None
-    for it in items:
-        dist = abs(it['start'] - data['start'])
-        if dist < 500 and it['type'] == data['type']:
-            t1 = str(it['props'].get('title', '')).strip().strip("'\"").lower()
-            t2 = str(data['props'].get('title', '')).strip().strip("'\"").lower()
-            w1 = str(it['props'].get('where', '')).strip().strip("'\"").lower()
-            w2 = str(data['props'].get('where', '')).strip().strip("'\"").lower()
-            if (t1 and t1 == t2) or (w1 and w1 == w2):
-                target = it; break
-    
-    if not target:
-        for it in items:
-            if abs(it['start'] - data['start']) < 300 and it['type'] == data['type']:
-                target = it; break
-    
-    if not target: target = data
-    
-    # Merge props: keep everything from target['props'], update with new_props
-    merged = target['props'].copy()
-    for k in list(merged.keys()):
-        if k not in new_props and k not in ('_order', 'file', 'start', 'end', 'cmd', 'arg', 'args', 'where', 'mode', 'window', 'admin', 'type'):
-            del merged[k]
-    for k, v in new_props.items():
-        if v is None or v == 'None' or (k in ('vis', 'pos', 'type') and not str(v).strip()):
-            if k in merged: del merged[k]
-        else: merged[k] = v
-            
-    pts = []; handled = set()
-    orig_order = target['props'].get('_order', [])
-    for k in orig_order:
-        if k in merged:
-            v = str(merged[k]).strip()
-            pts.append(format_nss_value(k, v)); handled.add(k)
-        elif k == 'sep' and 'sep' in merged:
-            v = merged['sep']
-            pts.append(format_nss_value('sep', v)); handled.add('sep')
-
-    for k, v in merged.items():
-        if k and k not in handled and k not in ('_order', 'file', 'start', 'end', 'cmd_end', 'raw_inner', 'has_children', 'indent') and re.match(r'^\w+$', k):
-            pts.append(format_nss_value(k, str(v).strip()))
-            
-    header = f"{target['type']}({ ' '.join(pts) })"
-    cmd_end = target.get('cmd_end', target['end'])
-    try:
-        new_content = content[:target['start']] + header + content[cmd_end:]
-        safe_file_write(fp, new_content)
-        if hasattr(NSSCacheManager, 'cache') and fp in NSSCacheManager.cache:
-            del NSSCacheManager.cache[fp]
-    except Exception as e:
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.critical(None, "Save Error", f"Failed to save changes to {fp}:\n{str(e)}")
-
-def mass_save_op(item_data, new_props):
-    pts = []; handled = set(); orig_order = item_data['props'].get('_order', [])
-    for k in orig_order:
-        if k == 'sep':
-            v = new_props.get('sep')
-            if v: pts.append(format_nss_value('sep', v)); handled.add('sep')
-        elif k in new_props:
-            v = new_props[k]
-            if isinstance(v, str): v = v.strip()
-            else: v = str(v)
-            if k in ('pos', 'vis', 'remove', 'hidden') and not v: handled.add(k); continue
-            if k == 'menu' and v is None: handled.add(k); continue
-            pts.append(format_nss_value(k, v)); handled.add(k)
-    for k, v in new_props.items():
-        if k and k not in handled and k not in ('_order', 'file', 'start', 'end', 'raw_inner', 'indent', 'cmd_end', 'has_children') and re.match(r'^\w+$', k):
-            v_s = str(v).strip()
-            if k in ('pos', 'vis', 'remove', 'hidden', 'type') and not v_s: continue
-            if k == 'menu' and v_s is None: continue
-            pts.append(format_nss_value(k, v_s))
-    
-    header = f"{item_data['type']}({ ' '.join(pts) })"
-    return header
-
-def _get_custom_menus_from_nss():
-    root = PROJECT_ROOT or (os.path.dirname(os.path.dirname(sys.executable)) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    titles = []
-    paths = [os.path.join(root, 'imports'), os.path.join(root, 'plugins')]
-    for p in paths:
-        if not os.path.exists(p): continue
-        for r, _, files in os.walk(p):
-            for f in files:
-                if f.endswith('.nss') and f not in ('theme.nss', 'modify.nss'):
-                    fp = os.path.join(r, f)
-                    try:
-                        content = read_file(fp)
-                        for item in find_items_and_menus(content, types=('menu',)):
-                            title = item['props'].get('title', '').strip().strip("'\"")
-                            if title and title.lower() not in ('main', 'options', 'menu.main', 'title.options', ''):
-                                if title not in titles:
-                                    titles.append(title)
-                    except: pass
-    return titles
-
-
-def _get_vis_options():
-    return {
-        "Always Visible": "", 
-        "Hidden": "vis.remove", 
-        "Visible In...": "CONDITIONAL",
-        "Shift Key Only": "key.shift()", 
-        "Control Key Only": "key.control()", 
-        "Caps Lock Only": "key.capslock()", 
-        "Left Mouse Only": "key.lbutton()"
+def get_friendly_id_name(id_str):
+    clean = id_str.replace("id.", "").replace("_", " ").strip()
+    replacements = {
+        "vhd": "VHD", "dvd": "DVD", "usb": "USB", "cmd": "CMD", "ps": "PowerShell"
     }
+    words = clean.split()
+    return " ".join(replacements.get(w.lower(), w.capitalize()) for w in words)
 
-def _build_vis_expression(selection_dict):
-    # selection_dict maps 'shift', 'ctrl', 'caps', 'lmb' to boolean (True = show)
-    # If all are True, it's always visible
-    if all(selection_dict.values()): return ""
-    hide_conds = []
-    if not selection_dict.get('shift'): hide_conds.append("key.shift()")
-    if not selection_dict.get('ctrl'): hide_conds.append("key.control()")
-    if not selection_dict.get('caps'): hide_conds.append("key.capslock()")
-    if not selection_dict.get('lmb'): hide_conds.append("key.lbutton()")
-    if not hide_conds: return "" # Should not happen if not all are true
-    return f"@if({' || '.join(hide_conds)}, 'hidden', 'normal')"
 
-def _parse_vis_expression(expr):
-    expr = expr.lower()
-    res = {'shift': True, 'ctrl': True, 'caps': True, 'lmb': True}
-    if '@if' in expr and 'hidden' in expr:
-        res['shift'] = 'key.shift()' not in expr
-        res['ctrl'] = 'key.control()' not in expr
-        res['caps'] = 'key.capslock()' not in expr
-        res['lmb'] = 'key.lbutton()' not in expr
-    return res
+class MatchModeButton(QPushButton):
+    mode_changed = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(32, 32)
+        self.setCursor(Qt.PointingHandCursor)
+        self._mode = "contains"
+        self.setFont(QFont("Segoe MDL2 Assets", 12))
+        self.setText("\uE713")
+        self._update_style_and_tooltip()
+        self.clicked.connect(self._show_menu)
+
+    def _update_style_and_tooltip(self):
+        self.setToolTip(f"Match Mode: {self._mode.title()} (Click to change)")
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #121212;
+                border: 1px solid #282b3c;
+                border-radius: 16px;
+                color: #c6d0f5;
+            }
+            QPushButton:hover {
+                background-color: rgba(234, 153, 156, 0.2);
+                border: 1px solid #ea999c;
+                color: #ffffff;
+            }
+        """)
+
+    def get_mode(self):
+        return self._mode
+
+    def set_mode(self, mode):
+        m = str(mode or '').lower()
+        if m in ("contains", "starts", "ends", "exact"):
+            self._mode = m
+        else:
+            self._mode = "contains"
+        self._update_style_and_tooltip()
+
+    def _show_menu(self):
+        menu = QMenu(self)
+        menu.setWindowFlags(menu.windowFlags() | Qt.FramelessWindowHint)
+        menu.setAttribute(Qt.WA_TranslucentBackground)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #121214;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 10px;
+                padding: 6px;
+            }
+            QMenu::item {
+                padding: 6px 20px 6px 14px;
+                border-radius: 6px;
+                color: #c6d0f5;
+                font-family: 'Segoe UI Variable Display';
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QMenu::item:selected {
+                background-color: rgba(234, 153, 156, 0.22);
+                color: #ea999c;
+            }
+        """)
+        options = [
+            ("contains", "Contains"),
+            ("starts", "Starts with"),
+            ("ends", "Ends with"),
+            ("exact", "Exact")
+        ]
+        for opt_key, opt_label in options:
+            prefix = "✓  " if self._mode == opt_key else "    "
+            act = menu.addAction(f"{prefix}{opt_label}")
+            act.triggered.connect(lambda _, k=opt_key: self._on_selected(k))
+
+        menu.exec_(self.mapToGlobal(QPoint(0, self.height() + 4)))
+
+    def _on_selected(self, mode):
+        self.set_mode(mode)
+        self.mode_changed.emit(mode)
+
+
+class IDDropdownPopup(QFrame):
+    id_chosen = pyqtSignal(str, str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
+        self.setObjectName("idPopupFrame")
+        self.setFixedWidth(340)
+        self.setFixedHeight(300)
+        self.setStyleSheet("""
+            #idPopupFrame {
+                background-color: #121214;
+                border: 1px solid rgba(234, 153, 156, 0.4);
+                border-radius: 12px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("Search System IDs...")
+        self.search_box.setStyleSheet("""
+            QLineEdit {
+                background-color: #1a1a20;
+                border: 1px solid #2c2d3a;
+                border-radius: 8px;
+                padding: 6px 10px;
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QLineEdit:focus {
+                border: 1px solid #ea999c;
+            }
+        """)
+        self.search_box.textChanged.connect(self._filter_list)
+        layout.addWidget(self.search_box)
+
+        self.list_w = QListWidget()
+        self.list_w.setStyleSheet("""
+            QListWidget {
+                background: transparent;
+                border: none;
+                outline: none;
+                color: #c6d0f5;
+                font-family: 'Segoe UI Variable Display';
+                font-size: 11px;
+            }
+            QListWidget::item {
+                height: 28px;
+                border-radius: 6px;
+                padding-left: 8px;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #ffffff;
+            }
+            QListWidget::item:selected {
+                background-color: rgba(234, 153, 156, 0.25);
+                color: #ea999c;
+                font-weight: bold;
+            }
+        """)
+        self.list_w.itemClicked.connect(self._on_item_clicked)
+        layout.addWidget(self.list_w)
+
+        self._populate()
+
+    def _populate(self):
+        self.list_w.clear()
+        for raw_id in DEFAULT_IDS:
+            friendly = get_friendly_id_name(raw_id)
+            item = QListWidgetItem(friendly)
+            item.setData(Qt.UserRole, (raw_id, friendly))
+            self.list_w.addItem(item)
+
+    def _filter_list(self, text):
+        query = text.strip().lower()
+        for i in range(self.list_w.count()):
+            it = self.list_w.item(i)
+            raw_id, friendly = it.data(Qt.UserRole)
+            matches = (query in friendly.lower() or query in raw_id.lower())
+            it.setHidden(not matches)
+
+    def _on_item_clicked(self, item):
+        raw_id, friendly = item.data(Qt.UserRole)
+        self.id_chosen.emit(raw_id, friendly)
+        self.close()
+
+    def show_under(self, target_widget):
+        self.search_box.clear()
+        self._filter_list("")
+        w = max(target_widget.width(), 320)
+        self.setFixedWidth(w)
+        p = target_widget.mapToGlobal(QPoint(0, target_widget.height() + 4))
+        self.move(p)
+        self.show()
+        self.search_box.setFocus()
+
+
+class UnifiedFindInput(QFrame):
+    id_selected = pyqtSignal(str, str)
+    textChanged = pyqtSignal(str)
+    textEdited = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("unifiedFindInput")
+        self.setFixedHeight(34)
+        self._selected_id = None
+        self._popup = IDDropdownPopup(self)
+        self._popup.id_chosen.connect(self._on_id_chosen)
+
+        self.setStyleSheet("""
+            #unifiedFindInput {
+                background-color: #121212;
+                border: 1px solid #242738;
+                border-radius: 10px;
+            }
+            #unifiedFindInput:focus-within {
+                border: 1px solid #ea999c;
+            }
+        """)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setSpacing(4)
+
+        self.line_edit = QLineEdit()
+        self.line_edit.setPlaceholderText("e.g. Refresh")
+        self.line_edit.setStyleSheet("background: transparent; border: none; color: #ffffff; font-size: 12px; font-weight: bold; padding-left: 8px;")
+        self.line_edit.textChanged.connect(self.textChanged.emit)
+        self.line_edit.textEdited.connect(self._on_text_edited)
+        self.line_edit.textEdited.connect(self.textEdited.emit)
+        self.line_edit.installEventFilter(self)
+        lay.addWidget(self.line_edit, 1)
+
+        self.arrow_btn = QPushButton("\uE70D")
+        self.arrow_btn.setFont(QFont("Segoe MDL2 Assets", 9))
+        self.arrow_btn.setFixedSize(26, 26)
+        self.arrow_btn.setCursor(Qt.PointingHandCursor)
+        self.arrow_btn.setToolTip("Browse System IDs")
+        self.arrow_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                color: #8d94a6;
+            }
+            QPushButton:hover {
+                background: rgba(234, 153, 156, 0.2);
+                color: #ffffff;
+            }
+        """)
+        self.arrow_btn.clicked.connect(self._toggle_popup)
+        lay.addWidget(self.arrow_btn)
+
+    def eventFilter(self, obj, event):
+        if obj is self.line_edit and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Down and not self._popup.isVisible():
+                self._toggle_popup()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _toggle_popup(self):
+        if self._popup.isVisible():
+            self._popup.close()
+        else:
+            self._popup.show_under(self)
+
+    def _on_id_chosen(self, raw_id, friendly):
+        self._selected_id = raw_id
+        self.line_edit.setText(friendly)
+        self.id_selected.emit(raw_id, friendly)
+
+    def _on_text_edited(self, text):
+        txt_low = text.strip().lower()
+        if not txt_low:
+            self._selected_id = None
+            return
+        matched_id = None
+        for raw_id in DEFAULT_IDS:
+            if get_friendly_id_name(raw_id).lower() == txt_low or raw_id.lower() == txt_low:
+                matched_id = raw_id
+                break
+        if matched_id:
+            self._selected_id = matched_id
+        elif self._selected_id:
+            friendly = get_friendly_id_name(self._selected_id)
+            if txt_low != friendly.lower():
+                self._selected_id = None
+
+    def text(self):
+        return self.line_edit.text()
+
+    def setText(self, text):
+        self.line_edit.setText(text)
+
+    def get_selected_id(self):
+        return self._selected_id or ""
+
+    def set_id(self, raw_id):
+        if not raw_id:
+            self._selected_id = None
+            return
+        clean_id = raw_id.strip('\'" ')
+        if not clean_id.startswith("id."):
+            clean_id = f"id.{clean_id}"
+        self._selected_id = clean_id
+        friendly = get_friendly_id_name(clean_id)
+        if not self.line_edit.text().strip():
+            self.line_edit.setText(friendly)
+
+    def clear_id(self):
+        self._selected_id = None
+
 
 class ModifyRuleEditorDialog(QDialog):
     POS_OPTIONS = ["", "top", "bottom", "1", "2", "3", "4", "5", "middle"]
     live_update = pyqtSignal(dict)
-    def __init__(self, data=None, parent=None):
-        super().__init__(parent); self.data = data or {}; self.setMinimumWidth(500); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(220, 20, 60, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
+    def __init__(self, data=None, existing_rules=None, bulk_sections=None, parent=None):
+        super().__init__(parent); self.data = data or {}; self._all_existing_rules = existing_rules or []; self._bulk_sections = bulk_sections or {}; self._target_existing_rule = None; self._is_loading = False; self.setMinimumWidth(720); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(231, 130, 132, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
         self.created_temp_icons = []
         self._custom_menus = _get_custom_menus_from_nss()
         self._drag_pos = None
@@ -3382,105 +5035,150 @@ class ModifyRuleEditorDialog(QDialog):
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
-            #mainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; } 
-            QLabel { color: #ffffff; font-size: 13px; } 
-            QLineEdit, QComboBox { background-color: #2a2a30; border: 1px solid #45475a; border-radius: 10px; padding: 7px 10px; color: #ffffff; } 
-            QLineEdit:focus { border: 1px solid #dc143c; }
-            QComboBox:hover, QComboBox:focus { border: 1px solid #dc143c; }
-            QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #2a2a30; selection-background-color: #2a2a30; selection-color: #dc143c; color: #ffffff; outline: none; border-radius: 8px; padding: 4px; }
-            QPushButton#saveBtn { background-color: #dc143c; color: #ffffff; border-radius: 10px; padding: 8px 18px; font-weight: bold; } 
-            QPushButton#saveBtn:hover { background-color: #ff2a55; }
-            QPushButton#cancelBtn { background-color: #2a2a30; color: #ffffff; border-radius: 10px; padding: 8px 18px; }
-            QPushButton#cancelBtn:hover { background-color: #45475a; }
+            #mainFrame { background-color: #0E0E0E; border: 1px solid #1e2130; border-radius: 20px; } 
+            QLabel { color: #ffffff; font-size: 12px; } 
+            QLineEdit { background-color: #121212; border: 1px solid #242738; border-radius: 10px; padding: 7px 12px; color: #ffffff; selection-background-color: #ea999c; font-size: 12px; } 
+            QLineEdit:focus { border: 1px solid #ea999c; }
+            QPushButton#saveBtn { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ea999c, stop:1 #e78284); color: #ffffff; border-radius: 10px; padding: 8px 20px; font-weight: bold; font-size: 12px; border: none; } 
+            QPushButton#saveBtn:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4770, stop:1 #e01b44); }
+            QPushButton#cancelBtn { background-color: #121212; border: 1px solid #282b3c; color: #d1d5db; border-radius: 10px; padding: 8px 18px; font-size: 12px; }
+            QPushButton#cancelBtn:hover { background-color: #0E0E0E; color: #ffffff; }
         """)
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.addWidget(self.mf)
-        cl = QVBoxLayout(self.mf); cl.setContentsMargins(20, 18, 20, 18); cl.setSpacing(12)
-        h = QLabel("Modify Rule Configuration"); h.setStyleSheet("font-size: 17px; font-weight: bold; color: white;"); cl.addWidget(h)
+        cl = QVBoxLayout(self.mf); cl.setContentsMargins(20, 20, 20, 20); cl.setSpacing(12)
         
-        tg = QFrame(); tg.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); tl = QGridLayout(tg); tl.setVerticalSpacing(8); tl.setHorizontalSpacing(10); cl.addWidget(QLabel("Target Criteria")); cl.addWidget(tg)
+        # 1. Header Banner
+        h_row = QHBoxLayout()
+        ic_badge = QLabel("\uE713")
+        ic_badge.setFixedSize(36, 36)
+        ic_badge.setFont(QFont("Segoe MDL2 Assets", 14))
+        ic_badge.setAlignment(Qt.AlignCenter)
+        ic_badge.setStyleSheet("background: rgba(234, 153, 156, 0.15); border: 1px solid #ea999c; border-radius: 10px; color: #ea999c;")
+        h_row.addWidget(ic_badge)
+
+        h_titles = QVBoxLayout()
+        h_titles.setSpacing(2)
+        t1 = QLabel("Modify Rule Configuration"); t1.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        t2 = QLabel("Adjust the settings for your rule."); t2.setStyleSheet("font-size: 11px; color: #8d94a6;")
+        h_titles.addWidget(t1); h_titles.addWidget(t2)
+        h_row.addLayout(h_titles, 1)
+
+        close_btn = QPushButton("\uE711")
+        close_btn.setFixedSize(30, 30)
+        close_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setStyleSheet("QPushButton { background: #121212; border: 1px solid #282b3c; border-radius: 8px; color: #9ca3af; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #ea999c; color: #ffffff; }")
+        close_btn.clicked.connect(self.reject)
+        h_row.addWidget(close_btn)
+        cl.addLayout(h_row)
+        
+        # Non-interruptive info banner
+        self.banner_frame = QFrame(self.mf)
+        self.banner_frame.setObjectName("bannerFrame")
+        self.banner_frame.setStyleSheet("""
+            #bannerFrame {
+                background-color: rgba(140, 170, 238, 0.12);
+                border: 1px solid rgba(140, 170, 238, 0.35);
+                border-radius: 10px;
+            }
+        """)
+        banner_l = QHBoxLayout(self.banner_frame)
+        banner_l.setContentsMargins(10, 6, 10, 6)
+        banner_l.setSpacing(8)
+        self.banner_icon = QLabel("\uE946")
+        self.banner_icon.setFont(QFont("Segoe MDL2 Assets", 11))
+        self.banner_icon.setStyleSheet("color: #8caaee; background: transparent; border: none;")
+        banner_l.addWidget(self.banner_icon)
+        self.banner_label = QLabel("")
+        self.banner_label.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        self.banner_label.setStyleSheet("color: #c6d0f5; background: transparent; border: none;")
+        banner_l.addWidget(self.banner_label, 1)
+        self.banner_frame.hide()
+        cl.addWidget(self.banner_frame)
+        
+        # Step 1: Target Criteria
+        s1_row = QHBoxLayout()
+        s1_badge = QLabel("1")
+        s1_badge.setFixedSize(20, 20)
+        s1_badge.setAlignment(Qt.AlignCenter)
+        s1_badge.setStyleSheet("background: #ea999c; color: #ffffff; font-weight: bold; border-radius: 10px; font-size: 11px;")
+        s1_row.addWidget(s1_badge)
+        s1_title = QLabel("Target Criteria"); s1_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #ffffff;")
+        s1_row.addWidget(s1_title); s1_row.addStretch()
+        cl.addLayout(s1_row)
+
+        tg = QFrame(); tg.setObjectName("targetGroup"); tg.setStyleSheet("#targetGroup { background: transparent; } #targetGroup > QLabel, #targetGroup QLabel { font-size: 13px; font-weight: bold; color: #ffffff; background: transparent; padding: 0; border: none; }"); tl = QGridLayout(tg); tl.setVerticalSpacing(10); tl.setHorizontalSpacing(12); tl.setContentsMargins(0, 0, 0, 0); cl.addWidget(tg)
         
         find_row = QHBoxLayout()
         find_row.setSpacing(8)
-        self.f_inp = QLineEdit(); self.f_inp.setPlaceholderText("e.g. Refresh")
+        self.f_inp = UnifiedFindInput(self)
+        self.f_inp.id_selected.connect(self._on_id_selected)
         find_row.addWidget(self.f_inp, 1)
+
+        self.match_mode_btn = MatchModeButton(self)
+        self.match_mode_btn.mode_changed.connect(lambda _: self.live_update.emit(self.get_data()))
+        find_row.addWidget(self.match_mode_btn)
+
+        tl.addWidget(QLabel("Find Title:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter); tl.addLayout(find_row, 0, 1)
+        self.i_inp = PillLineEdit("e.g. open with"); tl.addWidget(QLabel("In Menu:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter); tl.addWidget(self.i_inp, 1, 1)
         
-        self.find_mode_group = QButtonGroup(self)
-        sw_row = QHBoxLayout(); sw_row.setContentsMargins(0, 0, 0, 0); sw_row.setSpacing(10)
-        for i, (text, mode) in enumerate([("Contains", "contains"), ("Starts", "starts"), ("Ends", "ends"), ("Exact", "exact")]):
-            h_sub = QHBoxLayout(); h_sub.setSpacing(3); h_sub.setAlignment(Qt.AlignVCenter)
-            rb = RadioDot(); rb.setProperty("mode", mode)
-            rb.setCursor(Qt.PointingHandCursor)
-            rl = QLabel(text); rl.setStyleSheet("font-size: 11px; color: #b0b0b0; background: transparent; border: none;"); rl.setAlignment(Qt.AlignVCenter)
-            h_sub.addWidget(rb); h_sub.addWidget(rl)
-            sw_row.addLayout(h_sub)
-            self.find_mode_group.addButton(rb, i)
-            if i == 0: rb.setChecked(True)
-        find_row.addLayout(sw_row)
-        
-        tl.addWidget(QLabel("Find Title:"), 0, 0); tl.addLayout(find_row, 0, 1)
-        self.i_inp = QLineEdit(); self.i_inp.setPlaceholderText("e.g. open with"); tl.addWidget(QLabel("In Menu:"), 1, 0); tl.addWidget(self.i_inp, 1, 1)
-        
-        ag = QFrame(); ag.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px;"); al = QGridLayout(ag); al.setVerticalSpacing(8); al.setHorizontalSpacing(10); cl.addWidget(QLabel("Actions to Perform")); cl.addWidget(ag)
-        self.ti_inp = QLineEdit(); al.addWidget(QLabel("New Title:"), 0, 0); al.addWidget(self.ti_inp, 0, 1)
-        
-        self.m_inp = NonScrollComboBox(); self.m_inp.setEditable(False)
-        self.m_inp.addItems(["None", "Main", "Options"])
-        self.m_inp.setFixedWidth(130)
+        # Step 2: Actions to Perform
+        s2_row = QHBoxLayout()
+        s2_badge = QLabel("2")
+        s2_badge.setFixedSize(20, 20)
+        s2_badge.setAlignment(Qt.AlignCenter)
+        s2_badge.setStyleSheet("background: #ea999c; color: #ffffff; font-weight: bold; border-radius: 10px; font-size: 11px;")
+        s2_row.addWidget(s2_badge)
+        s2_title = QLabel("Actions to Perform"); s2_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #ffffff;")
+        s2_row.addWidget(s2_title); s2_row.addStretch()
+        cl.addLayout(s2_row)
+
+        ag = QFrame(); ag.setObjectName("actionsGroup"); ag.setStyleSheet("#actionsGroup { background: transparent; } #actionsGroup > QLabel, #actionsGroup QLabel { font-size: 13px; font-weight: bold; color: #ffffff; background: transparent; padding: 0; border: none; }"); al = QGridLayout(ag); al.setVerticalSpacing(10); al.setHorizontalSpacing(12); al.setContentsMargins(0, 0, 0, 0); cl.addWidget(ag)
+        self.ti_inp = PillLineEdit("Enter a new title (optional)"); al.addWidget(QLabel("New Title:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addWidget(self.ti_inp, 0, 1)
         
         ic_row = QHBoxLayout()
-        ic_row.setSpacing(6)
+        ic_row.setSpacing(8)
+        
+        self.ic_prev_lbl = AnimatedGlowPreviewLabel()
+        self.ic_prev_lbl.clicked.connect(self._open_glyph_browser)
         
         self.c_container = QWidget()
+        self.c_container.setStyleSheet("background: transparent; border: none;")
         self.c_lay = QHBoxLayout(self.c_container)
         self.c_lay.setContentsMargins(0, 0, 0, 0)
-        self.c_lay.setSpacing(4)
+        self.c_lay.setSpacing(6)
         self.c_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         
-        self.ic_inp = QLineEdit(); self.ic_inp.setPlaceholderText("e.g. \\uE102, image path, or image.res(...)"); self.ic_inp.textChanged.connect(self._update_colors_ui)
-        self.ic_prev_lbl = ClickablePreviewLabel()
-        self.ic_prev_lbl.setFixedSize(46, 46)
-        self.ic_prev_lbl.setAlignment(Qt.AlignCenter)
-        self.ic_prev_lbl.setToolTip("Click to Browse Glyphs / Upload Icon")
-        self.ic_prev_lbl.setStyleSheet("""
-            ClickablePreviewLabel {
-                background: rgba(255,255,255,0.05); 
-                border-radius: 12px; 
-                border: 1px solid rgba(255,255,255,0.12);
-            }
-            ClickablePreviewLabel:hover {
-                border: 1px solid #dc143c;
-                background: rgba(220, 20, 60, 0.12);
-            }
-        """)
-        self.ic_prev_lbl.clicked.connect(self._open_glyph_browser)
+        self.ic_inp = PillLineEdit("e.g. \\uE102, image path, or image.res(...)"); self.ic_inp.textChanged.connect(self._update_colors_ui)
+        self.ic_inp.textChanged.connect(lambda t: self.ic_prev_lbl.set_asset(t))
         
         btn_action_style = """
             QPushButton {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                background: #121212;
+                border: 1px solid #242738;
                 border-radius: 10px;
-                color: #e0e0e0;
+                color: #9ca3af;
                 padding: 0;
             }
             QPushButton:hover {
-                background: rgba(220, 20, 60, 0.2);
-                border: 1px solid #dc143c;
+                background: rgba(234, 153, 156, 0.2);
+                border: 1px solid #ea999c;
                 color: #ffffff;
             }
         """
         
         self.ic_inherit = QPushButton("\uE777")
-        self.ic_inherit.setFont(QFont('Segoe MDL2 Assets', 13)); self.ic_inherit.setFixedSize(34, 34)
+        self.ic_inherit.setFont(QFont('Segoe MDL2 Assets', 12)); self.ic_inherit.setFixedSize(34, 34)
         self.ic_inherit.setToolTip("Inherit Icon from Target Command/File"); self.ic_inherit.clicked.connect(self._inherit_icon); self.ic_inherit.setStyleSheet(btn_action_style); self.ic_inherit.setCursor(Qt.PointingHandCursor)
 
         self.ic_remove = QPushButton("\uE74D")
-        self.ic_remove.setFont(QFont('Segoe MDL2 Assets', 13)); self.ic_remove.setFixedSize(34, 34)
+        self.ic_remove.setFont(QFont('Segoe MDL2 Assets', 12)); self.ic_remove.setFixedSize(34, 34)
         self.ic_remove.setToolTip("Remove Icon"); self.ic_remove.setStyleSheet("""
             QPushButton {
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: #121212;
+                border: 1px solid #242738;
                 border-radius: 10px;
-                color: #888888;
+                color: #9ca3af;
                 padding: 0;
             }
             QPushButton:hover {
@@ -3492,69 +5190,71 @@ class ModifyRuleEditorDialog(QDialog):
         self.ic_remove.setCursor(Qt.PointingHandCursor)
         self.ic_remove.clicked.connect(lambda: self.ic_inp.setText(""))
 
-        self.sep_box = NonScrollComboBox(); self.sep_box.addItems(["None", "Before", "After", "Both"])
-        self.sep_box.setFixedWidth(130)
-        
-        ic_row.addWidget(self.c_container)
         ic_row.addWidget(self.ic_prev_lbl)
+        ic_row.addWidget(self.c_container)
         ic_row.addWidget(self.ic_inp, 1)
         ic_row.addWidget(self.ic_inherit)
         ic_row.addWidget(self.ic_remove)
-        al.addWidget(QLabel("Icon/Image:"), 1, 0); al.addLayout(ic_row, 1, 1)
-        self.ic_inp.textChanged.connect(self._update_icon_preview)
-        self.p_inp = NonScrollComboBox(); self.p_inp.addItems(self.POS_OPTIONS)
-        self.p_inp.setFixedWidth(110)
+        al.addWidget(QLabel("Icon / Image:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addLayout(ic_row, 1, 1)
+        self.ic_prev_lbl.set_asset(self.ic_inp.text()); self._update_colors_ui()
         
-        v_val = str(self.data.get('vis', ''))
         self.vis_widget = VisibilityWidget()
-        self.vis_widget.set_value(v_val)
+        self.vis_widget.set_value(str(self.data.get('vis', '')))
         self.vis_widget.valueChanged.connect(lambda _: self.live_update.emit(self.get_data()))
-        al.addWidget(QLabel("Visibility:"), 2, 0); al.addWidget(self.vis_widget, 2, 1)
+        al.addWidget(QLabel("Visibility:"), 2, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addWidget(self.vis_widget, 2, 1)
 
         self.type_widget = TypeWidget()
         self.type_widget.valueChanged.connect(lambda _: self.live_update.emit(self.get_data()))
-        al.addWidget(QLabel("Show in:"), 3, 0); al.addWidget(self.type_widget, 3, 1)
+        al.addWidget(QLabel("Show in:"), 3, 0, Qt.AlignLeft | Qt.AlignVCenter); al.addWidget(self.type_widget, 3, 1)
 
-        m_row = QHBoxLayout()
-        m_row.addWidget(self.m_inp)
-        m_row.addStretch()
-        al.addWidget(QLabel("Move to:"), 4, 0)
-        al.addLayout(m_row, 4, 1)
+        self.m_inp = ModernComboBox(context_key="menu"); self.m_inp.setEditable(False)
+        self.m_inp.addItems(["None", "Main", "Options"])
+        self.m_inp.setFixedWidth(150)
 
-        p_row = QHBoxLayout()
-        p_row.addWidget(self.p_inp)
-        p_row.addStretch()
-        al.addWidget(QLabel("Position:"), 5, 0)
-        al.addLayout(p_row, 5, 1)
+        self.p_inp = ModernComboBox(context_key="pos"); self.p_inp.addItems(self.POS_OPTIONS)
+        self.p_inp.setFixedWidth(150)
 
-        sep_row = QHBoxLayout()
-        sep_row.addWidget(self.sep_box)
-        sep_row.addStretch()
-        al.addWidget(QLabel("Separator:"), 6, 0)
-        al.addLayout(sep_row, 6, 1)
+        self.sep_box = ModernComboBox(context_key="sep"); self.sep_box.addItems(["None", "Before", "After", "Both"])
+        self.sep_box.setFixedWidth(150)
+
+        al.addWidget(QLabel("Move to:"), 4, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        al.addWidget(self.m_inp, 4, 1, Qt.AlignLeft | Qt.AlignVCenter)
+
+        al.addWidget(QLabel("Position:"), 5, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        al.addWidget(self.p_inp, 5, 1, Qt.AlignLeft | Qt.AlignVCenter)
+
+        al.addWidget(QLabel("Separator:"), 6, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        al.addWidget(self.sep_box, 6, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         self.i_inp.textChanged.connect(self._update_move_to_options)
         self._update_move_to_options(self.i_inp.text())
 
         for w in [self.f_inp, self.i_inp, self.ti_inp, self.ic_inp]: w.textChanged.connect(lambda: self.live_update.emit(self.get_data()))
         for w in [self.m_inp, self.p_inp, self.sep_box]: (w.currentTextChanged.connect(lambda: self.live_update.emit(self.get_data())) if hasattr(w, 'currentTextChanged') else w.currentIndexChanged.connect(lambda: self.live_update.emit(self.get_data())))
-        btns = QHBoxLayout(); c = QPushButton("Cancel"); c.setObjectName("cancelBtn"); c.clicked.connect(self.reject); c.setCursor(Qt.PointingHandCursor); s = QPushButton("Save Rule"); s.setObjectName("saveBtn"); s.clicked.connect(self.accept); s.setCursor(Qt.PointingHandCursor); btns.addStretch(); btns.addWidget(c); btns.addWidget(s); cl.addLayout(btns)
+        btns = QHBoxLayout()
+        c = PillPushButton("Cancel", "secondary", height=34)
+        c.setFixedWidth(85)
+        c.clicked.connect(self.reject)
+        s = PillPushButton("Save Rule", "primary", height=34)
+        s.setFixedWidth(100)
+        s.clicked.connect(self.accept)
+        btns.addStretch()
+        btns.addWidget(c)
+        btns.addWidget(s)
+        cl.addLayout(btns)
     def _update_move_to_options(self, text=None):
-        if text is None: text = self.i_inp.text()
         prev = self.m_inp.currentText()
         self.m_inp.blockSignals(True)
         self.m_inp.clear()
         base = ["None", "Main", "Options"]
-        if text.strip():
-            self.m_inp.addItems(base)
-        else:
-            self.m_inp.addItems(base)
-            for cm in self._custom_menus:
+        self.m_inp.addItems(base)
+        for cm in self._custom_menus:
+            if cm not in base:
                 self.m_inp.addItem(cm)
         idx = self.m_inp.findText(prev)
         if idx >= 0:
             self.m_inp.setCurrentIndex(idx)
-        elif prev and prev not in base and not text.strip():
+        elif prev:
             self.m_inp.addItem(prev)
             self.m_inp.setCurrentText(prev)
         else:
@@ -3576,6 +5276,7 @@ class ModifyRuleEditorDialog(QDialog):
         changes = []
         key_names = {
             'find': 'Find Title',
+            'where.id': 'Target ID',
             'in': 'In Menu',
             'title': 'New Title',
             'menu': 'Move to',
@@ -3585,16 +5286,37 @@ class ModifyRuleEditorDialog(QDialog):
             'type': 'Show in',
             'icon': 'Icon / Image'
         }
+        def normalize_vis(v):
+            vl = str(v or '').strip('\'" ').lower().replace('"', '').replace("'", "").replace(" ", "")
+            if not vl or vl in ("normal", "alwaysvisible", "vis.normal", "1"):
+                return ""
+            if ('key.shift' in vl or 'key.control' in vl or 'key.ctrl' in vl or 'key.lbutton' in vl or 'key.caps' in vl) and 'hidden' in vl:
+                return "main"
+            if vl in ("vis.remove", "key.remove", "vis.hidden", "key.hidden", "remove", "hidden", "0"):
+                return "hide"
+            if vl in ("key.shift()", "vis.shift()", "vis.shift", "shift", "key.shift"):
+                return "shift"
+            if vl in ("key.control()", "key.ctrl()", "vis.control()", "vis.control", "vis.ctrl", "control", "ctrl", "key.control", "key.ctrl"):
+                return "ctrl"
+            if vl in ("key.capslock()", "key.caps()", "vis.capslock()", "vis.capslock", "vis.caps", "capslock", "caps", "key.capslock", "key.caps"):
+                return "caps"
+            if vl in ("key.lbutton()", "key.lmb()", "vis.lbutton()", "vis.lbutton", "vis.lmb", "lbutton", "lmb", "key.lbutton"):
+                return "lmb"
+            return vl
+
         def format_user_friendly(prop_key, val):
             val_clean = str(val or '').strip('\'" ')
+            if prop_key == 'where.id':
+                return get_friendly_id_name(val_clean) if val_clean else "(none)"
             if prop_key == 'vis':
-                vl = val_clean.lower().strip()
-                if not vl or vl in ("normal", "always visible", "vis.normal", "1"): return "Normal"
-                if vl in ("vis.remove", "key.remove", "vis.hidden", "key.hidden", "remove", "hidden", "0"): return "Hide"
-                if vl in ("key.shift()", "vis.shift", "shift", "key.shift"): return "Shift"
-                if vl in ("key.control()", "key.ctrl()", "vis.control", "vis.ctrl", "control", "ctrl", "key.control", "key.ctrl"): return "Ctrl"
-                if vl in ("key.capslock()", "key.caps()", "vis.capslock", "vis.caps", "capslock", "caps", "key.capslock", "key.caps"): return "Caps"
-                if vl in ("key.lbutton()", "key.lmb()", "vis.lbutton", "vis.lmb", "lbutton", "lmb", "key.lbutton"): return "LMB"
+                norm = normalize_vis(val_clean)
+                if not norm: return "Normal"
+                if norm == "main": return "Main"
+                if norm == "hide": return "Hide"
+                if norm == "shift": return "Shift"
+                if norm == "ctrl": return "Ctrl"
+                if norm == "caps": return "Caps"
+                if norm == "lmb": return "LMB"
                 return val_clean
             if prop_key == 'sep':
                 vl = val_clean.lower()
@@ -3603,29 +5325,58 @@ class ModifyRuleEditorDialog(QDialog):
                 if vl == "both": return "Both"
                 if vl in ("false", "0", "none", ""): return "None"
                 return val_clean.title()
+            if prop_key == 'type':
+                if not val_clean or val_clean.lower() == 'all': return "All"
+                return val_clean
             if prop_key == 'menu':
+                if val is None: return "None"
                 vl = val_clean.lower()
-                if not vl or vl in ("none", "main", "menu.main"): return "Main"
+                if vl == "none": return "None"
+                if not vl or vl in ("main", "menu.main"): return "Main"
                 if vl in ("options", "title.options"): return "Options"
                 return val_clean
             return val_clean or "(empty)"
 
-        for k in ['find', 'in', 'title', 'menu', 'pos', 'vis', 'sep', 'type']:
+        for k in ['find', 'where.id', 'in', 'title', 'menu', 'pos', 'vis', 'sep', 'type']:
             v1 = str(d1.get(k, '')).strip('\'" ')
             v2 = str(d2.get(k, '')).strip('\'" ')
+            if k == 'where.id':
+                if v1 != v2:
+                    display_k = key_names.get(k, k.title())
+                    changes.append(f"{display_k}: {format_user_friendly(k, v2)} ➔ {format_user_friendly(k, v1)}")
+                continue
             if k == 'find':
                 if v1.startswith('*') and v1.endswith('*') and v1.strip('*') == v2: continue
                 if v2.startswith('*') and v2.endswith('*') and v2.strip('*') == v1: continue
             if k == 'vis':
-                v1_low = v1.lower()
-                v2_low = v2.lower()
-                v1_norm = "" if v1_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v1_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v1_low)
-                v2_norm = "" if v2_low in ("normal", "always visible", "vis.normal") else ("vis.remove" if v2_low in ("vis.remove", "vis.hidden", "key.remove", "key.hidden", "remove", "hidden") else v2_low)
-                if v1_norm == v2_norm: continue
+                if normalize_vis(v1) == normalize_vis(v2):
+                    continue
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2)} ➔ {format_user_friendly(k, v1)}")
+                continue
+            if k == 'type':
+                v1_clean = str(d1.get('type') or '').strip('\'" ')
+                v2_clean = str(d2.get('type') or '').strip('\'" ')
+                set1 = set(p.strip().lower() for p in v1_clean.split('|') if p.strip() and p.strip().lower() not in ('all', '*'))
+                set2 = set(p.strip().lower() for p in v2_clean.split('|') if p.strip() and p.strip().lower() not in ('all', '*'))
+                set1 = {'dir' if x == 'directory' else x for x in set1}
+                set2 = {'dir' if x == 'directory' else x for x in set2}
+                if set1 == set2:
+                    continue
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2_clean)} ➔ {format_user_friendly(k, v1_clean)}")
+                continue
             if k == 'menu':
-                v1_norm = "" if v1.lower() in ("none", "main", "menu.main") else v1
-                v2_norm = "" if v2.lower() in ("none", "main", "menu.main") else v2
+                v1_raw = d1.get('menu')
+                v2_raw = d2.get('menu')
+                if v1_raw is None and v2_raw is None:
+                    continue
+                v1_norm = "None" if v1_raw is None else ("Main" if str(v1_raw).strip('\'"').lower() in ("", "main", "menu.main") else str(v1_raw).strip('\'"'))
+                v2_norm = "None" if v2_raw is None else ("Main" if str(v2_raw).strip('\'"').lower() in ("", "main", "menu.main") else str(v2_raw).strip('\'"'))
                 if v1_norm.lower() == v2_norm.lower(): continue
+                display_k = key_names.get(k, k.title())
+                changes.append(f"{display_k}: {format_user_friendly(k, v2_raw)} ➔ {format_user_friendly(k, v1_raw)}")
+                continue
             if k == 'sep':
                 v1_norm = "true" if v1.lower() in ("true", "1") else "false" if v1.lower() in ("false", "0", "none", "") else v1.lower()
                 v2_norm = "true" if v2.lower() in ("true", "1") else "false" if v2.lower() in ("false", "0", "none", "") else v2.lower()
@@ -3690,6 +5441,7 @@ class ModifyRuleEditorDialog(QDialog):
                 self.live_update.emit(self.get_data())
         else:
             self.ic_inp.setText(orig)
+
     def _browse_icon(self):
         from PyQt5.QtWidgets import QFileDialog
         import os
@@ -3701,87 +5453,218 @@ class ModifyRuleEditorDialog(QDialog):
                 if hasattr(dlg, 'saved_path'): self.created_temp_icons.append(dlg.saved_path)
                 self.ic_inp.setText(dlg.result_value)
                 self.live_update.emit(self.get_data())
+
     def _update_colors_ui(self):
+        if not hasattr(self, 'c_lay'): return
         while self.c_lay.count():
-            it = self.c_lay.takeAt(0); (it.widget().deleteLater() if it.widget() else None)
+            it = self.c_lay.takeAt(0)
+            if it.widget(): it.widget().deleteLater()
         colors = _extract_all_colors(self.ic_inp.text())
         theme_cs = _get_theme_glyph_colors()
         codes = _extract_glyph_codes(self.ic_inp.text())
-        num_pellets = len(codes) if codes else (1 if self.ic_inp.text() else 0)
+        num_pellets = len(codes) if codes else (len(colors) if colors else 1)
         
-        for i in range(max(num_pellets, len(colors))):
-            if i >= 2: break
+        for i in range(min(max(num_pellets, len(colors)), 2)):
             c = colors[i] if i < len(colors) else None
-            btn = ColorPellet(c or theme_cs[min(i, 1)])
-            btn.clicked.connect(lambda checked, idx=i, oc=c: self._pick_color(idx, oc))
+            btn = ColorCircleButton(c or theme_cs[min(i, 1)], tooltip=f"Color for Glyph {i+1}")
+            btn.colorSelected.connect(lambda hex_c, idx=i, oc=c: self._on_color_chosen(idx, oc, hex_c))
             self.c_lay.addWidget(btn)
 
         val = self.ic_inp.text()
         if codes and any(colors):
-            sync_btn = IconSyncButton(self)
+            sync_btn = QPushButton("\uE777")
+            sync_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+            sync_btn.setFixedSize(26, 26)
+            sync_btn.setCursor(Qt.PointingHandCursor)
+            sync_btn.setStyleSheet("QPushButton { background: #121212; border: 1px solid #363a4f; border-radius: 13px; color: #9ca3af; } QPushButton:hover { border: 1px solid #ea999c; color: #ffffff; }")
             sync_btn.setToolTip("Sync with Theme (Remove custom colors)")
             sync_btn.clicked.connect(self._reset_glyph_colors)
-            self.c_lay.insertWidget(0, sync_btn)
+            self.c_lay.addWidget(sync_btn)
+
+    def _on_color_chosen(self, idx, old_color, hex_color):
+        val = self.ic_inp.text().strip()
+        codes = _extract_glyph_codes(val)
+        if codes:
+            new_val = _get_new_asset_value(val, old_color, hex_color, idx=idx)
+            self.ic_inp.setText(new_val)
+            self._update_icon_preview(new_val)
+        else:
+            path, _ = _extract_img_path_and_color(val)
+            resolved = _resolve_app_dir_path(path)
+            if resolved and os.path.exists(resolved):
+                new_asset_path, _ = save_local_icon(resolved, hex_color, True)
+                if hasattr(self, 'created_temp_icons'):
+                    self.created_temp_icons.append(new_asset_path)
+                self.ic_inp.setText(f"'{new_asset_path}'")
+                self._update_icon_preview(f"'{new_asset_path}'")
+        if hasattr(self, 'live_update'):
+            self.live_update.emit(self.get_data())
 
     def _reset_glyph_colors(self):
         codes = _extract_glyph_codes(self.ic_inp.text())
         if codes: self.ic_inp.setText(_build_glyph_val(codes, []))
         self.live_update.emit(self.get_data())
-    def _pick_color(self, idx, old_color):
-        theme_cs = _get_theme_glyph_colors()
-        dlg = MinimalColorPickerDialog(old_color or theme_cs[min(idx, 1)], f"svg_c_{idx}", self); dlg.default_checkbox.hide()
-        def on_color(key, hex_color):
-            new_val = _get_new_asset_value(self.ic_inp.text(), old_color, hex_color, idx=idx)
-            self.ic_inp.setText(new_val)
-            self.live_update.emit(self.get_data())
-        dlg.colorSelected.connect(on_color); dlg.exec_()
+
     def _update_icon_preview(self, text):
-        _update_label_asset(self.ic_prev_lbl, text)
-        if not text:
-             self.ic_prev_lbl.setText("\u2726"); self.ic_prev_lbl.setStyleSheet("color: rgba(220, 20, 60, 0.3); font-size: 18px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);")
-    def load_data(self, d):
-        self.vis_widget.set_value(d.get('vis', ''))
-        self.type_widget.set_value(d.get('type', ''))
+        if hasattr(self, 'ic_prev_lbl'):
+            self.ic_prev_lbl.set_asset(text)
 
-        f = d.get('find', '')
-        if f:
-            mode = "contains"; clean_f = f
-            if f.startswith('"') and f.endswith('"'): mode = "exact"; clean_f = f[1:-1]
-            elif f.startswith('*') and f.endswith('*'): mode = "contains"; clean_f = f[1:-1]
-            elif f.startswith('*'): mode = "ends"; clean_f = f[1:]
-            elif f.endswith('*'): mode = "starts"; clean_f = f[:-1]
-            self.f_inp.setText(clean_f.strip('\'"'))
-            for b in self.find_mode_group.buttons():
-                if b.property("mode") == mode: b.setChecked(True); break
-        
-        self.i_inp.setText(d.get('in', '').strip('\'"')); self.ti_inp.setText(str(d.get('title', '')).strip('\'"'))
-        
-        m = str(d.get('menu', '')).strip('\'"')
-        m_low = m.lower()
-        if 'menu' not in d: self.m_inp.setCurrentText("None")
-        elif not m or m_low in ("main", "menu.main"): self.m_inp.setCurrentText("Main")
-        elif m_low in ("options", "title.options"): self.m_inp.setCurrentText("Options")
+    def _on_id_selected(self, sel_id, friendly_name):
+        if self._is_loading:
+            return
+        if not sel_id:
+            self.banner_frame.hide()
+            self._target_existing_rule = None
+            self.live_update.emit(self.get_data())
+            return
+
+        target_id = sel_id.lower().strip()
+        clean_bare = target_id.replace("id.", "").strip()
+
+        matching = None
+        for r in self._all_existing_rules:
+            p = r.get('props', {}) if isinstance(r, dict) else {}
+            wid = str(p.get('where.id', '')).lower().strip('\'" ')
+            if wid and (wid == target_id or wid == clean_bare or f"id.{wid}" == target_id):
+                matching = r
+                break
+            where = str(p.get('where', '')).lower().strip('\'" ')
+            if where:
+                m = re.search(r'\b(id\.\w+)\b', where)
+                if m and m.group(1) == target_id:
+                    matching = r
+                    break
+                if where == target_id or where == clean_bare:
+                    matching = r
+                    break
+
+        if matching:
+            self._target_existing_rule = matching
+            self.banner_label.setText(f"Rule for '{friendly_name}' already exists \u2014 loaded existing settings to edit.")
+            self.banner_frame.show()
+            self.load_data(matching, sync_id=False)
+            self.f_inp.set_id(sel_id)
+            self.live_update.emit(self.get_data())
+            return
+
+        bulk_rule = None
+        h_ids = [i.lower() for i in self._bulk_sections.get('hide', [])]
+        s_ids = [i.lower() for i in self._bulk_sections.get('shift', [])]
+        m_ids = [i.lower() for i in self._bulk_sections.get('more', [])]
+
+        if target_id in s_ids or clean_bare in s_ids or f"id.{target_id}" in s_ids:
+            bulk_rule = {'find': friendly_name, 'where.id': sel_id, 'vis': 'key.shift()'}
+            self.banner_label.setText(f"'{friendly_name}' is in Shift section \u2014 loaded existing settings to edit.")
+        elif target_id in h_ids or clean_bare in h_ids or f"id.{target_id}" in h_ids:
+            bulk_rule = {'find': friendly_name, 'where.id': sel_id, 'vis': 'vis.remove'}
+            self.banner_label.setText(f"'{friendly_name}' is in Remove/Hide section \u2014 loaded existing settings to edit.")
+        elif target_id in m_ids or clean_bare in m_ids or f"id.{target_id}" in m_ids:
+            bulk_rule = {'find': friendly_name, 'where.id': sel_id, 'menu': 'options'}
+            self.banner_label.setText(f"'{friendly_name}' is in Options section \u2014 loaded existing settings to edit.")
+
+        if bulk_rule:
+            self._target_existing_rule = None
+            self.banner_frame.show()
+            self.load_data(bulk_rule, sync_id=False)
+            self.f_inp.set_id(sel_id)
         else:
-            if m not in [self.m_inp.itemText(i) for i in range(self.m_inp.count())]:
-                self.m_inp.addItem(m)
-            self.m_inp.setCurrentText(m)
+            self._target_existing_rule = None
+            self.banner_frame.hide()
+            self.f_inp.set_id(sel_id)
 
-        self.ic_inp.setText(str(d.get('icon') or d.get('image') or '')); self._update_icon_preview(self.ic_inp.text())
-        p = str(d.get('pos', '')).strip('\'"')
-        (self.p_inp.setCurrentText(p) if p in self.POS_OPTIONS else (self.p_inp.addItem(p), self.p_inp.setCurrentText(p)))
-        s = str(d.get('sep', '')).strip('\'"')
-        (self.sep_box.setCurrentText("None") if not s else self.sep_box.setCurrentText("Before") if (s.lower() in ('true', '1')) else self.sep_box.setCurrentText(s.title()))
+        self.live_update.emit(self.get_data())
+
+    def load_data(self, d, sync_id=True):
+        self._is_loading = True
+        try:
+            d = d.get('props') if (isinstance(d, dict) and 'props' in d) else d
+            if not isinstance(d, dict):
+                return
+            act = d.get('action') if isinstance(d.get('action'), dict) else {}
+            
+            if sync_id:
+                wid = d.get('where.id') or act.get('where.id')
+                if not wid and d.get('where'):
+                    w_val = str(d['where']).strip()
+                    m_id = re.search(r'\b(id\.\w+)\b', w_val)
+                    if m_id:
+                        wid = m_id.group(1)
+                if wid:
+                    clean_wid = str(wid).strip('\'" ')
+                    if not clean_wid.startswith('id.'):
+                        clean_wid = f"id.{clean_wid}"
+                    self.f_inp.set_id(clean_wid)
+                else:
+                    self.f_inp.clear_id()
+
+            self.vis_widget.set_value(d.get('vis') or act.get('vis', ''))
+            self.type_widget.set_value(d.get('type') or act.get('type', ''))
+
+            f = d.get('find') or act.get('find', '')
+            if f:
+                mode = "contains"; clean_f = str(f)
+                if clean_f.startswith('"') and clean_f.endswith('"'): mode = "exact"; clean_f = clean_f[1:-1]
+                elif clean_f.startswith('*') and clean_f.endswith('*'): mode = "contains"; clean_f = clean_f[1:-1]
+                elif clean_f.startswith('*'): mode = "ends"; clean_f = clean_f[1:]
+                elif clean_f.endswith('*'): mode = "starts"; clean_f = clean_f[:-1]
+                self.f_inp.setText(clean_f.strip('\'"'))
+                self.match_mode_btn.set_mode(mode)
+            elif sync_id and not self.f_inp.get_selected_id():
+                self.f_inp.setText("")
+            
+            self.i_inp.setText(str(d.get('in') or act.get('in', '')).strip('\'"'))
+            self.ti_inp.setText(str(d.get('title') or act.get('title', '')).strip('\'"'))
+            
+            m_val = d.get('menu') if 'menu' in d else act.get('menu', None)
+            if m_val is None:
+                self.m_inp.setCurrentText("None")
+            else:
+                m = str(m_val).strip('\'"')
+                m_low = m.lower()
+                if not m or m_low in ("main", "menu.main"): self.m_inp.setCurrentText("Main")
+                elif m_low in ("options", "title.options"): self.m_inp.setCurrentText("Options")
+                else:
+                    if m not in [self.m_inp.itemText(i) for i in range(self.m_inp.count())]:
+                        self.m_inp.addItem(m)
+                    self.m_inp.setCurrentText(m)
+
+            raw_ic = str(d.get('icon') or d.get('image') or act.get('icon') or act.get('image') or '')
+            self.ic_inp.setText(raw_ic); self._update_icon_preview(self.ic_inp.text())
+            p = str(d.get('pos') or act.get('pos', '')).strip('\'"')
+            (self.p_inp.setCurrentText(p) if p in self.POS_OPTIONS else (self.p_inp.addItem(p), self.p_inp.setCurrentText(p)))
+            s = str(d.get('sep') if 'sep' in d else act.get('sep', '')).strip('\'"')
+            (self.sep_box.setCurrentText("None") if not s else self.sep_box.setCurrentText("Before") if (s.lower() in ('true', '1')) else self.sep_box.setCurrentText(s.title()))
+        finally:
+            self._is_loading = False
+
     def get_data(self):
-        res = self.data.copy()
-        f = self.f_inp.text().strip()
-        if f:
-            mode = self.find_mode_group.checkedButton().property("mode")
+        if self._target_existing_rule and isinstance(self._target_existing_rule, dict):
+            res = self._target_existing_rule.get('props', {}).copy()
+        else:
+            res = self.data.copy()
+            
+        sel_id = self.f_inp.get_selected_id()
+        if sel_id:
+            res['where.id'] = sel_id
+            f = self.f_inp.text().strip()
+            if not f:
+                f = get_friendly_id_name(sel_id)
+            mode = self.match_mode_btn.get_mode()
             if mode == "exact": f = f'"{f}"'
             elif mode == "ends": f = f'*{f}'
             elif mode == "starts": f = f'{f}*'
-            # Contains is now just f (no stars)
             res['find'] = f
-        else: res.pop('find', None)
+        else:
+            res.pop('where.id', None)
+            f = self.f_inp.text().strip()
+            if f:
+                mode = self.match_mode_btn.get_mode()
+                if mode == "exact": f = f'"{f}"'
+                elif mode == "ends": f = f'*{f}'
+                elif mode == "starts": f = f'{f}*'
+                res['find'] = f
+            else:
+                res.pop('find', None)
         
         in_val = self.i_inp.text().strip()
         if in_val: res['in'] = in_val
@@ -3810,7 +5693,7 @@ class ModifyRuleEditorDialog(QDialog):
             res.pop('vis', None)
 
         type_val = self.type_widget.get_value()
-        if type_val:
+        if type_val and type_val.lower() != 'all':
             res['type'] = type_val
         else:
             res.pop('type', None)
@@ -3841,274 +5724,154 @@ def is_rule_complete(props):
 class ModifyWidget(QWidget):
     reload_requested = pyqtSignal()
     rules_saved = pyqtSignal()
-    def filter_rules(self, t=None): 
-        action_tag = self.rules_tags.group.checkedButton().text()
-        self.model.filter(self.search.text(), action_tag=action_tag)
-    def filter_ids(self, t):
-        t = t.lower()
-        for w in self.id_widgets: w.setVisible(t in w.id_text.lower() or t in w.label.text().lower())
-        self.id_cont_l.invalidate()
-    def set_dirty(self): 
-        if not self.is_dirty: self.original_content = read_file(self.filepath)
-        self.is_dirty = True; self.status_label.setText("Unsaved changes (Previewing)..."); self.status_label.setStyleSheet("color: #dc143c;")
-        self.save_ids(preview=True)
 
     def __init__(self, modify_nss_path, shell_nss_path, project_root):
-        super().__init__(); _init_nilesoft_font(); self.filepath = modify_nss_path; self.shell_nss_path = shell_nss_path; self.project_root = project_root; self.main_layout = QVBoxLayout(self); self.main_layout.setContentsMargins(15, 15, 15, 15); self.is_dirty = False; self.auto_save = False; self.original_content = read_file(self.filepath); self.load_and_init_ui()
+        super().__init__()
+        _init_nilesoft_font()
+        self.filepath = modify_nss_path
+        self.shell_nss_path = shell_nss_path
+        self.project_root = project_root
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.auto_save = False
+        self.load_and_init_ui()
+
+    @property
+    def is_dirty(self):
+        return getattr(self.edit_pg, 'is_dirty', False) if hasattr(self, 'edit_pg') else False
+
+    @is_dirty.setter
+    def is_dirty(self, val):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.is_dirty = val
+
+    @property
+    def custom_rules(self):
+        return getattr(self.edit_pg, 'custom_rules', []) if hasattr(self, 'edit_pg') else []
+
+    @custom_rules.setter
+    def custom_rules(self, val):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.custom_rules = val
+
+    def _switch_tab(self, idx):
+        if idx == 0:
+            self.edit_tab_btn.setChecked(True)
+            self.edit_pg.refresh()
+        elif idx == 1:
+            self.builder_tab_btn.setChecked(True)
+            self.builder_pg.refresh()
+        self.stacked_widget.setCurrentIndex(idx)
+
     def load_and_init_ui(self):
         old_idx = -1
-        for i in range(self.main_layout.count()):
-            w = self.main_layout.itemAt(i).widget()
-            if isinstance(w, QTabWidget):
-                old_idx = w.currentIndex()
-                break
+        if hasattr(self, 'stacked_widget') and self.stacked_widget is not None:
+            old_idx = self.stacked_widget.currentIndex()
 
         while self.main_layout.count():
             it = self.main_layout.takeAt(0)
-            w = it.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
-        content = read_file(self.filepath); self.custom_rules = extract_custom_rules(content)
-        tab = QTabWidget()
-        tab.setObjectName("modernTabWidget")
-        tab.setIconSize(QSize(28, 28))
-        rules_pg = QWidget(); rl = QVBoxLayout(rules_pg); head = QHBoxLayout(); self.search = QLineEdit(); self.search.setPlaceholderText("Search rules..."); self.search.textChanged.connect(self.filter_rules); self.search.setStyleSheet("QLineEdit { background: rgba(255,255,255,0.05); border: 1px solid #2a2a30; border-radius: 15px; padding: 10px 15px; color: white; } QLineEdit:focus { border: 1px solid #dc143c; }")
-        add = QPushButton("+ New Rule"); add.setObjectName("saveButton"); add.setCursor(Qt.PointingHandCursor); add.clicked.connect(self.add_new_rule_dialog)
-        head.addWidget(self.search); head.addWidget(add); rl.addLayout(head)
-        
-        self.rules_tags = FilterBar([
-            ("All", "#2a2a30"), ("Renamed", "#808080"), ("Icons", "#4A90E2"), 
-            ("Hidden", "#dc143c"), ("Part Hidden", "#9B59B6"), ("Moved", "#E29E4A"), 
-            ("Position", "#4AE290"), ("Separator", "#F1C40F")
-        ])
-        self.rules_tags.filter_changed.connect(lambda _: self.filter_rules())
-        rl.addWidget(self.rules_tags)
-        self.view = QListView(); self.view.setStyleSheet("background: transparent; border: none;")
-        self.view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.view.setSpacing(0); self.view.setMouseTracking(True)
-        self.model = NSSItemModel(); self.view.setModel(self.model)
-        self.delegate = NSSItemDelegate(self.view); self.view.setItemDelegate(self.delegate)
-        rl.addWidget(self.view)
-        
-        ids_pg = QWidget(); idl = QVBoxLayout(ids_pg); ihead = QHBoxLayout(); self.id_search = QLineEdit(); self.id_search.setPlaceholderText("Search system IDs..."); self.id_search.textChanged.connect(self.filter_ids); self.id_search.setStyleSheet(self.search.styleSheet()); ihead.addWidget(self.id_search)
-        idl.addLayout(ihead); iscroll = QScrollArea(); iscroll.setWidgetResizable(True); iscroll.setStyleSheet("background: transparent; border: none;"); self.id_cont = QWidget(); self.id_cont_l = FlowLayout(self.id_cont, margin=10, spacing=10); iscroll.setWidget(self.id_cont); idl.addWidget(iscroll); self.imports_pg = ImportsWidget(self.project_root, self.shell_nss_path)
-        self.imports_pg.reload_requested.connect(self.reload_requested.emit)
-        
-        tab.addTab(rules_pg, get_mdl2_icon(0xE15E, 40), "Rules")
-        tab.addTab(self.imports_pg, get_mdl2_icon(0xE8B5, 40), "Imports")
-        tab.addTab(ids_pg, get_mdl2_icon(0xE71B, 40), "IDS")
-        if old_idx != -1: tab.setCurrentIndex(old_idx)
-        self.main_layout.addWidget(tab); self.status_label = QLabel(""); self.status_label.setStyleSheet("color: #dc143c; font-weight: 500;"); self.main_layout.addWidget(self.status_label)
-        
-        all_ids = sorted(list(set(DEFAULT_IDS + extract_ids_from_section(content, "hide") + extract_ids_from_section(content, "more") + extract_ids_from_section(content, "shift"))))
-        h, m, s = extract_ids_from_section(content, "hide"), extract_ids_from_section(content, "more"), extract_ids_from_section(content, "shift"); self.id_widgets = []
-        for i in all_ids:
-            v = 'key.shift()' if i in s else None; mn = 'title.options' if i in m else None; hid = (i in h)
-            w = IDEntryWidget(i, i.replace("id.", "").replace("_", " ").title(), mn, v, hid); w.changed.connect(lambda *args: self.save_ids(False)); self.id_widgets.append(w); self.id_cont_l.addWidget(w)
-        
-        self.refresh_rules_model()
+            if it.widget():
+                it.widget().setParent(None)
+                it.widget().deleteLater()
+            elif it.layout():
+                while it.layout().count():
+                    sub = it.layout().takeAt(0)
+                    if sub.widget():
+                        sub.widget().setParent(None)
+                        sub.widget().deleteLater()
 
-    def refresh_rules_model(self):
-        content = read_file(self.filepath)
-        self.custom_rules = extract_custom_rules(content)
-        for r in self.custom_rules: r['file'] = self.filepath
-        self.model.set_items(self.custom_rules)
-        # Clear preview status if it was active
-        if self.status_label.text() == "Previewing changes...":
-            self.status_label.setText("")
-    def refresh_ui(self): self.refresh_rules_model()
-    def revert_changes(self):
-        if self.is_dirty:
-            safe_file_write(self.filepath, self.original_content)
-            self.is_dirty = False; self.status_label.setText("Changes Reverted"); self.status_label.setStyleSheet("color: #dc143c;")
-            self.refresh_rules_model(); self.reload_requested.emit()
+        # Pill-shaped Segmented Tabs Container (Edit / Add)
+        self.tab_container = QFrame()
+        self.tab_container.setObjectName("pillTabContainer")
+        self.tab_container.setStyleSheet("background-color: transparent; border: none; padding: 0px;")
+        tab_layout = QHBoxLayout(self.tab_container)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+        tab_layout.setSpacing(4)
 
+        self.edit_tab_btn = PillTabButton(" Edit", 0xE104, height=30)
+        self.edit_tab_btn.clicked.connect(lambda: self._switch_tab(0))
 
+        self.builder_tab_btn = PillTabButton(" Add", 0xE710, height=30)
+        self.builder_tab_btn.clicked.connect(lambda: self._switch_tab(1))
 
-    def save_ids(self, preview=False):
-        try:
-            content = read_file(self.filepath); h = [w.id_text for w in self.id_widgets if w.is_hidden]; m = [w.id_text for w in self.id_widgets if w.menu == 'title.options']; s = [w.id_text for w in self.id_widgets if w.vis == 'key.shift()']
-            content = update_section(content, "// hide\nmodify(mode=mode.multiple\nwhere=this.id(", ") vis=vis.remove)", h); content = update_section(content, "// more\nmodify(mode=mode.multiple\nwhere=this.id(", ") menu=title.options)", m); content = update_section(content, "// shift\nmodify(mode=single\nwhere=this.id(", ") vis=key.shift())", s)
-            
-            def on_done(fp):
-                self.reload_requested.emit()
-                if not preview:
-                    self.is_dirty = False; self.status_label.setText("IDS Saved"); self.status_label.setStyleSheet("color: #dc143c;")
-            
-            write_file(self.filepath, content, on_success=on_done)
-        except Exception as e: self.status_label.setText(f"Error: {str(e)}"); self.status_label.setStyleSheet("color: #dc143c;")
+        self.tab_group = QButtonGroup(self)
+        self.tab_group.setExclusive(True)
+        self.tab_group.addButton(self.edit_tab_btn)
+        self.tab_group.addButton(self.builder_tab_btn)
 
-    def on_item_clicked(self, index):
-        item = index.data(Qt.UserRole)
-        if item: self.edit_rule(item)
+        tab_layout.addWidget(self.edit_tab_btn)
+        tab_layout.addWidget(self.builder_tab_btn)
 
-    def edit_rule(self, item):
-        props = item.get('props', {}); orig_props = props.copy(); orig_content = read_file(self.filepath)
-        d = ModifyRuleEditorDialog(props, self)
-        self.live_timer = QTimer(); self.live_timer.setSingleShot(True)
-        preview_saved = {'saved': False}
-        def do_live_save():
-            preview_saved['saved'] = True
-            self.save_all_modifications()
-        self.live_timer.timeout.connect(do_live_save)
+        top_tab_bar = QHBoxLayout()
+        top_tab_bar.setContentsMargins(0, 0, 0, 8)
+        top_tab_bar.addWidget(self.tab_container)
+        top_tab_bar.addStretch()
+        self.main_layout.addLayout(top_tab_bar)
 
-        def handle_preview(nd):
-            for r in self.custom_rules:
-                if r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')):
-                    r['props'] = nd; break
-            self.model.layoutChanged.emit()
-            if is_rule_complete(nd):
-                self.live_timer.start(1000)
-                self.status_label.setText("Previewing changes...")
-                self.status_label.setStyleSheet("color: #dc143c;")
-            else:
-                self.live_timer.stop()
-                self.status_label.setText("Incomplete rule - Auto-save paused")
-                self.status_label.setStyleSheet("color: #dc143c;")
-        d.live_update.connect(handle_preview)
-        if d.exec_():
-            self.live_timer.stop()
-            updated_data = d.get_data()
-            if not self.is_dirty: self.original_content = read_file(self.filepath)
-            self.is_dirty = True
-            
-            if is_rule_complete(updated_data):
-                for r in self.custom_rules:
-                    if r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')):
-                        r['props'] = updated_data; break
-            else:
-                self.custom_rules = [r for r in self.custom_rules if not (r is item or (r.get('start') == item.get('start') and r.get('type') == item.get('type')))]
-                
-            self.save_all_modifications()
-            self.model.set_items(self.custom_rules)
-            self.filter_rules(self.search.text())
-        else:
-            self.live_timer.stop()
-            item['props'] = orig_props
-            if preview_saved['saved']:
-                write_file(self.filepath, orig_content)
-                self.refresh_rules_model()
-                self.reload_requested.emit()
-            else:
-                self.refresh_rules_model()
+        self.edit_pg = ImportsWidget(self.project_root, self.shell_nss_path, self.filepath, self)
+        self.edit_pg.reload_requested.connect(self.reload_requested.emit)
+        self.edit_pg.rules_saved.connect(self.rules_saved.emit)
+        self.imports_pg = self.edit_pg
+
+        from menu_builder_widget import MenuBuilderWidget
+        self.builder_pg = MenuBuilderWidget(self.project_root, self.shell_nss_path, self)
+        self.builder_pg.reload_requested.connect(self.reload_requested.emit)
+
+        self.stacked_widget = QStackedWidget()
+        self.stacked_widget.addWidget(self.edit_pg)
+        self.stacked_widget.addWidget(self.builder_pg)
+
+        self._switch_tab(old_idx if old_idx in (0, 1) else 0)
+        self.main_layout.addWidget(self.stacked_widget)
+
+    def refresh_rules_model(self, preserve_item=None):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.refresh_rules(preserve_item=preserve_item)
+
+    def refresh_ui(self):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.refresh()
+
+    def save_all_modifications(self, preserve_item=None, base_content=None, status_msg="Rules Saved"):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.save_all_modifications(preserve_item=preserve_item, base_content=base_content, status_msg=status_msg)
 
     def add_new_rule_dialog(self):
-        orig_content = read_file(self.filepath); d = ModifyRuleEditorDialog(parent=self)
-        self.live_timer = QTimer(); self.live_timer.setSingleShot(True)
-        preview_saved = {'saved': False}
-        def do_live_save():
-            preview_saved['saved'] = True
-            self.save_all_modifications()
-        self.live_timer.timeout.connect(do_live_save)
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.add_new_rule_dialog()
 
-        def handle_new_preview(nd):
-            temp_item = {'type': 'modify', 'props': nd, 'file': self.filepath}
-            self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
-            temp_item['_is_temp'] = True
-            self.custom_rules.insert(0, temp_item)
-            self.model.layoutChanged.emit()
-            self.status_label.setText("Drafting new rule...")
-            self.status_label.setStyleSheet("color: #b0b0b0;")
-            if is_rule_complete(nd):
-                self.live_timer.start(1000)
-        d.live_update.connect(handle_new_preview)
-        if d.exec_():
-            self.live_timer.stop()
-            final_data = d.get_data()
-            self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
-            if is_rule_complete(final_data):
-                new_item = {'type': 'modify', 'props': final_data, 'file': self.filepath}
-                self.custom_rules.insert(0, new_item)
-            self.model.set_items(self.custom_rules)
-            self.save_all_modifications()
-            self.filter_rules(self.search.text())
-        else: 
-            self.live_timer.stop()
-            self.custom_rules = [r for r in self.custom_rules if not r.get('_is_temp')]
-            self.model.set_items(self.custom_rules)
-            if preview_saved['saved']:
-                write_file(self.filepath, orig_content)
+    def edit_rule(self, item):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.edit_rule(item)
 
     def delete_rule(self, item):
-        if item in self.custom_rules:
-            self.custom_rules.remove(item); self.model.set_items(self.custom_rules); self.save_all_modifications()
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.delete_rule(item)
+
+    def revert_changes(self):
+        if hasattr(self, 'edit_pg'):
+            self.edit_pg.revert_changes()
+
+    def save_ids(self, preview=False):
+        pass
 
 
-    def save_all_modifications(self):
+def read_file(path):
+    if not path or not os.path.exists(path):
+        return ""
+    import time
+    for attempt in range(3):
         try:
-            content = read_file(self.filepath)
-            start_m, end_m = "// -- iMA Managed --", "// -- End iMA Managed --"
-            managed = []
-            
-            # Filter out rules that only have target criteria but no actions (empty modifications)
-            self.custom_rules = [r for r in self.custom_rules if is_rule_complete(r.get('props', {}))]
-
-            for item in self.custom_rules:
-                data = item.get('props', {})
-                if not is_rule_complete(data):
-                    continue
-
-                pts = []
-                pr = ['find', 'type', 'where', 'in', 'pos', 'title', 'menu', 'vis', 'icon', 'image']
-                for k in pr:
-                    v = data.get(k)
-                    if v is not None and (str(v).strip() != '' or k in ('menu', 'title')):
-                        pts.append(format_nss_value(k, v))
-                
-                for k, v in data.items(): 
-                    if k not in pr and k not in ('sep', '_order', 'file', 'start', 'end') and str(v).strip() != '':
-                        pts.append(format_nss_value(k, v))
-                
-                if data.get('sep'):
-                    sv = data['sep']
-                    if sv is True: pts.append("sep=before")
-                    else: pts.append(f"sep={sv}")
-
-                if pts:
-                    managed.append(f"    modify({ ' '.join(pts) })")
-            
-            block = f"{start_m}\n" + "\n".join(managed) + f"\n{end_m}"
-            
-            import re
-            s_re = re.compile(r"//\s*--\s*iMA\s*Managed\s*--", re.IGNORECASE)
-            e_re = re.compile(r"//\s*--\s*End\s*iMA\s*Managed\s*--", re.IGNORECASE)
-            
-            s_match = s_re.search(content); e_match = e_re.search(content)
-            
-            if s_match and e_match:
-                new_content = content[:s_match.start()] + block + content[e_match.end():]
+            with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
+                return f.read()
+        except PermissionError:
+            if attempt < 2:
+                time.sleep(0.05)
             else:
-                lines = content.splitlines(); rem = []
-                for l in lines:
-                    sl = l.strip()
-                    if re.match(r'^modify\s*\(.*?\)\s*$', sl, re.IGNORECASE) and "where=this.id(" not in sl: continue
-                    rem.append(l)
-                new_content = "\n".join(rem).rstrip() + "\n\n" + block + "\n"
-            
-            def on_success(fp):
-                if hasattr(NSSCacheManager, '_cache') and self.filepath in NSSCacheManager._cache:
-                    del NSSCacheManager._cache[self.filepath]
-                self.show_status("Rules Saved")
-                self.refresh_rules_model()
-                self.rules_saved.emit()
-                self.reload_requested.emit()
-                
-            def on_error(fp, err):
-                self.show_error(f"Save failed: {err}")
-                
-            from utils import global_undo_stack, FileChangeCommand
-            old_content = read_file(self.filepath)
-            cmd = FileChangeCommand(self.filepath, old_content, new_content, on_success, on_error)
-            global_undo_stack.push(cmd)
-            self.is_dirty = False
-            
-        except Exception as e: self.show_error(f"Save setup failed: {str(e)}")
-        
-    def show_status(self, t): self.status_label.setText(t); self.status_label.setStyleSheet("color: #dc143c;"); QTimer.singleShot(3000, lambda: self.status_label.setText(""))
-    def show_error(self, t): m = CustomMessageBox(self); m.setText("Error"); m.setInformativeText(t); m.exec_()
-
-def read_file(path): return open(path, 'r', encoding='utf-8').read() if os.path.exists(path) else ""
+                return ""
+        except Exception:
+            return ""
+    return ""
 def write_file(path, content, on_success=None, on_error=None): 
     from utils import global_undo_stack, FileChangeCommand
     old_content = read_file(path)
@@ -4116,75 +5879,23 @@ def write_file(path, content, on_success=None, on_error=None):
     global_undo_stack.push(cmd)
     
 def extract_ids_from_section(content, name):
-    p = re.compile(r"//\s*" + re.escape(name) + r".*?where=this\.id\((.*?)\)", re.DOTALL); m = p.search(content)
+    sec = name.lower().strip()
+    pat = r"(?:hide|remove)" if sec in ("hide", "remove") else (r"(?:more|options)" if sec in ("more", "options") else r"shift")
+    p = re.compile(r"//\s*" + pat + r"\b.*?where=this\.id\((.*?)\)", re.DOTALL | re.IGNORECASE)
+    m = p.search(content)
     return [l.strip().rstrip(',') for l in m.group(1).split('\n') if l.strip().startswith("id.")] if m else []
-def extract_custom_rules(content):
-    start, end = "// -- iMA Managed --", "// -- End iMA Managed --"
-    s_idx, e_idx = content.find(start), content.find(end)
-    m_content = content[s_idx + len(start):e_idx] if (s_idx != -1 and e_idx != -1) else content
-    items = find_items_and_menus(m_content, types=('modify',))
-    rules = []
-    for it in items:
-        # If it was a generic scan (no managed markers), skip items with 'where' (likely built-ins)
-        if s_idx == -1 and 'where' in it['props']: continue
-        if not is_rule_complete(it.get('props', {})): continue
-        rules.append(it)
-    return rules
+
 def update_section(content, sm, em, ids):
-    s = content.find(sm); e = content.find(em, s)
-    return content if (s == -1 or e == -1) else content[:s+len(sm)] + "\n" + ",\n".join([f"    {i}" for i in ids]) + "\n" + content[e:]
+    low = sm.lower()
+    pat = r"(?:hide|remove)" if ("hide" in low or "remove" in low) else (r"(?:more|options)" if ("more" in low or "options" in low) else (r"shift" if "shift" in low else None))
+    if pat:
+        p = re.compile(r"(//\s*" + pat + r"\b.*?where=this\.id\()(.*?)(\))", re.DOTALL | re.IGNORECASE)
+        m = p.search(content)
+        if m:
+            formatted_ids = "\n" + ",\n".join([f"    {i}" for i in ids]) + "\n"
+            return content[:m.start(2)] + formatted_ids + content[m.end(2):]
+    s = content.find(sm)
+    e = content.find(em, s)
+    return content if (s == -1 or e == -1) else content[:s + len(sm)] + "\n" + ",\n".join([f"    {i}" for i in ids]) + "\n" + content[e:]
 
 
-
-
-def cleanup_orphan_icons(root):
-    import os, shutil, re
-    icons_dir = os.path.join(root, 'imports', 'icons')
-    if not os.path.exists(icons_dir): return
-    
-    # 1. Collect all NSS content to check for references
-    nss_contents = []
-    search_paths = [os.path.join(root, 'imports'), os.path.join(root, 'plugins'), os.path.join(root, 'shell.nss')]
-    for p in search_paths:
-        if not os.path.exists(p): continue
-        if os.path.isfile(p):
-            try:
-                with open(p, 'r', encoding='utf-8') as f: nss_contents.append(f.read().lower())
-            except: pass
-        else:
-            for r, _, files in os.walk(p):
-                for f in files:
-                    if f.endswith('.nss'):
-                        try:
-                            with open(os.path.join(r, f), 'r', encoding='utf-8') as f_obj:
-                                nss_contents.append(f_obj.read().lower())
-                        except: pass
-
-    # 2. List all files in icons dir and check if their names appear in any NSS content
-    for r, dirs, files in os.walk(icons_dir):
-        if 'originals' in r: continue
-        for f in files:
-            # We only care about cleaning up tinted icons to avoid accidental data loss
-            # Tinted icons have the pattern _[hash].png
-            if not re.search(r'_[a-f0-9]{6}\.(?:png|ico|bmp|svg)$', f, re.I): continue
-            
-            full_path = os.path.join(r, f)
-            f_lower = f.lower()
-            
-            # Check if this specific filename is referenced anywhere
-            is_referenced = False
-            for content in nss_contents:
-                if f_lower in content:
-                    is_referenced = True
-                    break
-            
-            if not is_referenced:
-                try: os.remove(full_path)
-                except: pass
-        
-    # Clean up empty subdirs
-    for r, dirs, files in os.walk(icons_dir, topdown=False):
-        if 'originals' in r: continue
-        if not dirs and not files:
-            try: os.rmdir(r)
-            except: pass

@@ -104,7 +104,7 @@ public class Program {
                 } catch {}
             }
 
-            Thread.Sleep(500);
+            Thread.Sleep(1000);
 
             if (string.IsNullOrEmpty(targetShellDll)) {
                 string parentDir = Path.GetFullPath(Path.Combine(appDir, ".."));

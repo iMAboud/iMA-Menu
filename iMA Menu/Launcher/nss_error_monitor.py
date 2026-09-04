@@ -110,7 +110,7 @@ class ShellLogMonitor(QObject):
     manual_fix_required = pyqtSignal(str, int, str)
 
     MAX_FIX_ATTEMPTS = 2
-    POLL_INTERVAL_MS = 2000
+    POLL_INTERVAL_MS = 15000
 
     def __init__(self, project_root, parent=None):
         super().__init__(parent)
