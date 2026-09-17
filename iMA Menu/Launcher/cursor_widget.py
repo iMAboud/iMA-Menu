@@ -5,24 +5,23 @@ import struct
 import shutil
 import ctypes
 import winreg
-import subprocess
 import fnmatch
 import re
 import threading
+import urllib.parse
 from collections import deque
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import BytesIO
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame,
-    QPushButton, QSizePolicy, QLayout, QApplication, QButtonGroup
+    QPushButton, QButtonGroup
 )
 from PyQt5.QtGui import QPixmap, QIcon, QCursor, QColor, QFont, QPainter, QImage, QPainterPath, QPen
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QRect, QPoint, QThread, QObject, QTimer
 
 from github_client import github_api_get, cdn_get, get_latest_tree_sha
-from plugin_registry import file_matches_git_sha, git_blob_sha, atomic_json_write
+from plugin_registry import file_matches_git_sha, atomic_json_write
 from utils import FlowLayout, PillTabButton
 
 
@@ -118,16 +117,22 @@ def create_star_pixmap(size: int = 20, filled: bool = False, color: str = "#FFB8
     painter.end()
     return pix
 
+_STAR_ICON_CACHE = {}
+
 def get_star_icon(filled: bool = False, color: str = "#FFB800", outline_color: str = "#FFFFFF", size: int = 20) -> QIcon:
     """Returns a QIcon containing a vector 5-pointed star."""
-    pix = create_star_pixmap(size=size, filled=filled, color=color, outline_color=outline_color)
-    return QIcon(pix)
+    key = (filled, color, outline_color, size)
+    if key not in _STAR_ICON_CACHE:
+        pix = create_star_pixmap(size=size, filled=filled, color=color, outline_color=outline_color)
+        _STAR_ICON_CACHE[key] = QIcon(pix)
+    return _STAR_ICON_CACHE[key]
 
 
 _EMBEDDED_PREVIEWS = {}
+_EMBEDDED_PREVIEWS_LOWER = {}
 
 def _load_embedded_previews():
-    global _EMBEDDED_PREVIEWS
+    global _EMBEDDED_PREVIEWS, _EMBEDDED_PREVIEWS_LOWER
     if _EMBEDDED_PREVIEWS:
         return _EMBEDDED_PREVIEWS
     for path in [
@@ -141,37 +146,44 @@ def _load_embedded_previews():
                     data = json.load(f)
                 if data and isinstance(data, dict):
                     _EMBEDDED_PREVIEWS = data
+                    _EMBEDDED_PREVIEWS_LOWER = {k.lower(): v for k, v in data.items()}
                     break
             except Exception:
                 pass
     return _EMBEDDED_PREVIEWS
 
 _theme_qimage_cache = {}
+_THEME_PIXMAP_CACHE = {}
 
 def get_theme_preview_image(theme_name: str, role_name: str = "Arrow") -> QImage:
     """Returns pre-cached QImage for theme and role, checking memory cache, disk cache and embedded atlas."""
-    cache_key = (theme_name, role_name)
+    cache_key = (theme_name.lower(), role_name)
     if cache_key in _theme_qimage_cache:
         return _theme_qimage_cache[cache_key]
 
-    cache_img = os.path.join(PREVIEWS_CACHE_DIR, f"{theme_name}_{role_name}.png")
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', theme_name)
+    cache_img = os.path.join(PREVIEWS_CACHE_DIR, f"{safe_name}_{role_name}.png")
+    if not os.path.exists(cache_img):
+        cache_img = os.path.join(PREVIEWS_CACHE_DIR, f"{theme_name}_{role_name}.png")
     if os.path.exists(cache_img):
         try:
             img = QImage(cache_img)
             if not img.isNull():
-                if len(_theme_qimage_cache) < 600:
+                if len(_theme_qimage_cache) < 4000:
                     _theme_qimage_cache[cache_key] = img
                 return img
         except Exception:
             pass
 
     if role_name == "Arrow":
-        legacy_cache = os.path.join(PREVIEWS_CACHE_DIR, f"{theme_name}.png")
+        legacy_cache = os.path.join(PREVIEWS_CACHE_DIR, f"{safe_name}.png")
+        if not os.path.exists(legacy_cache):
+            legacy_cache = os.path.join(PREVIEWS_CACHE_DIR, f"{theme_name}.png")
         if os.path.exists(legacy_cache):
             try:
                 img = QImage(legacy_cache)
                 if not img.isNull():
-                    if len(_theme_qimage_cache) < 600:
+                    if len(_theme_qimage_cache) < 4000:
                         _theme_qimage_cache[cache_key] = img
                     return img
             except Exception:
@@ -179,11 +191,8 @@ def get_theme_preview_image(theme_name: str, role_name: str = "Arrow") -> QImage
 
     atlas = _load_embedded_previews()
     th_data = atlas.get(theme_name)
-    if not th_data:
-        for k, v in atlas.items():
-            if k.lower() == theme_name.lower():
-                th_data = v
-                break
+    if not th_data and _EMBEDDED_PREVIEWS_LOWER:
+        th_data = _EMBEDDED_PREVIEWS_LOWER.get(theme_name.lower())
 
     if th_data and role_name in th_data:
         try:
@@ -191,18 +200,29 @@ def get_theme_preview_image(theme_name: str, role_name: str = "Arrow") -> QImage
             png_bytes = base64.b64decode(th_data[role_name])
             img = QImage.fromData(png_bytes)
             if not img.isNull():
-                if len(_theme_qimage_cache) < 600:
+                if len(_theme_qimage_cache) < 4000:
                     _theme_qimage_cache[cache_key] = img
-                try:
-                    save_path = os.path.join(PREVIEWS_CACHE_DIR, f"{theme_name}_{role_name}.png")
-                    img.save(save_path, "PNG")
-                except Exception:
-                    pass
                 return img
         except Exception:
             pass
 
     return QImage()
+
+def get_theme_preview_pixmap(theme_name: str, role_name: str = "Arrow", size: int = 60) -> QPixmap:
+    """Returns high-performance cached QPixmap directly scaled, bypassing redundant decoding and image-to-pixmap conversion."""
+    cache_key = (theme_name.lower(), role_name, size)
+    if cache_key in _THEME_PIXMAP_CACHE:
+        return _THEME_PIXMAP_CACHE[cache_key]
+
+    img = get_theme_preview_image(theme_name, role_name)
+    if not img.isNull():
+        scaled = img.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pix = QPixmap.fromImage(scaled)
+        if len(_THEME_PIXMAP_CACHE) < 4000:
+            _THEME_PIXMAP_CACHE[cache_key] = pix
+        return pix
+
+    return QPixmap()
 
 def resolve_online_theme_roles(file_list: list, default_arrow: str = "") -> dict:
     """Resolves role -> rel_file for an online theme file list."""
@@ -375,8 +395,10 @@ class CurGenerator:
             except Exception:
                 pass
 
-        if len(CurGenerator._image_cache) > 256:
-            CurGenerator._image_cache.clear()
+        if len(CurGenerator._image_cache) > 2000:
+            for _ in range(300):
+                if CurGenerator._image_cache:
+                    CurGenerator._image_cache.pop(next(iter(CurGenerator._image_cache)))
         CurGenerator._image_cache[cache_key] = img
         return img
 
@@ -392,12 +414,35 @@ class CurGenerator:
         if cache_key in CurGenerator._pixmap_cache:
             return CurGenerator._pixmap_cache[cache_key]
 
+        # Fast disk-cache lookup
+        disk_p = ""
+        try:
+            import hashlib
+            norm_p = os.path.normpath(file_path).lower()
+            h = hashlib.md5(f"{norm_p}_{mtime}".encode('utf-8')).hexdigest()[:16]
+            disk_p = os.path.join(PREVIEWS_CACHE_DIR, f"cur_{h}_{target_size}.png")
+            if os.path.exists(disk_p):
+                pix = QPixmap(disk_p)
+                if not pix.isNull():
+                    if len(CurGenerator._pixmap_cache) < 3000:
+                        CurGenerator._pixmap_cache[cache_key] = pix
+                    return pix
+        except Exception:
+            pass
+
         img = CurGenerator.extract_best_cursor_image(file_path)
         if not img.isNull():
             scaled = img.scaled(target_size, target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             pix = QPixmap.fromImage(scaled)
-            if len(CurGenerator._pixmap_cache) > 256:
-                CurGenerator._pixmap_cache.clear()
+            if disk_p:
+                try:
+                    pix.save(disk_p, "PNG")
+                except Exception:
+                    pass
+            if len(CurGenerator._pixmap_cache) > 3000:
+                for _ in range(300):
+                    if CurGenerator._pixmap_cache:
+                        CurGenerator._pixmap_cache.pop(next(iter(CurGenerator._pixmap_cache)))
             CurGenerator._pixmap_cache[cache_key] = pix
             return pix
         return QPixmap()
@@ -489,12 +534,39 @@ INF_KEY_MAP = {
     'person': 'Person',
 }
 
+THEME_ROLES_CACHE_FILE = os.path.join(CACHE_DIR, "theme_roles.json")
 _theme_roles_cache = {}
+
+def _load_theme_roles_disk_cache():
+    global _theme_roles_cache
+    if _theme_roles_cache:
+        return
+    if os.path.exists(THEME_ROLES_CACHE_FILE):
+        try:
+            with open(THEME_ROLES_CACHE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    res_tuple = tuple(v.get('res', []))
+                    if len(res_tuple) == 3:
+                        _theme_roles_cache[k] = (v.get('mtime', 0), res_tuple)
+        except Exception:
+            pass
+
+def _save_theme_roles_disk_cache():
+    try:
+        data = {}
+        for k, (mtime, res) in _theme_roles_cache.items():
+            data[k] = {'mtime': mtime, 'res': list(res)}
+        atomic_json_write(THEME_ROLES_CACHE_FILE, data)
+    except Exception:
+        pass
 
 def resolve_theme_directory_roles(theme_dir: str) -> tuple:
     if not os.path.exists(theme_dir):
         return (os.path.basename(theme_dir), {}, theme_dir)
 
+    _load_theme_roles_disk_cache()
     try:
         curr_mtime = os.path.getmtime(theme_dir)
     except Exception:
@@ -614,6 +686,7 @@ def resolve_theme_directory_roles(theme_dir: str) -> tuple:
 
     res = (display_name, resolved, theme_dir)
     _theme_roles_cache[norm_dir] = (curr_mtime, res)
+    _save_theme_roles_disk_cache()
     return res
 
 
@@ -627,47 +700,6 @@ class WindowsCursorManager:
     WM_SETTINGCHANGE   = 0x001A
     HWND_BROADCAST     = 0xFFFF
     SMTO_ABORTIFHUNG   = 0x0002
-
-    @classmethod
-    def get_current_scheme_name(cls) -> str:
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Cursors") as key:
-                val, _ = winreg.QueryValueEx(key, "")
-                return val or "Windows Default"
-        except Exception:
-            return "Windows Default"
-
-    @classmethod
-    def is_theme_active(cls, theme_name: str, display_name: str, theme_dir: str, current_name: str = None, arrow_val: str = None) -> bool:
-        if current_name is None:
-            current_name = cls.get_current_scheme_name()
-        if theme_name == "Windows Default":
-            return current_name in ["Windows Default", "Windows Aero", "Windows Default (system scheme)", ""] or not current_name
-
-        if current_name and (current_name.lower() == theme_name.lower() or current_name.lower() == display_name.lower()):
-            return True
-
-        if not theme_dir or not os.path.exists(theme_dir):
-            return False
-
-        if arrow_val is None:
-            try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Cursors") as key:
-                    arrow_val, _ = winreg.QueryValueEx(key, "Arrow")
-            except Exception:
-                arrow_val = ""
-
-        if arrow_val:
-            norm_arrow = os.path.normpath(arrow_val).lower()
-            norm_theme = os.path.normpath(theme_dir).lower()
-            if norm_theme in norm_arrow:
-                return True
-            eff_dir = find_effective_theme_dir(theme_dir)
-            norm_eff = os.path.normpath(eff_dir).lower()
-            if norm_eff in norm_arrow:
-                return True
-
-        return False
 
     @classmethod
     def _broadcast_change(cls):
@@ -691,6 +723,16 @@ class WindowsCursorManager:
             pass
 
     @classmethod
+    def _apply_system_cursors(cls) -> bool:
+        from ctypes import wintypes
+        spi = ctypes.windll.user32.SystemParametersInfoW
+        spi.argtypes = [wintypes.UINT, wintypes.UINT, wintypes.LPVOID, wintypes.UINT]
+        spi.restype = wintypes.BOOL
+        ret = spi(cls.SPI_SETCURSORS, 0, None, cls.SPIF_FLAGS)
+        cls._broadcast_change()
+        return bool(ret)
+
+    @classmethod
     def apply_cursor_theme(cls, theme_display_name: str, role_file_map: dict) -> bool:
         try:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Cursors") as key:
@@ -705,13 +747,7 @@ class WindowsCursorManager:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Cursors\Schemes") as key:
                 winreg.SetValueEx(key, theme_display_name, 0, winreg.REG_SZ, scheme_str)
 
-            from ctypes import wintypes
-            spi = ctypes.windll.user32.SystemParametersInfoW
-            spi.argtypes = [wintypes.UINT, wintypes.UINT, wintypes.LPVOID, wintypes.UINT]
-            spi.restype = wintypes.BOOL
-            ret = spi(cls.SPI_SETCURSORS, 0, None, cls.SPIF_FLAGS)
-            cls._broadcast_change()
-            return bool(ret)
+            return cls._apply_system_cursors()
         except Exception as e:
             print(f"[WindowsCursorManager] Error applying cursor theme: {e}")
             return False
@@ -766,13 +802,7 @@ class WindowsCursorManager:
                     if not any(k.lower() == reg_role.lower() for k in defaults.keys()):
                         winreg.SetValueEx(key, reg_role, 0, winreg.REG_SZ, "")
 
-            from ctypes import wintypes
-            spi = ctypes.windll.user32.SystemParametersInfoW
-            spi.argtypes = [wintypes.UINT, wintypes.UINT, wintypes.LPVOID, wintypes.UINT]
-            spi.restype = wintypes.BOOL
-            ret = spi(cls.SPI_SETCURSORS, 0, None, cls.SPIF_FLAGS)
-            cls._broadcast_change()
-            return bool(ret)
+            return cls._apply_system_cursors()
         except Exception as e:
             print(f"[WindowsCursorManager] Error restoring default cursors: {e}")
             return False
@@ -917,7 +947,6 @@ class DownloadThemeWorker(QObject):
     def _run(self):
         try:
             os.makedirs(self.target_dir, exist_ok=True)
-            import urllib.parse
 
             def _download_single(rel_file):
                 safe_theme = urllib.parse.quote(self.theme_name)
@@ -1035,7 +1064,6 @@ class DownloadAllCursorsWorker(QObject):
 
         try:
             os.makedirs(staging_dir, exist_ok=True)
-            import urllib.parse
             for rel_f in files:
                 if self._is_cancelled:
                     raise InterruptedError("Cancelled by user")
@@ -1165,16 +1193,9 @@ class ConcurrentPreviewWorker(QObject):
     def stop(self):
         self._is_running = False
 
-    def add_tasks(self, new_tasks: list):
-        with self._pending_lock:
-            existing = set((t[0], t[1]) for t in self.tasks)
-            for nt in new_tasks:
-                if (nt[0], nt[1]) not in existing and (nt[0], nt[1]) not in self._failed_tasks:
-                    self.tasks.append(nt)
-                    self._pending_tasks.append(nt)
+
 
     def _run(self):
-        import urllib.parse
 
         def _fetch_task(task):
             if not self._is_running:
@@ -1373,29 +1394,29 @@ class CursorOptionFrame(QFrame):
             return
         self._previews_loaded = True
 
-        if self.is_installed:
-            pix = self._get_local_preview_pixmap("Arrow", 64)
-            if not pix.isNull():
-                self.image_label.setPixmap(pix.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                self.image_label.setStyleSheet("background: transparent; border: none;")
-            else:
-                self._load_cached_arrow_or_placeholder()
+        # 1. Main Arrow Preview (size 60)
+        pix = get_theme_preview_pixmap(self.theme_name, "Arrow", 60)
+        if pix.isNull() and self.is_installed:
+            pix = self._get_local_preview_pixmap("Arrow", 60)
+
+        if not pix.isNull():
+            self.image_label.setPixmap(pix)
+            self.image_label.setStyleSheet("background: transparent; border: none;")
         else:
-            if not self.online_roles and self.info:
+            if not self.is_installed and not self.online_roles and self.info:
                 flist = self.info.get('files', [])
                 def_arrow = self.info.get('arrow_file', '')
                 self.online_roles = resolve_online_theme_roles(flist, def_arrow)
             self._load_cached_arrow_or_placeholder()
 
+        # 2. Miniature Pack Previews (Help, Wait, Hand, IBeam - size 18)
         for role_key, mini_lbl in self.mini_labels.items():
-            if self.is_installed:
-                mini_pix = self._get_local_preview_pixmap(role_key, 20)
-                if not mini_pix.isNull():
-                    mini_lbl.setPixmap(mini_pix.scaled(18, 18, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                img = get_theme_preview_image(self.theme_name, role_key)
-                if not img.isNull():
-                    mini_lbl.setPixmap(QPixmap.fromImage(img.scaled(18, 18, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+            cache_k = (self.theme_name.lower(), role_key, 18)
+            mini_pix = get_theme_preview_pixmap(self.theme_name, role_key, 18)
+            if mini_pix.isNull() and cache_k not in _THEME_PIXMAP_CACHE and self.is_installed:
+                mini_pix = self._get_local_preview_pixmap(role_key, 18)
+            if not mini_pix.isNull():
+                mini_lbl.setPixmap(mini_pix)
 
     def update_favorite_style(self):
         if self.is_favorite:
@@ -1602,6 +1623,18 @@ class CursorOptionFrame(QFrame):
         return self.resolved_roles
 
     def _get_local_preview_pixmap(self, role: str, size: int) -> QPixmap:
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', self.theme_name)
+        disk_cache_path = os.path.join(PREVIEWS_CACHE_DIR, f"cur_local_{safe_name}_{role}_{size}.png")
+        if os.path.exists(disk_cache_path):
+            try:
+                pix = QPixmap(disk_cache_path)
+                if not pix.isNull():
+                    if len(_THEME_PIXMAP_CACHE) < 4000:
+                        _THEME_PIXMAP_CACHE[(self.theme_name.lower(), role, size)] = pix
+                    return pix
+            except Exception:
+                pass
+
         if self.is_default:
             def_filenames = {
                 "Arrow": "aero_arrow.cur", "Help": "aero_helpsel.cur", "Wait": "aero_busy.ani",
@@ -1610,15 +1643,33 @@ class CursorOptionFrame(QFrame):
             fn = def_filenames.get(role, "aero_arrow.cur")
             sys_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Cursors", fn)
             if os.path.exists(sys_path):
-                return CurGenerator.extract_pixmap_from_cur(sys_path, size)
+                pix = CurGenerator.extract_pixmap_from_cur(sys_path, size)
+                if not pix.isNull():
+                    try:
+                        pix.save(disk_cache_path, "PNG")
+                    except Exception:
+                        pass
+                    if len(_THEME_PIXMAP_CACHE) < 4000:
+                        _THEME_PIXMAP_CACHE[(self.theme_name.lower(), role, size)] = pix
+                    return pix
             return QPixmap()
 
         roles = self.get_resolved_roles()
         if self.is_installed and role in roles and self.effective_dir:
             target_path = os.path.join(self.effective_dir, roles[role])
             if os.path.exists(target_path):
-                return CurGenerator.extract_pixmap_from_cur(target_path, size)
+                pix = CurGenerator.extract_pixmap_from_cur(target_path, size)
+                if not pix.isNull():
+                    try:
+                        pix.save(disk_cache_path, "PNG")
+                    except Exception:
+                        pass
+                    if len(_THEME_PIXMAP_CACHE) < 4000:
+                        _THEME_PIXMAP_CACHE[(self.theme_name.lower(), role, size)] = pix
+                    return pix
 
+        if len(_THEME_PIXMAP_CACHE) < 4000:
+            _THEME_PIXMAP_CACHE[(self.theme_name.lower(), role, size)] = QPixmap()
         return QPixmap()
 
 
@@ -1629,6 +1680,7 @@ class CursorGalleryWidget(QWidget):
     """
     status_message_requested = pyqtSignal(str)
     reload_requested = pyqtSignal()
+    cursor_selected = pyqtSignal(str, object)
 
     def __init__(self, cursor_dir: str, parent=None):
         super().__init__(parent)
@@ -1665,7 +1717,6 @@ class CursorGalleryWidget(QWidget):
         self._load_cached_catalog()
         self.refresh_list()
         self.catalog_worker = None
-        self.sync_catalog(force=False)
 
     def sync_catalog(self, force=False):
         if self.catalog_worker and self.catalog_worker.isRunning():
@@ -1697,7 +1748,7 @@ class CursorGalleryWidget(QWidget):
             self._sync_started = True
             QTimer.singleShot(200, lambda: self.sync_catalog(force=False))
         self._schedule_viewport_check()
-        self._check_and_load_more_chunks()
+        QTimer.singleShot(150, self._check_and_load_more_chunks)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1709,7 +1760,7 @@ class CursorGalleryWidget(QWidget):
             self._vp_check_timer = QTimer(self)
             self._vp_check_timer.setSingleShot(True)
             self._vp_check_timer.timeout.connect(self.check_visible_cards)
-        self._vp_check_timer.start(10)
+        self._vp_check_timer.start(25)
 
     def _check_and_load_more_chunks(self):
         """Ensures enough cards are rendered to fill the viewport and create a scrollbar even on 4K/maximized windows."""
@@ -1718,8 +1769,21 @@ class CursorGalleryWidget(QWidget):
         self._is_checking_chunks = True
         try:
             sb = self.scroll_area.verticalScrollBar()
-            if sb.maximum() > 0 and sb.value() >= sb.maximum() - 400:
-                self._render_next_chunk(24)
+            vp = self.scroll_area.viewport()
+            vp_w = max(200, vp.width())
+            vp_h = max(200, vp.height())
+            actual_h = self.grid_layout.heightForWidth(vp_w)
+            need_more = (
+                sb.maximum() <= 0 or 
+                actual_h < vp_h + 300 or 
+                (sb.maximum() > 0 and sb.value() >= sb.maximum() - 600)
+            )
+            if need_more and self._rendered_count < len(self._all_theme_items):
+                self._render_next_chunk(36)
+                if self._rendered_count < len(self._all_theme_items):
+                    new_h = self.grid_layout.heightForWidth(vp_w)
+                    if new_h < vp_h + 300 or sb.maximum() <= 0:
+                        QTimer.singleShot(60, self._check_and_load_more_chunks)
         finally:
             self._is_checking_chunks = False
 
@@ -1727,16 +1791,18 @@ class CursorGalleryWidget(QWidget):
         if not self.cards_map or not self.isVisible():
             return
         vp = self.scroll_area.viewport()
-        vp_rect = vp.rect()
-        buffer_rect = QRect(vp_rect.x(), vp_rect.y() - 300, vp_rect.width(), vp_rect.height() + 600)
+        vp_h = vp.height()
+        scroll_y = self.scroll_area.verticalScrollBar().value()
+        min_y = -300
+        max_y = vp_h + 600
 
         new_tasks = []
         for card in self.cards_map.values():
             if card._previews_loaded:
                 continue
-            card_pt = card.mapTo(vp, QPoint(0, 0))
-            card_rect = QRect(card_pt, card.size())
-            if buffer_rect.intersects(card_rect):
+            card_top = card.y() - scroll_y
+            card_bottom = card_top + card.height()
+            if card_bottom >= min_y and card_top <= max_y:
                 card.load_previews()
                 if not card.is_installed and card.online_roles:
                     for role_name in ["Arrow", "Help", "Wait", "Hand", "IBeam"]:
@@ -1745,6 +1811,8 @@ class CursorGalleryWidget(QWidget):
                             img = get_theme_preview_image(card.theme_name, role_name)
                             if img.isNull():
                                 new_tasks.append((card.theme_name, role_name, rel_f))
+            elif card_top > max_y + 400:
+                break
 
         if new_tasks:
             self._pending_preview_tasks.extend(new_tasks)
@@ -1793,6 +1861,11 @@ class CursorGalleryWidget(QWidget):
         self.fav_tab = PillTabButton("Fav", height=30)
         self.fav_tab.clicked.connect(lambda: self._set_category_tab("fav"))
 
+        # Backward-compatible aliases for external/tester callers
+        self.tab_explore_btn = self.explore_tab
+        self.tab_installed_btn = self.installed_tab
+        self.tab_fav_btn = self.fav_tab
+
         self.tab_group = QButtonGroup(self)
         self.tab_group.setExclusive(True)
         self.tab_group.addButton(self.explore_tab)
@@ -1833,7 +1906,10 @@ class CursorGalleryWidget(QWidget):
     def _set_category_tab(self, category: str):
         if self.current_tab != category:
             self.current_tab = category
-            self.refresh_list()
+            if hasattr(self, '_idle_render_timer'):
+                self._idle_render_timer.stop()
+            self.scroll_area.verticalScrollBar().setValue(0)
+            self.refresh_list(reset_scroll=True)
 
     def _load_cached_catalog(self):
         for fallback_path in [
@@ -1853,6 +1929,8 @@ class CursorGalleryWidget(QWidget):
                     pass
 
     def _on_catalog_fetched(self, catalog: dict):
+        if self.catalog and self.catalog == catalog:
+            return
         self.catalog = catalog
         self.refresh_list()
 
@@ -1900,8 +1978,8 @@ class CursorGalleryWidget(QWidget):
 
         return "Windows Default"
 
-    def refresh_list(self):
-        scroll_pos = self.scroll_area.verticalScrollBar().value()
+    def refresh_list(self, reset_scroll=False):
+        scroll_pos = 0 if reset_scroll else self.scroll_area.verticalScrollBar().value()
 
         if self.preview_worker and self.preview_worker.isRunning():
             self.preview_worker.stop()
@@ -1913,24 +1991,38 @@ class CursorGalleryWidget(QWidget):
                 w.deleteLater()
 
         self.cards_map.clear()
+        self._empty_container = None
 
-        # 1. Local themes (with case-insensitive index)
-        local_themes = {}
-        local_themes_lower = {}
+        # 1. Local themes (with case-insensitive index, cached by mtime)
+        curr_mtime = 0
         if os.path.exists(self.cursor_dir):
-            for entry in sorted(os.listdir(self.cursor_dir)):
-                full_p = os.path.join(self.cursor_dir, entry)
-                if os.path.isdir(full_p):
-                    local_themes[entry] = full_p
-                    local_themes_lower[entry.lower()] = (entry, full_p)
+            try:
+                curr_mtime = os.path.getmtime(self.cursor_dir)
+            except Exception:
+                pass
+
+        if hasattr(self, '_local_themes_mtime') and self._local_themes_mtime == curr_mtime and hasattr(self, '_cached_local_themes'):
+            local_themes = self._cached_local_themes
+            local_themes_lower = self._cached_local_themes_lower
+        else:
+            local_themes = {}
+            local_themes_lower = {}
+            if os.path.exists(self.cursor_dir):
+                for entry in sorted(os.listdir(self.cursor_dir)):
+                    full_p = os.path.join(self.cursor_dir, entry)
+                    if os.path.isdir(full_p):
+                        local_themes[entry] = full_p
+                        local_themes_lower[entry.lower()] = (entry, full_p)
+            self._local_themes_mtime = curr_mtime
+            self._cached_local_themes = local_themes
+            self._cached_local_themes_lower = local_themes_lower
 
         # 2. Collect all unique theme names across catalog + local themes
-        all_theme_names = set()
-        for cat_name in self.catalog.keys():
-            all_theme_names.add(cat_name)
+        all_theme_names = set(self.catalog.keys())
+        cat_lower_map = {k.lower(): k for k in self.catalog.keys()}
 
         for loc_name in local_themes.keys():
-            matching_cat = next((k for k in self.catalog.keys() if k.lower() == loc_name.lower()), None)
+            matching_cat = cat_lower_map.get(loc_name.lower())
             if matching_cat:
                 all_theme_names.add(matching_cat)
             else:
@@ -1988,27 +2080,27 @@ class CursorGalleryWidget(QWidget):
         self._pending_preview_tasks = []
 
         if not items and self.current_tab == "fav":
-            empty_container = QWidget()
+            self._empty_container = QWidget(self.grid_widget)
             vp_w = max(450, self.scroll_area.viewport().width() - 30)
             vp_h = max(320, self.scroll_area.viewport().height() - 40)
-            empty_container.setMinimumSize(vp_w, vp_h)
-            empty_layout = QVBoxLayout(empty_container)
+            self._empty_container.setMinimumSize(vp_w, vp_h)
+            empty_layout = QVBoxLayout(self._empty_container)
             empty_layout.setAlignment(Qt.AlignCenter)
             empty_layout.setContentsMargins(0, 0, 0, 0)
             empty_layout.setSpacing(12)
 
-            star_icon = QLabel()
+            star_icon = QLabel(self._empty_container)
             star_icon.setPixmap(create_star_pixmap(size=48, filled=False, outline_color="#FFB800", outline_width=2.5))
             star_icon.setAlignment(Qt.AlignCenter)
             star_icon.setStyleSheet("background: transparent;")
 
-            empty_title = QLabel("No Favorite Cursors")
-            empty_title.setFont(QFont('Segoe UI', 15, QFont.Bold))
+            empty_title = QLabel("No Favorite Cursors", self._empty_container)
+            empty_title.setFont(QFont('Google Sans', 15, QFont.Bold))
             empty_title.setAlignment(Qt.AlignCenter)
             empty_title.setStyleSheet("color: #ffffff; background: transparent;")
 
-            empty_desc = QLabel("Click the star icon on the top-left of any cursor pack\nto add it to your favorites.")
-            empty_desc.setFont(QFont('Segoe UI', 12))
+            empty_desc = QLabel("Click the star icon on the top-left of any cursor pack\nto add it to your favorites.", self._empty_container)
+            empty_desc.setFont(QFont('Google Sans', 12))
             empty_desc.setAlignment(Qt.AlignCenter)
             empty_desc.setStyleSheet("color: #888899; background: transparent;")
 
@@ -2016,27 +2108,48 @@ class CursorGalleryWidget(QWidget):
             empty_layout.addWidget(empty_title)
             empty_layout.addWidget(empty_desc)
 
-            self.grid_layout.addWidget(empty_container)
+            self.grid_layout.addWidget(self._empty_container)
+            self._rendered_count = 0
             return
 
+        if hasattr(self, '_idle_render_timer'):
+            self._idle_render_timer.stop()
+
         self._rendered_count = 0
-        self._render_next_chunk(24)
+        self._render_next_chunk(36)
 
         if scroll_pos > 0:
             QTimer.singleShot(0, lambda pos=scroll_pos: self.scroll_area.verticalScrollBar().setValue(pos))
         else:
             self.scroll_area.verticalScrollBar().setValue(0)
 
-        QTimer.singleShot(10, self._check_and_load_more_chunks)
+        self._check_and_load_more_chunks()
+        QTimer.singleShot(80, self._check_and_load_more_chunks)
+        self._schedule_idle_render()
+
+    def _schedule_idle_render(self):
+        if self._rendered_count < len(self._all_theme_items):
+            if not hasattr(self, '_idle_render_timer'):
+                self._idle_render_timer = QTimer(self)
+                self._idle_render_timer.setSingleShot(True)
+                self._idle_render_timer.timeout.connect(self._on_idle_render)
+            self._idle_render_timer.start(45)
+
+    def _on_idle_render(self):
+        if not self.isVisible() or self._rendered_count >= len(self._all_theme_items):
+            return
+        self._render_next_chunk(36)
+        if self._rendered_count < len(self._all_theme_items):
+            self._schedule_idle_render()
 
     def _on_scroll_changed(self, val):
         self._schedule_viewport_check()
         sb = self.scroll_area.verticalScrollBar()
         if sb.maximum() > 0 and val >= sb.maximum() - 600:
             if self._rendered_count < len(self._all_theme_items):
-                self._render_next_chunk(24)
+                self._render_next_chunk(36)
 
-    def _render_next_chunk(self, chunk_size=24):
+    def _render_next_chunk(self, chunk_size=36):
         if self._rendered_count >= len(self._all_theme_items):
             return
         end_idx = min(self._rendered_count + chunk_size, len(self._all_theme_items))
@@ -2077,10 +2190,6 @@ class CursorGalleryWidget(QWidget):
         self.grid_layout.invalidate()
         self._schedule_viewport_check()
 
-        sb = self.scroll_area.verticalScrollBar()
-        if sb.maximum() <= 0 and self._rendered_count < len(self._all_theme_items):
-            QTimer.singleShot(10, self._check_and_load_more_chunks)
-
     def _on_favorite_toggled(self, theme_name: str, is_fav: bool):
         if is_fav:
             self.favorites.add(theme_name)
@@ -2115,6 +2224,16 @@ class CursorGalleryWidget(QWidget):
             card.set_active(th == theme_name)
 
         self._apply_theme_to_windows(theme_name)
+
+        pix = None
+        card = self.cards_map.get(theme_name)
+        if card and hasattr(card, 'image_label') and card.image_label:
+            pix = card.image_label.pixmap()
+        if (not pix or pix.isNull()):
+            img = get_theme_preview_image(theme_name, "Arrow")
+            if not img.isNull():
+                pix = QPixmap.fromImage(img)
+        self.cursor_selected.emit(theme_name, pix)
 
     def _on_download_theme(self, theme_name: str):
         if theme_name in self.download_workers or theme_name in self._download_queue:

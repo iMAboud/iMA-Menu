@@ -239,20 +239,7 @@ class PluginRegistry:
         self._set_entry(name, entry)
         self.save()
 
-    def mark_update_available(self, name, changed_files=None):
-        entry = self.get_plugin_state(name)
-        if entry.get('status') in ('installed', 'update_available'):
-            entry['status'] = 'update_available'
-            if changed_files:
-                entry['_changed_files'] = changed_files
-            self._set_entry(name, entry)
 
-    def mark_delisted(self, name):
-        entry = self.get_plugin_state(name)
-        if entry.get('installed_version'):
-            entry['status'] = 'delisted'
-            entry['remote_version'] = None
-            self._set_entry(name, entry)
 
     def _set_entry(self, name, entry):
         name_lower = name.lower()
@@ -349,7 +336,10 @@ class PluginRegistry:
             if not local_hashes:
                 local_hashes = self._compute_local_hashes(install_path)
                 entry['file_hashes'] = remote_hashes
-                entry['status'] = 'installed'
+                if inst_v and rem_v and version_cmp(inst_v, rem_v) < 0:
+                    entry['status'] = 'update_available'
+                else:
+                    entry['status'] = 'installed'
                 self._set_entry(name, entry)
                 continue
 
@@ -363,7 +353,13 @@ class PluginRegistry:
                 if local_sha and local_sha != remote_sha:
                     changed.append(rel_path_lower)
 
-            if changed and rem_v and version_cmp(inst_v, rem_v) < 0:
+            if inst_v and rem_v and version_cmp(inst_v, rem_v) < 0:
+                entry['status'] = 'update_available'
+                if changed:
+                    entry['_changed_files_count'] = len(changed)
+                else:
+                    entry.pop('_changed_files_count', None)
+            elif changed:
                 entry['status'] = 'update_available'
                 entry['_changed_files_count'] = len(changed)
             else:
@@ -568,5 +564,4 @@ class PluginRegistry:
     def get_installed_version(self, name):
         return self.get_plugin_state(name).get('installed_version')
 
-    def get_file_hashes(self, name):
-        return self.get_plugin_state(name).get('file_hashes', {})
+

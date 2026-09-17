@@ -1,18 +1,17 @@
 import os
 import re
 import uuid
-import subprocess
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QScrollArea, QFrame, QFileDialog, QMessageBox, QMenu, QAction,
+    QScrollArea, QFrame, QFileDialog, QMenu,
     QInputDialog, QButtonGroup, QDialog, QSizePolicy, QPlainTextEdit
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPoint
-from PyQt5.QtGui import QFont, QIcon, QColor
+from PyQt5.QtCore import Qt, pyqtSignal, QPoint
+from PyQt5.QtGui import QFont, QColor
 
 from utils import (
-    PillPushButton, PillLineEdit, ModernComboBox, render_nss_asset_pixmap, get_mdl2_icon,
-    validate_nss_syntax, FlowLayout
+    PillPushButton, PillLineEdit, ModernComboBox, ModernSwitch, render_nss_asset_pixmap, get_mdl2_icon,
+    FlowLayout
 )
 from nss_parser import (
     read_file, safe_file_write, find_items_and_menus, format_nss_value, _get_custom_menus_from_nss,
@@ -21,7 +20,7 @@ from nss_parser import (
 from modify_widget import (
     AnimatedGlowPreviewLabel, VisibilityWidget, TypeWidget, GlyphBrowserDialog,
     LocalIconTintDialog, ColorCircleButton, FilterBar, _extract_all_colors,
-    _extract_glyph_codes, _get_theme_glyph_colors, ModifyRuleEditorDialog
+    _extract_glyph_codes, _get_theme_glyph_colors
 )
 from nss_error_monitor import parse_log_entries
 
@@ -49,11 +48,21 @@ CURATED_ARGS = [
     ("⚡ PS: Open Folder Here", '-NoExit -Command "Set-Location -LiteralPath \'@sel.path\'"'),
     ("⚡ PS: Run Script File", '-NoProfile -ExecutionPolicy Bypass -File "@sel.path"'),
     ("⚡ PS: Hidden Window", '-WindowStyle Hidden'),
+    # Window Snapping & Monitors (PowerShell / Nilesoft)
+    ("📐 Snap Left (Half Screen)", '-Command "Start-Sleep -m 250; (New-Object -ComObject WScript.Shell).SendKeys(\'#{LEFT}\')"'),
+    ("📐 Snap Right (Half Screen)", '-Command "Start-Sleep -m 250; (New-Object -ComObject WScript.Shell).SendKeys(\'#{RIGHT}\')"'),
+    ("🖥️ Move to Next Monitor", '-Command "Start-Sleep -m 250; (New-Object -ComObject WScript.Shell).SendKeys(\'#+{RIGHT}\')"'),
+    ("🖥️ Move to Prev Monitor", '-Command "Start-Sleep -m 250; (New-Object -ComObject WScript.Shell).SendKeys(\'#+{LEFT}\')"'),
+    # Window States & Nilesoft Shell Properties
+    ("🪟 Minimized Window", 'window=min'),
+    ("🪟 Maximized Window", 'window=max'),
+    ("🪟 Hidden Window", 'window=hidden'),
+    ("🛡️ Run as Admin", 'admin=true'),
+    ("⏳ Wait for Completion", 'wait=true'),
     # Python
     ("🐍 Python: Run File", '/k python "@sel.path.quote"'),
     ("🐍 Python: Install Req", '-m pip install -r "@sel.path.quote"'),
-    # Admin & System
-    ("🛡️ Run as Admin", 'runas'),
+    # System Paths
     ("🖥️ Windows Dir", '@sys.bin'),
     ("🖥️ Desktop Dir", '@sys.desktop'),
     ("🖥️ Temp Dir", '@sys.temp'),
@@ -68,13 +77,13 @@ def get_curated_args_for_command(cmd_text=""):
     """Returns curated arguments prioritized based on the command."""
     cmd_lower = (cmd_text or "").lower()
     if "powershell" in cmd_lower or "pwsh" in cmd_lower:
-        priority_prefixes = ["⚡", "📁", "📄"]
+        priority_prefixes = ["⚡", "📐", "🖥️", "📁"]
     elif "cmd" in cmd_lower or ".bat" in cmd_lower or ".cmd" in cmd_lower:
-        priority_prefixes = ["💻", "📁", "📄"]
+        priority_prefixes = ["💻", "📁", "🪟", "🛡️"]
     elif "python" in cmd_lower or ".py" in cmd_lower:
-        priority_prefixes = ["🐍", "📁", "📄"]
+        priority_prefixes = ["🐍", "📁", "🪟"]
     else:
-        priority_prefixes = ["📁", "📄", "📂", "🏷️", "📑"]
+        priority_prefixes = ["📁", "📄", "📂", "📐", "🖥️", "🪟", "🛡️"]
 
     top = []
     for prefix in priority_prefixes:
@@ -129,8 +138,7 @@ class StyledConfirmDialog(QDialog):
         h.addWidget(tl, 1)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(28, 28)
-        close_btn.setFont(QFont("Segoe UI Variable Display", 10, QFont.Bold))
+        close_btn.setFont(QFont("Google Sans", 10, QFont.Bold))
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.setStyleSheet("""
             QPushButton {
@@ -189,9 +197,9 @@ class PresetChip(QPushButton):
     def __init__(self, text, value, parent=None):
         super().__init__(text, parent)
         self.preset_value = value
-        self.setFixedHeight(24)
+        self.setFixedHeight(22)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFont(QFont("Segoe UI Variable Text", 8))
+        self.setFont(QFont("Google Sans", 8))
         self.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 0.05);
@@ -209,6 +217,123 @@ class PresetChip(QPushButton):
                 background: rgba(231, 130, 132, 0.35);
             }
         """)
+
+
+def determine_step_type_for_path(path_str, args_str=""):
+    p = (path_str or "").strip('\'" ')
+    if p.lower().endswith(('.exe', '.bat', '.cmd')):
+        return 'launch'
+    if os.path.isdir(p):
+        return 'file'
+    if p.lower().endswith(('.txt', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.nss', '.py', '.pyw', '.doc', '.docx', '.xls', '.xlsx', '.zip', '.html', '.htm', '.log')):
+        return 'file'
+    if os.path.isfile(p) and not p.lower().endswith('.exe'):
+        return 'file'
+    if '.' not in os.path.basename(p) or '\\' in p or '/' in p:
+        return 'file'
+    return 'launch'
+
+
+def parse_start_command(cmd_str):
+    s = re.sub(r'^start\s+', '', cmd_str.strip(), flags=re.I).strip()
+    if s.startswith('""'):
+        s = s[2:].strip()
+    elif s.startswith('"'):
+        m_title = re.match(r'^"([^"]*)"\s+(.*)$', s)
+        if m_title:
+            s = m_title.group(2).strip()
+
+    if s.startswith('""'):
+        m = re.match(r'^""([^"]+)""\s*(.*)$', s)
+        if m:
+            return m.group(1).strip('\'" '), m.group(2).strip()
+    if s.startswith('"'):
+        m = re.match(r'^"([^"]+)"\s*(.*)$', s)
+        if m:
+            return m.group(1).strip('\'" '), m.group(2).strip()
+
+    parts = s.split(' ', 1)
+    target = parts[0].strip('\'" ')
+    rest_args = parts[1].strip() if len(parts) > 1 else ""
+    return target, rest_args
+
+
+def parse_pipeline_step(step_str):
+    step_str = step_str.strip()
+
+    # 1. Clipboard
+    m_clip = re.match(r'^echo\s+(.*?)\s*\|\s*clip(?:\.exe)?$', step_str, re.I)
+    if m_clip:
+        return {'type': 'clipboard', 'path': 'command.copy', 'args': m_clip.group(1).strip()}
+
+    # 2. Python
+    m_py = re.match(r'^python(?:\.exe)?\s+(?:"([^"]+)"|([^\s]+))\s*(.*)$', step_str, re.I)
+    if m_py:
+        p = (m_py.group(1) or m_py.group(2)).strip('\'" ')
+        a = (m_py.group(3) or '').strip()
+        return {'type': 'python', 'path': p, 'args': a}
+
+    # 3. PowerShell
+    m_ps = re.match(r'^powershell(?:\.exe)?\s+(?:-NoProfile\s+)?-Command\s+(?:"([^"]*)"|(.*))$', step_str, re.I)
+    if m_ps:
+        p = (m_ps.group(1) or m_ps.group(2) or '').strip()
+        return {'type': 'powershell', 'path': p, 'args': ''}
+
+    # 4. Start command
+    if re.match(r'^start(?:\s+.*)?$', step_str, re.I):
+        target, rest_args = parse_start_command(step_str)
+        st_type = determine_step_type_for_path(target, rest_args)
+        return {'type': st_type, 'path': target, 'args': rest_args}
+
+    # 5. Generic CMD
+    parts = step_str.split(' ', 1)
+    p = parts[0].strip('\'" ')
+    a = parts[1].strip() if len(parts) > 1 else ''
+    return {'type': 'cmd', 'path': p, 'args': a}
+
+
+def parse_pipeline_command(cmd, args):
+    cmd_clean = (cmd or '').strip().strip('\'"').lower()
+    args_clean = (args or '').strip()
+    while (args_clean.startswith("'") and args_clean.endswith("'")) or (args_clean.startswith('"') and args_clean.endswith('"')):
+        args_clean = args_clean[1:-1].strip()
+
+    chain_str = args_clean
+    if cmd_clean in ('cmd.exe', 'cmd') and (args_clean.startswith('/c ') or args_clean.startswith('/k ')):
+        chain_str = args_clean[3:].strip()
+    elif not chain_str and cmd:
+        chain_str = (cmd or '').strip()
+
+    if ' && ' in chain_str:
+        raw_parts = [p.strip() for p in chain_str.split(' && ') if p.strip()]
+        steps = [parse_pipeline_step(p) for p in raw_parts]
+        return True, steps
+
+    # Single command clipboard special case
+    if cmd_clean.startswith('command.copy(') and cmd_clean.endswith(')'):
+        inner = cmd[len('command.copy('):-1].strip('\'" ')
+        return True, [{'type': 'clipboard', 'path': 'command.copy', 'args': inner}]
+
+    return False, []
+
+
+def parse_single_command_to_step(cmd, args=""):
+    c = (cmd or '').strip().strip('\'"')
+    a = (args or '').strip()
+    c_lower = c.lower()
+    if c_lower.startswith('command.copy(') and c_lower.endswith(')'):
+        inner = c[len('command.copy('):-1].strip('\'" ')
+        return {'type': 'clipboard', 'path': 'command.copy', 'args': inner or a}
+    if c_lower in ('powershell.exe', 'powershell'):
+        return {'type': 'powershell', 'path': a, 'args': ''}
+    if c_lower in ('python.exe', 'python', 'py'):
+        parts = a.split(' ', 1)
+        return {'type': 'python', 'path': parts[0].strip('\'"'), 'args': parts[1] if len(parts) > 1 else ''}
+    if c_lower in ('cmd.exe', 'cmd'):
+        return {'type': 'cmd', 'path': c, 'args': a}
+
+    st_type = determine_step_type_for_path(c, a)
+    return {'type': st_type, 'path': c, 'args': a}
 
 
 class PipelineStepWidget(QFrame):
@@ -245,7 +370,7 @@ class PipelineStepWidget(QFrame):
         # Header Row
         head = QHBoxLayout()
         self.step_lbl = QLabel(f"Action Step #{step_index}")
-        self.step_lbl.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        self.step_lbl.setFont(QFont("Google Sans", 9, QFont.Bold))
         self.step_lbl.setStyleSheet("color: #ea999c; background: transparent;")
         head.addWidget(self.step_lbl)
         head.addStretch()
@@ -280,8 +405,7 @@ class PipelineStepWidget(QFrame):
         head.addWidget(self.down_btn)
 
         del_btn = QPushButton("✕")
-        del_btn.setFixedSize(24, 24)
-        del_btn.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        del_btn.setFont(QFont("Google Sans", 9, QFont.Bold))
         del_btn.setCursor(Qt.PointingHandCursor)
         del_btn.setStyleSheet("""
             QPushButton {
@@ -383,9 +507,40 @@ class PipelineStepWidget(QFrame):
     def _browse_path(self):
         code = self.type_combo.currentData() or "launch"
         if code == "file":
-            p, _ = QFileDialog.getOpenFileName(self, "Select File to Open", "", "All Files (*.*)")
+            menu = QMenu(self)
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #1e1e24;
+                    border: 1px solid #242738;
+                    border-radius: 8px;
+                    padding: 4px;
+                }
+                QMenu::item {
+                    color: #c6d0f5;
+                    padding: 6px 16px;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background: rgba(231, 130, 132, 0.25);
+                    color: #ffffff;
+                }
+            """)
+            act_file = menu.addAction("📄  Browse File...")
+            act_folder = menu.addAction("📁  Browse Folder...")
+            chosen = menu.exec_(self.browse_btn.mapToGlobal(QPoint(0, self.browse_btn.height())))
+            if chosen == act_file:
+                p, _ = QFileDialog.getOpenFileName(self, "Select File to Open", "", "All Files (*.*)")
+                if p:
+                    self.path_inp.setText(os.path.normpath(p))
+            elif chosen == act_folder:
+                d = QFileDialog.getExistingDirectory(self, "Select Folder to Open")
+                if d:
+                    self.path_inp.setText(os.path.normpath(d))
+            return
+        elif code == "python":
+            p, _ = QFileDialog.getOpenFileName(self, "Select Python Script", "", "Python Files (*.py *.pyw);;All Files (*.*)")
         else:
-            p, _ = QFileDialog.getOpenFileName(self, "Select Executable / Script", "", "All Files (*.*);;Executables (*.exe *.bat *.cmd *.ps1 *.py)")
+            p, _ = QFileDialog.getOpenFileName(self, "Select Executable / Script", "", "All Files (*.*);;Executables (*.exe *.bat *.cmd *.ps1 *.py *.pyw)")
         if p:
             self.path_inp.setText(os.path.normpath(p))
 
@@ -415,9 +570,12 @@ class PipelineStepWidget(QFrame):
         self.changed.emit()
 
     def get_data(self):
+        raw_p = self.path_inp.text().strip()
+        while (raw_p.startswith('"') and raw_p.endswith('"')) or (raw_p.startswith("'") and raw_p.endswith("'")):
+            raw_p = raw_p[1:-1].strip()
         return {
             'type': self.type_combo.currentData() or "launch",
-            'path': self.path_inp.text().strip(),
+            'path': raw_p,
             'args': self.args_inp.text().strip()
         }
 
@@ -426,7 +584,10 @@ class PipelineStepWidget(QFrame):
         idx = self.type_combo.findData(t)
         if idx != -1:
             self.type_combo.setCurrentIndex(idx)
-        self.path_inp.setText(data.get('path', ''))
+        raw_p = data.get('path', '')
+        while (raw_p.startswith('"') and raw_p.endswith('"')) or (raw_p.startswith("'") and raw_p.endswith("'")):
+            raw_p = raw_p[1:-1].strip()
+        self.path_inp.setText(raw_p)
         self.args_inp.setText(data.get('args', ''))
 
 
@@ -452,10 +613,11 @@ class ItemConfigDialog(QDialog):
         self.resize(780, 800)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(231, 130, 132, 0.6); border-radius: 8px; padding: 6px 12px; font-family: 'Segoe UI Variable Display'; font-size: 12px; font-weight: bold; }")
+        self.setStyleSheet("QToolTip { background-color: #18181c; color: #ffffff; border: 1.5px solid rgba(231, 130, 132, 0.7); border-radius: 14px; padding: 5px 15px; font-family: 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: bold; }")
         self._drag_pos = None
         self._is_updating_code = False
         self.pipeline_steps = []
+        self._last_compiled_pipeline = None
 
         self._setup_ui()
         self._sync_live_code()
@@ -536,8 +698,7 @@ class ItemConfigDialog(QDialog):
 
         # Clear vector Unicode Close Button
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(32, 32)
-        close_btn.setFont(QFont("Segoe UI Variable Display", 11, QFont.Bold))
+        close_btn.setFont(QFont("Google Sans", 11, QFont.Bold))
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.setToolTip("Close")
         close_btn.setStyleSheet("""
@@ -694,17 +855,21 @@ class ItemConfigDialog(QDialog):
                 target_box = QVBoxLayout()
                 target_box.setSpacing(8)
 
-                # Segmented Toggle: Simple Shortcut vs Advanced Command vs Action Pipeline
+                # Segmented Toggle: One Action vs Sequence Actions
                 mode_row = QHBoxLayout()
-                self.mode_shortcut_btn = QPushButton("Simple Shortcut")
-                self.mode_cmd_btn = QPushButton("Advanced Command")
-                self.mode_pipeline_btn = QPushButton("⚡ Action Pipeline")
-                
-                for btn in (self.mode_shortcut_btn, self.mode_cmd_btn, self.mode_pipeline_btn):
+                self.mode_single_btn = QPushButton("One Action")
+                self.mode_sequence_btn = QPushButton("Sequence Actions")
+
+                # Compatibility aliases
+                self.mode_shortcut_btn = self.mode_single_btn
+                self.mode_cmd_btn = self.mode_single_btn
+                self.mode_pipeline_btn = self.mode_sequence_btn
+
+                for btn in (self.mode_single_btn, self.mode_sequence_btn):
                     btn.setCheckable(True)
                     btn.setFixedHeight(28)
                     btn.setCursor(Qt.PointingHandCursor)
-                    btn.setFont(QFont("Segoe UI Variable Display", 8, QFont.Bold))
+                    btn.setFont(QFont("Google Sans", 8, QFont.Bold))
                     btn.setStyleSheet("""
                         QPushButton {
                             background: rgba(255, 255, 255, 0.05);
@@ -723,105 +888,157 @@ class ItemConfigDialog(QDialog):
 
                 self.mode_group = QButtonGroup(self)
                 self.mode_group.setExclusive(True)
-                self.mode_group.addButton(self.mode_shortcut_btn)
-                self.mode_group.addButton(self.mode_cmd_btn)
-                self.mode_group.addButton(self.mode_pipeline_btn)
-                mode_row.addWidget(self.mode_shortcut_btn)
-                mode_row.addWidget(self.mode_cmd_btn)
-                mode_row.addWidget(self.mode_pipeline_btn)
+                self.mode_group.addButton(self.mode_single_btn)
+                self.mode_group.addButton(self.mode_sequence_btn)
+                mode_row.addWidget(self.mode_single_btn)
+                mode_row.addWidget(self.mode_sequence_btn)
                 mode_row.addStretch()
                 target_box.addLayout(mode_row)
 
-                # 1. Simple Shortcut Stack Page
-                self.simple_container = QWidget()
-                sc_lay = QVBoxLayout(self.simple_container)
+                # 1. One Action Stack Page
+                self.single_container = QWidget()
+                self.simple_container = self.single_container
+                self.adv_container = self.single_container
+                sc_lay = QVBoxLayout(self.single_container)
                 sc_lay.setContentsMargins(0, 0, 0, 0)
-                sc_lay.setSpacing(6)
+                sc_lay.setSpacing(8)
 
-                browse_row = QHBoxLayout()
-                browse_row.setSpacing(8)
-                self.shortcut_path_inp = PillLineEdit("Browse executable (.exe), script (.bat, .py, .ps1), or document...")
-                self.shortcut_path_inp.setText(self.props.get('cmd', '').strip('\'"'))
-                self.shortcut_path_inp.textChanged.connect(self._sync_live_code)
-                browse_row.addWidget(self.shortcut_path_inp, 1)
+                # Row 1: Action Type + Target Input + Browse
+                row1 = QHBoxLayout()
+                row1.setSpacing(8)
+
+                self.action_type_combo = ModernComboBox(context_key="action_type")
+                self.action_type_combo.setFixedWidth(175)
+                self.action_type_combo.popup_min_width = 220
+                for label, code in [
+                    ("🚀 Launch App / Exe", "app"),
+                    ("📄 Open File", "file"),
+                    ("📁 Open Folder", "folder"),
+                    ("💻 Command (CMD)", "cmd"),
+                    ("⚡ PowerShell", "powershell"),
+                    ("🐍 Python Script", "python"),
+                    ("🌐 Web Link / URL", "url"),
+                ]:
+                    self.action_type_combo.addItem(label, code)
+                self.action_type_combo.currentIndexChanged.connect(self._on_action_type_changed)
+                row1.addWidget(self.action_type_combo)
+
+                self.cmd_inp = PillLineEdit("Target program, script, file, folder, or command...")
+                raw_c = self.props.get('cmd', '').strip()
+                if (raw_c.startswith("'") and raw_c.endswith("'")) or (raw_c.startswith('"') and raw_c.endswith('"')):
+                    raw_c = raw_c[1:-1]
+                self.cmd_inp.setText(raw_c)
+                self.shortcut_path_inp = self.cmd_inp
+                self.cmd_inp.textChanged.connect(self._on_cmd_changed)
+                self.cmd_inp.textChanged.connect(self._sync_live_code)
+                row1.addWidget(self.cmd_inp, 1)
 
                 self.shortcut_browse = QPushButton("\uE898")
                 self.shortcut_browse.setFont(QFont("Segoe MDL2 Assets", 12))
                 self.shortcut_browse.setFixedSize(34, 34)
                 self.shortcut_browse.setCursor(Qt.PointingHandCursor)
-                self.shortcut_browse.setToolTip("Upload / browse executable, file, or script...")
+                self.shortcut_browse.setToolTip("Upload / browse executable, file, or folder...")
                 self.shortcut_browse.setStyleSheet(btn_action_style)
-                self.shortcut_browse.clicked.connect(self._browse_program)
-                browse_row.addWidget(self.shortcut_browse)
-                sc_lay.addLayout(browse_row)
+                self.shortcut_browse.clicked.connect(self._on_browse_target_clicked)
+                row1.addWidget(self.shortcut_browse)
+                sc_lay.addLayout(row1)
 
-                # Quick Templates
-                t_row = QHBoxLayout()
-                t_row.setSpacing(6)
-                t_lbl = QLabel("Quick Presets:")
-                t_lbl.setStyleSheet("color: #70707c; font-size: 11px;")
-                t_row.addWidget(t_lbl)
-                for t_name, t_code in [
-                    ("Terminal Here", "terminal"),
-                    ("PowerShell Here", "powershell"),
-                    ("Copy Path", "copy_path"),
-                    ("Run Python", "run_py"),
-                    ("Restart Explorer", "restart_explorer")
-                ]:
-                    chip = PresetChip(t_name, t_code)
-                    chip.clicked.connect(lambda _, c=t_code: self._apply_template(c))
-                    t_row.addWidget(chip)
-                t_row.addStretch()
-                sc_lay.addLayout(t_row)
-                target_box.addWidget(self.simple_container)
+                # Set action type based on current cmd
+                det_type = self._detect_action_type(raw_c)
+                idx_t = self.action_type_combo.findData(det_type)
+                if idx_t >= 0:
+                    self.action_type_combo.setCurrentIndex(idx_t)
 
-                # 2. Advanced Command Stack Page
-                self.adv_container = QWidget()
-                adv_lay = QVBoxLayout(self.adv_container)
-                adv_lay.setContentsMargins(0, 0, 0, 0)
-                adv_lay.setSpacing(6)
+                # Row 2: Collapsible Advanced Options Toggle (Arguments & Working Dir)
+                self.adv_toggle_btn = QPushButton("▶  Advanced Options (Arguments && Working Dir)")
+                self.adv_toggle_btn.setCursor(Qt.PointingHandCursor)
+                self.adv_toggle_btn.setStyleSheet("""
+                    QPushButton {
+                        background: rgba(255, 255, 255, 0.04);
+                        color: #838ba7;
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        border-radius: 12px;
+                        padding: 5px 14px;
+                        font-size: 11px;
+                        font-weight: 600;
+                        text-align: left;
+                    }
+                    QPushButton:hover {
+                        background: rgba(255, 255, 255, 0.08);
+                        color: #ffffff;
+                        border: 1px solid rgba(255, 255, 255, 0.16);
+                    }
+                """)
+                self.adv_toggle_btn.clicked.connect(self._toggle_advanced_drawer)
+                sc_lay.addWidget(self.adv_toggle_btn)
+
+                # Row 3: Advanced Options Drawer
+                self.adv_drawer = QWidget()
+                self.adv_drawer.setStyleSheet("background: rgba(255, 255, 255, 0.02); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);")
+                adv_d_lay = QVBoxLayout(self.adv_drawer)
+                adv_d_lay.setContentsMargins(12, 10, 12, 10)
+                adv_d_lay.setSpacing(8)
 
                 cmd_grid = QGridLayout()
                 cmd_grid.setVerticalSpacing(8)
                 cmd_grid.setHorizontalSpacing(10)
-
-                self.cmd_inp = PillLineEdit("Command e.g. cmd.exe, powershell.exe")
-                self.cmd_inp.setText(self.props.get('cmd', '').strip('\'"'))
-                self.cmd_inp.textChanged.connect(self._on_cmd_changed)
-                self.cmd_inp.textChanged.connect(self._sync_live_code)
-                cmd_grid.addWidget(QLabel("Command:"), 0, 0)
-                cmd_grid.addWidget(self.cmd_inp, 0, 1)
 
                 # Arguments Row with Smart Dropdown Next to Input
                 args_h_row = QHBoxLayout()
                 args_h_row.setSpacing(8)
 
                 self.args_inp = PillLineEdit('Arguments e.g. @sel.path.quote, /k pushd "@sel.path"')
-                self.args_inp.setText(self.props.get('args', self.props.get('arg', '')).strip('\'"'))
+                raw_a = self.props.get('args', self.props.get('arg', '')).strip()
+                if (raw_a.startswith("'") and raw_a.endswith("'")) or (raw_a.startswith('"') and raw_a.endswith('"')):
+                    raw_a = raw_a[1:-1]
+                self.args_inp.setText(raw_a)
                 self.args_inp.textChanged.connect(self._sync_live_code)
                 args_h_row.addWidget(self.args_inp, 1)
 
                 self.args_combo = ModernComboBox(context_key="arg_preset")
                 self.args_combo.setFixedWidth(180)
-                self.args_combo.popup_min_width = 320
+                self.args_combo.popup_min_width = 340
                 self._populate_args_combo(self.cmd_inp.text())
                 self.args_combo.activated.connect(self._on_arg_preset_selected)
                 args_h_row.addWidget(self.args_combo)
 
-                cmd_grid.addWidget(QLabel("Arguments:"), 1, 0)
-                cmd_grid.addLayout(args_h_row, 1, 1)
+                cmd_grid.addWidget(QLabel("Arguments:"), 0, 0)
+                cmd_grid.addLayout(args_h_row, 0, 1)
 
                 # Working dir
-                self.dir_inp = PillLineEdit('Working Dir e.g. @sel.dir')
-                self.dir_inp.setText(self.props.get('dir', '').strip('\'"'))
+                dir_h_row = QHBoxLayout()
+                dir_h_row.setSpacing(8)
+                self.dir_inp = PillLineEdit('Working Dir e.g. @sel.dir, @app.dir, @sys.desktop')
+                raw_d = self.props.get('dir', '').strip()
+                if (raw_d.startswith("'") and raw_d.endswith("'")) or (raw_d.startswith('"') and raw_d.endswith('"')):
+                    raw_d = raw_d[1:-1]
+                self.dir_inp.setText(raw_d)
                 self.dir_inp.textChanged.connect(self._sync_live_code)
-                cmd_grid.addWidget(QLabel("Working Dir:"), 2, 0)
-                cmd_grid.addWidget(self.dir_inp, 2, 1)
+                dir_h_row.addWidget(self.dir_inp, 1)
 
-                adv_lay.addLayout(cmd_grid)
-                target_box.addWidget(self.adv_container)
+                self.dir_browse_btn = QPushButton("\uE898")
+                self.dir_browse_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+                self.dir_browse_btn.setFixedSize(30, 30)
+                self.dir_browse_btn.setCursor(Qt.PointingHandCursor)
+                self.dir_browse_btn.setToolTip("Browse working directory...")
+                self.dir_browse_btn.setStyleSheet(btn_action_style)
+                self.dir_browse_btn.clicked.connect(self._browse_dir)
+                dir_h_row.addWidget(self.dir_browse_btn)
 
-                # 3. Action Pipeline Stack Page (Series of Actions)
+                cmd_grid.addWidget(QLabel("Working Dir:"), 1, 0)
+                cmd_grid.addLayout(dir_h_row, 1, 1)
+
+                adv_d_lay.addLayout(cmd_grid)
+                sc_lay.addWidget(self.adv_drawer)
+
+                # Auto-expand drawer if arguments or working dir already set
+                has_adv = bool(raw_a or raw_d)
+                self.adv_drawer.setVisible(has_adv)
+                self.adv_toggle_btn.setText("▼  Advanced Options (Arguments && Working Dir)" if has_adv else "▶  Advanced Options (Arguments && Working Dir)")
+
+                target_box.addWidget(self.single_container)
+
+                # 2. Sequence Actions Stack Page (Series of Actions)
                 self.pipeline_container = QWidget()
                 pipe_lay = QVBoxLayout(self.pipeline_container)
                 pipe_lay.setContentsMargins(0, 0, 0, 0)
@@ -840,16 +1057,80 @@ class ItemConfigDialog(QDialog):
 
                 target_box.addWidget(self.pipeline_container)
 
-                self.mode_shortcut_btn.clicked.connect(lambda: self._set_target_mode(0))
-                self.mode_cmd_btn.clicked.connect(lambda: self._set_target_mode(1))
-                self.mode_pipeline_btn.clicked.connect(lambda: self._set_target_mode(2))
+                self.mode_single_btn.clicked.connect(lambda: self._set_target_mode(0))
+                self.mode_sequence_btn.clicked.connect(lambda: self._set_target_mode(1))
 
                 # Determine initial mode
-                has_complex_args = bool(self.args_inp.text().strip() or self.props.get('args') or self.props.get('arg'))
-                self._set_target_mode(1 if has_complex_args else 0)
+                is_pipe, parsed_steps = parse_pipeline_command(raw_c, raw_a)
+                if is_pipe and parsed_steps:
+                    for s_data in parsed_steps:
+                        self._add_pipeline_step(s_data)
+                    self._last_compiled_pipeline = (self.cmd_inp.text().strip(), self.args_inp.text().strip())
+                    self._set_target_mode(1)
+                else:
+                    self._set_target_mode(0)
 
                 al.addWidget(QLabel("Target:"), row_idx, 0, Qt.AlignLeft | Qt.AlignTop)
                 al.addLayout(target_box, row_idx, 1)
+                row_idx += 1
+
+                # Execution Controls: Shared across One Action & Sequence Actions
+                exec_wrap_lay = QHBoxLayout()
+                exec_wrap_lay.setContentsMargins(0, 0, 0, 0)
+                exec_wrap_lay.setSpacing(18)
+                exec_wrap_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+                # Admin Switch
+                admin_wrap = QHBoxLayout()
+                admin_wrap.setSpacing(6)
+                self.admin_switch = ModernSwitch()
+                raw_admin = str(self.props.get('admin', '')).lower()
+                self.admin_switch.setChecked(raw_admin in ('true', '1') or 'runas' in raw_c.lower())
+                self.admin_switch.stateChanged.connect(self._sync_live_code)
+                admin_lbl = QLabel("🛡️ Run as Admin")
+                admin_lbl.setStyleSheet("color: #c6d0f5; font-size: 11px; font-weight: 600;")
+                admin_wrap.addWidget(self.admin_switch)
+                admin_wrap.addWidget(admin_lbl)
+                exec_wrap_lay.addLayout(admin_wrap)
+
+                # Window State
+                win_wrap = QHBoxLayout()
+                win_wrap.setSpacing(6)
+                win_lbl = QLabel("🪟 Window:")
+                win_lbl.setStyleSheet("color: #c6d0f5; font-size: 11px; font-weight: 600;")
+                win_wrap.addWidget(win_lbl)
+                self.window_combo = ModernComboBox(context_key="window_state")
+                self.window_combo.setFixedWidth(115)
+                self.window_combo.addItem("Default", "")
+                self.window_combo.addItem("Normal", "normal")
+                self.window_combo.addItem("Minimized", "min")
+                self.window_combo.addItem("Maximized", "max")
+                self.window_combo.addItem("Hidden", "hidden")
+                raw_win = str(self.props.get('window', '')).strip('\'" ').lower()
+                idx_w = self.window_combo.findData(raw_win)
+                if idx_w >= 0:
+                    self.window_combo.setCurrentIndex(idx_w)
+                self.window_combo.currentIndexChanged.connect(self._sync_live_code)
+                win_wrap.addWidget(self.window_combo)
+                exec_wrap_lay.addLayout(win_wrap)
+
+                # Wait Switch
+                wait_wrap = QHBoxLayout()
+                wait_wrap.setSpacing(6)
+                self.wait_switch = ModernSwitch()
+                raw_wait = str(self.props.get('wait', '')).lower()
+                self.wait_switch.setChecked(raw_wait in ('true', '1'))
+                self.wait_switch.stateChanged.connect(self._sync_live_code)
+                wait_lbl = QLabel("⏳ Wait for Exit")
+                wait_lbl.setStyleSheet("color: #c6d0f5; font-size: 11px; font-weight: 600;")
+                wait_wrap.addWidget(self.wait_switch)
+                wait_wrap.addWidget(wait_lbl)
+                exec_wrap_lay.addLayout(wait_wrap)
+
+                exec_wrap_lay.addStretch()
+
+                al.addWidget(QLabel("Execution:"), row_idx, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                al.addLayout(exec_wrap_lay, row_idx, 1)
                 row_idx += 1
             else:
                 self.shortcut_path_inp = None
@@ -857,6 +1138,9 @@ class ItemConfigDialog(QDialog):
                 self.args_inp = None
                 self.dir_inp = None
                 self.args_combo = None
+                self.admin_switch = None
+                self.window_combo = None
+                self.wait_switch = None
 
             # Visibility
             self.vis_widget = VisibilityWidget()
@@ -962,7 +1246,7 @@ class ItemConfigDialog(QDialog):
 
         self.code_toggle_btn = QPushButton("▶  Manual Edit")
         self.code_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.code_toggle_btn.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        self.code_toggle_btn.setFont(QFont("Google Sans", 9, QFont.Bold))
         self.code_toggle_btn.setStyleSheet("""
             QPushButton {
                 text-align: left;
@@ -1004,6 +1288,8 @@ class ItemConfigDialog(QDialog):
                 border: 1px solid #e78284;
             }
         """)
+        self._code_manually_edited = False
+        self.code_edit.textChanged.connect(self._on_code_edit_text_changed)
         cc_lay.addWidget(self.code_edit)
         code_vl.addWidget(self.code_container)
 
@@ -1043,18 +1329,53 @@ class ItemConfigDialog(QDialog):
 
         dialog_vbox.addWidget(bottom_frame)
 
+    def _clear_pipeline_steps(self):
+        for step_w in list(self.pipeline_steps):
+            self.pipeline_steps_layout.removeWidget(step_w)
+            step_w.deleteLater()
+        self.pipeline_steps.clear()
+
     def _set_target_mode(self, mode_idx):
-        """0 = Simple, 1 = Advanced, 2 = Pipeline."""
-        self.mode_shortcut_btn.setChecked(mode_idx == 0)
-        self.mode_cmd_btn.setChecked(mode_idx == 1)
-        self.mode_pipeline_btn.setChecked(mode_idx == 2)
+        """0 = One Action, 1 = Sequence Actions."""
+        is_seq = (mode_idx == 1)
+        self.mode_single_btn.setChecked(not is_seq)
+        self.mode_sequence_btn.setChecked(is_seq)
 
-        self.simple_container.setVisible(mode_idx == 0)
-        self.adv_container.setVisible(mode_idx == 1)
-        self.pipeline_container.setVisible(mode_idx == 2)
+        self.single_container.setVisible(not is_seq)
+        self.pipeline_container.setVisible(is_seq)
 
-        if mode_idx == 2 and not self.pipeline_steps:
-            self._add_pipeline_step()
+        if is_seq:
+            current_c = self.cmd_inp.text().strip() if self.cmd_inp else ""
+            current_a = self.args_inp.text().strip() if self.args_inp else ""
+
+            needs_reparse = not self.pipeline_steps or (
+                self._last_compiled_pipeline is not None and
+                (current_c, current_a) != self._last_compiled_pipeline
+            )
+
+            if needs_reparse and (current_c or current_a):
+                is_pipe, parsed_steps = parse_pipeline_command(current_c, current_a)
+                if is_pipe and parsed_steps:
+                    self._clear_pipeline_steps()
+                    for s_data in parsed_steps:
+                        self._add_pipeline_step(s_data)
+                elif not self.pipeline_steps:
+                    step_data = parse_single_command_to_step(current_c, current_a)
+                    self._add_pipeline_step(step_data)
+            elif not self.pipeline_steps:
+                self._add_pipeline_step()
+
+            self._last_compiled_pipeline = self._compile_pipeline_command()
+
+        else:
+            if self.pipeline_steps:
+                comp_cmd, comp_args = self._compile_pipeline_command()
+                if self.cmd_inp and comp_cmd:
+                    self.cmd_inp.setText(comp_cmd)
+                if self.args_inp and comp_args:
+                    self.args_inp.setText(comp_args)
+                self._last_compiled_pipeline = (comp_cmd, comp_args)
+
         self._sync_live_code()
 
     def _add_pipeline_step(self, data=None):
@@ -1111,18 +1432,24 @@ class ItemConfigDialog(QDialog):
         if len(raw_steps) == 1:
             st = raw_steps[0]
             st_type = st.get('type')
-            path = st.get('path', '')
-            args = st.get('args', '')
+            path = st.get('path', '').strip('\'" ')
+            args = st.get('args', '').strip()
             if st_type == 'clipboard':
                 clip_val = args or 'sel(true, "\\n")'
                 return f"command.copy({clip_val})", ""
+            elif st_type == 'python':
+                return "python.exe", f"\"{path}\" {args}".strip()
+            elif st_type == 'powershell':
+                return "powershell.exe", f"-NoProfile -Command \"{path} {args}\"".strip()
+            elif st_type == 'cmd':
+                return path or "cmd.exe", args
             return path, args
 
         chain_commands = []
         for st in raw_steps:
             st_type = st.get('type')
-            path = st.get('path', '')
-            args = st.get('args', '')
+            path = st.get('path', '').strip('\'" ')
+            args = st.get('args', '').strip()
 
             if st_type == 'clipboard':
                 clip_val = args or '@sel.path'
@@ -1140,7 +1467,7 @@ class ItemConfigDialog(QDialog):
                 chain_commands.append(f"start \"\" \"{path}\"")
             else:
                 if args:
-                    chain_commands.append(f"start \"\" \"{path}\" {args}")
+                    chain_commands.append(f"start \"\" \"{path}\" {args}".strip())
                 else:
                     chain_commands.append(f"start \"\" \"{path}\"")
 
@@ -1152,11 +1479,113 @@ class ItemConfigDialog(QDialog):
         new_vis = not is_vis
         self.code_container.setVisible(new_vis)
         if new_vis:
-            self.code_toggle_btn.setText("▼  Manual Edit")
-            self._sync_live_code()
+            tag = "▼  Manual Edit (Customized)" if getattr(self, '_code_manually_edited', False) else "▼  Manual Edit"
+            self.code_toggle_btn.setText(tag)
+            if not getattr(self, '_code_manually_edited', False):
+                self._sync_live_code()
             self.code_edit.setFocus()
         else:
-            self.code_toggle_btn.setText("▶  Manual Edit")
+            tag = "▶  Manual Edit (Customized)" if getattr(self, '_code_manually_edited', False) else "▶  Manual Edit"
+            self.code_toggle_btn.setText(tag)
+
+    def _on_code_edit_text_changed(self):
+        if not self._is_updating_code:
+            self._code_manually_edited = True
+            if hasattr(self, 'code_toggle_btn'):
+                self.code_toggle_btn.setText("▼  Manual Edit (Customized)")
+
+    def _toggle_advanced_drawer(self):
+        if not hasattr(self, 'adv_drawer'):
+            return
+        vis = not self.adv_drawer.isVisible()
+        self.adv_drawer.setVisible(vis)
+        self.adv_toggle_btn.setText("▼  Advanced Options (Arguments && Working Dir)" if vis else "▶  Advanced Options (Arguments && Working Dir)")
+
+    def _detect_action_type(self, cmd_val):
+        c = (cmd_val or '').lower().strip().strip('\'"')
+        if not c:
+            return 'app'
+        if c.startswith(('http://', 'https://')):
+            return 'url'
+        if 'powershell' in c or c.endswith('.ps1'):
+            return 'powershell'
+        if 'cmd.exe' in c or c.endswith(('.bat', '.cmd')):
+            return 'cmd'
+        if 'python' in c or c.endswith('.py'):
+            return 'python'
+        if os.path.isdir(c):
+            return 'folder'
+        if c.endswith('.exe'):
+            return 'app'
+        return 'file'
+
+    def _on_action_type_changed(self, index):
+        if not hasattr(self, 'cmd_inp'):
+            return
+        t = self.action_type_combo.itemData(index) or "app"
+        if t == 'cmd':
+            if not self.cmd_inp.text().strip():
+                self.cmd_inp.setText("cmd.exe")
+            self.cmd_inp.setPlaceholderText("Command e.g. cmd.exe, /k ...")
+        elif t == 'powershell':
+            if not self.cmd_inp.text().strip():
+                self.cmd_inp.setText("powershell.exe")
+            self.cmd_inp.setPlaceholderText("PowerShell command or script...")
+        elif t == 'folder':
+            self.cmd_inp.setPlaceholderText("Folder path e.g. @sel.dir, C:\\Users...")
+        elif t == 'url':
+            self.cmd_inp.setPlaceholderText("Web address e.g. https://...")
+        elif t == 'python':
+            self.cmd_inp.setPlaceholderText("Python script or command...")
+        else:
+            self.cmd_inp.setPlaceholderText("Target executable or application...")
+
+    def _on_browse_target_clicked(self):
+        t = self.action_type_combo.currentData() if hasattr(self, 'action_type_combo') else "app"
+        if t == 'folder':
+            self._browse_dir_for_cmd()
+            return
+        if t in ('app', 'file', 'python'):
+            self._browse_program()
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #1e1e24;
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item { padding: 6px 20px; border-radius: 6px; }
+            QMenu::item:selected { background-color: #e78284; color: #232634; }
+        """)
+        f_act = menu.addAction("📄  Browse File / Executable...")
+        d_act = menu.addAction("📁  Browse Folder...")
+        chosen = menu.exec_(self.shortcut_browse.mapToGlobal(QPoint(0, self.shortcut_browse.height() + 2)))
+        if chosen == f_act:
+            self._browse_program()
+        elif chosen == d_act:
+            self._browse_dir_for_cmd()
+
+    def _browse_dir_for_cmd(self):
+        f = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if f:
+            norm = os.path.normpath(f)
+            self.cmd_inp.setText(norm)
+            if hasattr(self, 'action_type_combo'):
+                idx_t = self.action_type_combo.findData('folder')
+                if idx_t >= 0:
+                    self.action_type_combo.setCurrentIndex(idx_t)
+            if not self.t_inp.text().strip():
+                self.t_inp.setText(os.path.basename(norm))
+
+    def _browse_dir(self):
+        f = QFileDialog.getExistingDirectory(self, "Select Working Directory")
+        if f:
+            norm = os.path.normpath(f)
+            self.dir_inp.setText(norm)
 
     def _populate_args_combo(self, cmd_text):
         if getattr(self, 'args_combo', None) is None:
@@ -1172,22 +1601,31 @@ class ItemConfigDialog(QDialog):
         self.args_combo.blockSignals(False)
 
     def _on_cmd_changed(self, text):
-        if hasattr(self, 'mode_cmd_btn') and not self.mode_cmd_btn.isChecked() and not self.mode_pipeline_btn.isChecked():
-            self._set_target_mode(1)
         self._populate_args_combo(text)
 
     def _on_arg_preset_selected(self, index):
         if index <= 0 or getattr(self, 'args_inp', None) is None:
             return
-        if hasattr(self, 'mode_cmd_btn') and not self.mode_cmd_btn.isChecked() and not self.mode_pipeline_btn.isChecked():
-            self._set_target_mode(1)
         val = self.args_combo.itemData(index) or ""
         if val:
-            cur = self.args_inp.text().strip()
-            if cur:
-                self.args_inp.setText(f"{cur} {val}")
+            if val == 'admin=true':
+                if hasattr(self, 'admin_switch'):
+                    self.admin_switch.setChecked(True)
+            elif val.startswith('window='):
+                w_state = val.split('=', 1)[1]
+                if hasattr(self, 'window_combo'):
+                    idx = self.window_combo.findData(w_state)
+                    if idx >= 0:
+                        self.window_combo.setCurrentIndex(idx)
+            elif val == 'wait=true':
+                if hasattr(self, 'wait_switch'):
+                    self.wait_switch.setChecked(True)
             else:
-                self.args_inp.setText(val)
+                cur = self.args_inp.text().strip()
+                if cur:
+                    self.args_inp.setText(f"{cur} {val}")
+                else:
+                    self.args_inp.setText(val)
         self.args_combo.setCurrentIndex(0)
         self._sync_live_code()
 
@@ -1195,9 +1633,12 @@ class ItemConfigDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Select Program or File", "", "All Files (*.*);;Executables (*.exe *.bat *.cmd *.ps1)")
         if path:
             norm = os.path.normpath(path)
-            self.shortcut_path_inp.setText(norm)
-            if self.cmd_inp:
-                self.cmd_inp.setText(f'"{norm}"')
+            self.cmd_inp.setText(norm)
+            if hasattr(self, 'action_type_combo'):
+                det_type = self._detect_action_type(norm)
+                idx_t = self.action_type_combo.findData(det_type)
+                if idx_t >= 0:
+                    self.action_type_combo.setCurrentIndex(idx_t)
             if not self.t_inp.text().strip():
                 base = os.path.splitext(os.path.basename(path))[0]
                 self.t_inp.setText(base.replace('-', ' ').replace('_', ' ').title())
@@ -1297,7 +1738,7 @@ class ItemConfigDialog(QDialog):
 
     def _sync_live_code(self):
         """Generates live NSS code string and reflects it into the code edit."""
-        if not hasattr(self, 'code_edit') or self._is_updating_code or self.code_edit.hasFocus():
+        if not hasattr(self, 'code_edit') or self._is_updating_code or getattr(self, '_code_manually_edited', False) or self.code_edit.hasFocus():
             return
         self._is_updating_code = True
         try:
@@ -1342,7 +1783,7 @@ class ItemConfigDialog(QDialog):
             p.pop('icon', None)
 
         if self.kind == "item":
-            if hasattr(self, 'mode_pipeline_btn') and self.mode_pipeline_btn.isChecked():
+            if hasattr(self, 'mode_sequence_btn') and self.mode_sequence_btn.isChecked():
                 comp_cmd, comp_args = self._compile_pipeline_command()
                 if comp_cmd:
                     p['cmd'] = comp_cmd
@@ -1353,7 +1794,7 @@ class ItemConfigDialog(QDialog):
                 else:
                     p.pop('args', None)
                 p.pop('dir', None)
-            elif hasattr(self, 'mode_cmd_btn') and self.mode_cmd_btn.isChecked():
+            else:
                 c = self.cmd_inp.text().strip() if self.cmd_inp else ''
                 a = self.args_inp.text().strip() if self.args_inp else ''
                 d = self.dir_inp.text().strip() if self.dir_inp else ''
@@ -1369,14 +1810,23 @@ class ItemConfigDialog(QDialog):
                     p['dir'] = d
                 else:
                     p.pop('dir', None)
+
+            if hasattr(self, 'admin_switch') and self.admin_switch and self.admin_switch.isChecked():
+                p['admin'] = 'true'
             else:
-                sp = self.shortcut_path_inp.text().strip() if self.shortcut_path_inp else ''
-                if sp:
-                    p['cmd'] = f'"{sp}"' if ('\\' in sp or '/' in sp) and not sp.startswith('"') else sp
+                p.pop('admin', None)
+            if hasattr(self, 'window_combo') and self.window_combo:
+                w = self.window_combo.currentData()
+                if w:
+                    p['window'] = w
                 else:
-                    p.pop('cmd', None)
-                p.pop('args', None)
-                p.pop('dir', None)
+                    p.pop('window', None)
+            else:
+                p.pop('window', None)
+            if hasattr(self, 'wait_switch') and self.wait_switch and self.wait_switch.isChecked():
+                p['wait'] = 'true'
+            else:
+                p.pop('wait', None)
 
         if hasattr(self, 'vis_widget') and self.vis_widget:
             v = self.vis_widget.get_value()
@@ -1420,7 +1870,7 @@ class ItemConfigDialog(QDialog):
         return txt
 
     def get_props(self):
-        if hasattr(self, 'code_container') and self.code_container.isVisible() and hasattr(self, 'code_edit'):
+        if (getattr(self, '_code_manually_edited', False) or (hasattr(self, 'code_container') and self.code_container.isVisible())) and hasattr(self, 'code_edit'):
             code_text = self.code_edit.toPlainText().strip()
             lexer = NSSLexer(code_text)
             tokens = lexer.tokenize()
@@ -1572,7 +2022,7 @@ class BuilderItemCard(QFrame):
 
             self.add_in_btn = PillPushButton("+ Add Inside ▾", "secondary", height=28)
             self.add_in_btn.setFixedWidth(104)
-            self.add_in_btn.setFont(QFont("Segoe UI Variable Text", 8, QFont.Bold))
+            self.add_in_btn.setFont(QFont("Google Sans", 8, QFont.Bold))
             self.add_in_btn.clicked.connect(self._show_add_inside_menu)
             al.addWidget(self.add_in_btn)
         else:
@@ -1795,13 +2245,25 @@ class BuilderItemCard(QFrame):
             elif cmd.lower().endswith('.exe') or '.exe ' in cmd.lower():
                 self._add_badge("App", "#a6d189")
 
-        raw_args = str(props.get('args', '')).strip('\'"')
+        raw_args = str(props.get('args', props.get('arg', ''))).strip('\'"')
         if raw_args:
             self._add_badge("Args", "#8caaee")
 
         admin = str(props.get('admin', '')).lower()
         if admin in ('true', '1') or 'runas' in cmd.lower():
-            self._add_badge("Admin", "#e78284")
+            self._add_badge("🛡️ Admin", "#e78284")
+
+        win = str(props.get('window', '')).strip('\'" ').lower()
+        if win and win not in ('normal', 'default', ''):
+            self._add_badge(f"🪟 {win.title()}", "#babbf1")
+
+        dir_v = str(props.get('dir', '')).strip('\'"')
+        if dir_v:
+            self._add_badge(f"Dir: {dir_v}", "#81c8be")
+
+        wait_v = str(props.get('wait', '')).lower()
+        if wait_v in ('true', '1'):
+            self._add_badge("⏳ Wait", "#e5c890")
 
         sep = str(props.get('sep', '')).strip('\'"')
         if sep and sep.lower() not in ("none", "false", "0"):
@@ -1828,7 +2290,7 @@ class BuilderItemCard(QFrame):
 
     def _add_badge(self, text, color):
         lbl = QLabel(text)
-        lbl.setFont(QFont("Segoe UI Variable Text", 8, QFont.Bold))
+        lbl.setFont(QFont("Google Sans", 8, QFont.Bold))
         c = QColor(color)
         bg_rgba = f"rgba({c.red()}, {c.green()}, {c.blue()}, 0.16)"
         border_rgba = f"rgba({c.red()}, {c.green()}, {c.blue()}, 0.42)"
@@ -1897,7 +2359,7 @@ class MenuBuilderWidget(QWidget):
         self.custom_file_btn = QPushButton(" ★ custom.nss (Default)")
         self.custom_file_btn.setFixedHeight(36)
         self.custom_file_btn.setCursor(Qt.PointingHandCursor)
-        self.custom_file_btn.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        self.custom_file_btn.setFont(QFont("Google Sans", 9, QFont.Bold))
         self.custom_file_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(231, 130, 132, 0.15);
@@ -1955,7 +2417,7 @@ class MenuBuilderWidget(QWidget):
         head.addWidget(add_item_btn)
 
         add_menu_btn = PillPushButton("+ New Menu", "secondary", height=34)
-        add_menu_btn.setFont(QFont("Segoe UI Variable Text", 9, QFont.Bold))
+        add_menu_btn.setFont(QFont("Google Sans", 9, QFont.Bold))
         add_menu_btn.clicked.connect(self._open_add_menu_dialog)
         head.addWidget(add_menu_btn)
 
@@ -2167,7 +2629,7 @@ class MenuBuilderWidget(QWidget):
             btn = QPushButton(f"  {fn}")
             btn.setFixedHeight(32)
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setFont(QFont("Segoe UI Variable Text", 9))
+            btn.setFont(QFont("Google Sans", 9))
             is_active = os.path.normpath(self.current_file) == os.path.normpath(fp)
             if is_active:
                 btn.setStyleSheet("""
@@ -2480,8 +2942,7 @@ class MenuBuilderWidget(QWidget):
         self._detach_item(item_data)
         self._save_items_to_file()
 
-    def _delete_child_item(self, parent_menu, child_item):
-        self._delete_item(child_item, confirm=True)
+
 
     def _move_item_up(self, item_data):
         if item_data in self.items:
@@ -2557,15 +3018,19 @@ class MenuBuilderWidget(QWidget):
                 return f"{indent}{tag}{header.strip()}"
             return header
 
-    def _check_shell_log_errors(self):
-        """Monitors shell.log for syntax errors in the current file."""
+    def _check_shell_log_errors(self, log_size_before=0):
+        """Monitors shell.log for syntax errors in current file from latest reload only."""
         log_path = os.path.join(self.root, "shell.log")
         if not os.path.exists(log_path):
             return None
         try:
+            curr_size = os.path.getsize(log_path)
+            if curr_size <= log_size_before:
+                return None
             with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-            entries = parse_log_entries(content)
+                f.seek(log_size_before)
+                new_content = f.read()
+            entries = parse_log_entries(new_content)
             cur_fn = os.path.basename(self.current_file).lower()
             for ent in reversed(entries):
                 if ent.level == 'error' and os.path.basename(ent.filename).lower() == cur_fn:
@@ -2574,32 +3039,33 @@ class MenuBuilderWidget(QWidget):
             pass
         return None
 
-    def _find_item_by_line(self, line_num):
+    def _assign_item_line_ranges(self, items, start_line):
+        cur = start_line
+        for it in items:
+            t = it.get('type', 'item').lower()
+            it['_line_start'] = cur
+            if t == "menu":
+                cur += 2  # header line + '{' line
+                cur = self._assign_item_line_ranges(it.get('children', []), cur)
+                cur += 1  # '}' line
+            else:
+                blk = self._serialize_item_block(it)
+                cur += max(1, len(blk.splitlines()))
+            it['_line_end'] = cur - 1
+            cur += 1  # blank line between root blocks
+        return cur
+
+    def _find_item_by_line(self, line_num, items=None):
         """Finds item in self.items whose line in file matches error line."""
-        try:
-            content = read_file(self.current_file)
-            lines = content.splitlines()
-            if 0 <= line_num - 1 < len(lines):
-                target_line = lines[line_num - 1].strip()
-                # Check root items
-                for it in self.items:
-                    props = it.get('props', {})
-                    t = it.get('type')
-                    title = str(props.get('title', '')).strip('\'"')
-                    cmd = str(props.get('cmd', '')).strip('\'"')
-                    if (title and title in target_line) or (cmd and cmd in target_line):
-                        return it
-                    for ch in it.get('children', []):
-                        ch_p = ch.get('props', {})
-                        ch_t = str(ch_p.get('title', '')).strip('\'"')
-                        ch_c = str(ch_p.get('cmd', '')).strip('\'"')
-                        if (ch_t and ch_t in target_line) or (ch_c and ch_c in target_line):
-                            return ch
-        except Exception:
-            pass
-        # Fallback to last added/edited item
-        if self.items:
-            return self.items[-1]
+        if items is None:
+            items = self.items
+        for it in items:
+            if it.get('_line_start', 0) <= line_num <= it.get('_line_end', 0):
+                if it.get('children'):
+                    ch = self._find_item_by_line(line_num, it['children'])
+                    if ch:
+                        return ch
+                return it
         return None
 
     def _save_items_to_file(self, skip_log_check=False):
@@ -2611,6 +3077,12 @@ class MenuBuilderWidget(QWidget):
         header_comment = f"// Managed by iMA Menu Launcher\n\n"
         full_content = header_comment + "\n\n".join(blocks) + "\n"
 
+        # Assign accurate line numbers for error mapping
+        self._assign_item_line_ranges(self.items, start_line=3)
+
+        log_path = os.path.join(self.root, "shell.log")
+        log_size_before = os.path.getsize(log_path) if os.path.exists(log_path) else 0
+
         safe_file_write(self.current_file, full_content)
         self._ensure_file_imported_in_shell(self.current_file)
 
@@ -2620,7 +3092,7 @@ class MenuBuilderWidget(QWidget):
         # Check shell.log for syntax errors
         if not skip_log_check:
             # Let shell engine process
-            err = self._check_shell_log_errors()
+            err = self._check_shell_log_errors(log_size_before)
             if err:
                 offending_item = self._find_item_by_line(err.line)
                 if offending_item and not offending_item.get('is_draft'):

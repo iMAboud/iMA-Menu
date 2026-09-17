@@ -16,7 +16,7 @@ class StandaloneSVGManager(QDialog):
         self.setMinimumWidth(520)
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #1e1e24; color: #ffffff; border: 1px solid rgba(231, 130, 132, 0.6); border-radius: 8px; padding: 6px 12px; }")
+        self.setStyleSheet("QToolTip { background-color: #18181c; color: #ffffff; border: 1.5px solid rgba(231, 130, 132, 0.7); border-radius: 14px; padding: 5px 15px; font-family: 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: bold; }")
         self._drag_pos = None
         self.setup_ui()
 

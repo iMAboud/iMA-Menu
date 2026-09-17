@@ -1,8 +1,6 @@
 import sys
 import os
 import struct
-import zlib
-import base64
 import json
 import tempfile
 import shutil
@@ -21,12 +19,14 @@ for env_key in list(os.environ.keys()):
     if env_key.startswith('_MEI'):
         os.environ.pop(env_key, None)
 import functools
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-                             QDialogButtonBox, QUndoStack, QUndoCommand, QScrollArea, 
-                             QWidget, QFrame, QLayout, QComboBox, QListView, QStyledItemDelegate, QStyle, QLineEdit)
-from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QImage, QLinearGradient
-from PyQt5.QtCore import (Qt, QRunnable, pyqtSignal, QObject, QThreadPool, QEvent, 
-                          QSize, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, QTimer, QVariantAnimation)
+from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+                             QUndoStack, QUndoCommand, QScrollArea, 
+                             QWidget, QFrame, QLayout, QComboBox, QListView, QStyledItemDelegate, QStyle, QLineEdit,
+                             QGraphicsOpacityEffect, QStackedWidget, QCheckBox)
+from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QLinearGradient
+from PyQt5.QtCore import (Qt, QRunnable, pyqtSignal, QObject, QThreadPool, 
+                          QSize, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, QTimer, QVariantAnimation,
+                          QSequentialAnimationGroup, QParallelAnimationGroup, QEvent)
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
 
@@ -96,9 +96,6 @@ def generate_glyphs_data():
     base_dir = _base_path
     out_path = os.path.join(base_dir, 'glyphs_data.py')
     content = '''# Auto-generated lightweight glyphs data forwarder
-import os
-import json
-
 def get_glyphs_data():
     try:
         from utils import get_glyphs_data as _get_data
@@ -184,6 +181,186 @@ def get_glyphs_data():
 
 NILESOFT_FONT_FAMILY = 'Nilesoft.Shell'
 _font_initialized = False
+_app_fonts_initialized = False
+
+def init_app_fonts():
+    """Initializes and registers all bundled fonts, GDI session resources, and Arabic fallbacks."""
+    global _app_fonts_initialized
+    if _app_fonts_initialized:
+        return
+    _app_fonts_initialized = True
+
+    _init_nilesoft_font()
+
+    fonts_dir = resource_path('fonts')
+    if not os.path.exists(fonts_dir):
+        fonts_dir = os.path.join(os.path.dirname(resource_path('')), 'fonts')
+
+    user_fonts_dir = os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\Windows\Fonts')
+    has_user_fonts_dir = False
+    try:
+        os.makedirs(user_fonts_dir, exist_ok=True)
+        has_user_fonts_dir = True
+    except Exception:
+        pass
+
+    reg_key = None
+    if os.name == 'nt' and has_user_fonts_dir:
+        try:
+            import winreg
+            reg_key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r'Software\Microsoft\Windows NT\CurrentVersion\Fonts',
+                0,
+                winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
+            )
+        except Exception:
+            reg_key = None
+
+    installed_any = False
+    if os.path.exists(fonts_dir):
+        for fname in os.listdir(fonts_dir):
+            if fname.lower().endswith(('.ttf', '.otf')) and fname.lower() != 'nilesoft.ttf':
+                fpath = os.path.join(fonts_dir, fname)
+                try:
+                    QFontDatabase.addApplicationFont(fpath)
+                except Exception:
+                    pass
+
+                if os.name == 'nt':
+                    try:
+                        ctypes.windll.gdi32.AddFontResourceExW(fpath, 0x10, 0)
+                        if has_user_fonts_dir and reg_key:
+                            user_dest = os.path.join(user_fonts_dir, fname)
+                            if not os.path.exists(user_dest):
+                                try:
+                                    shutil.copy2(fpath, user_dest)
+                                except Exception:
+                                    user_dest = fpath
+                            val_name = f"{os.path.splitext(fname)[0]} (TrueType)"
+                            try:
+                                import winreg
+                                winreg.QueryValueEx(reg_key, val_name)
+                            except Exception:
+                                try:
+                                    winreg.SetValueEx(reg_key, val_name, 0, winreg.REG_SZ, user_dest)
+                                    ctypes.windll.gdi32.AddFontResourceW(user_dest)
+                                    installed_any = True
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+
+    if reg_key:
+        try:
+            import winreg
+            winreg.CloseKey(reg_key)
+            if installed_any:
+                ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001D, 0, 0, 2, 500, None)
+        except Exception:
+            pass
+
+    # Configure robust font substitutions so Arabic always falls back cleanly to Marhey / Cairo
+    # and Google Sans is prioritized as modern app font across all UI widgets
+    try:
+        QFont.insertSubstitutions('Segoe UI Variable Display', ['Google Sans', 'Marhey', 'Cairo', 'Segoe UI Variable Display', 'Segoe UI'])
+        QFont.insertSubstitutions('Segoe UI Variable Text', ['Google Sans', 'Marhey', 'Cairo', 'Segoe UI Variable Text', 'Segoe UI'])
+        QFont.insertSubstitutions('Segoe UI', ['Google Sans', 'Marhey', 'Cairo', 'Segoe UI'])
+        QFont.insertSubstitutions('Google Sans', ['Google Sans', 'Marhey', 'Cairo', 'Segoe UI'])
+        QFont.insertSubstitutions('Google Sans Medium', ['Google Sans Medium', 'Google Sans', 'Marhey', 'Cairo', 'Segoe UI'])
+        for modern_f in ('Inter', 'Outfit', 'Poppins', 'Plus Jakarta Sans', 'JetBrains Mono'):
+            QFont.insertSubstitutions(modern_f, [modern_f, 'Marhey', 'Cairo', 'Segoe UI'])
+    except Exception:
+        pass
+
+def get_supported_theme_fonts():
+    """Returns a curated list of priority modern/Arabic/Windows fonts + clean installed system fonts."""
+    init_app_fonts()
+    priority_fonts = [
+        # Modern Google Sans & Windows 11 Defaults
+        "Google Sans",
+        "Google Sans Medium",
+        "Segoe UI Variable Text",
+        "Segoe UI Variable Display",
+        "Segoe UI",
+        # Arabic Modern Fonts
+        "Marhey",
+        "Cairo",
+        # Modern English Google Fonts
+        "Inter",
+        "Outfit",
+        "Poppins",
+        "Plus Jakarta Sans",
+        "JetBrains Mono",
+        # Windows Clean UI Sans-Serif
+        "Bahnschrift",
+        "Calibri",
+        "Candara",
+        "Cascadia Code",
+        "Cascadia Mono",
+        "Century Gothic",
+        "Corbel",
+        "Franklin Gothic Medium",
+        "Lucida Sans Unicode",
+        "Trebuchet MS",
+        "Verdana",
+        "Tahoma",
+        "Arial",
+        "Arial Black",
+        # Windows Monospace
+        "Consolas",
+        "Courier New",
+        "Lucida Console",
+        # Windows Serif & Classic
+        "Cambria",
+        "Constantia",
+        "Garamond",
+        "Georgia",
+        "Palatino Linotype",
+        "Sitka Text",
+        "Sitka Display",
+        "Times New Roman",
+        # Pre-installed Windows Arabic Fonts
+        "Traditional Arabic",
+        "Simplified Arabic",
+        "Arabic Typesetting",
+        "Sakkal Majalla",
+        "Aldhabi",
+        "Andalus",
+        "Urdu Typesetting",
+        # Casual & Display
+        "Comic Sans MS",
+        "Gabriola",
+        "Impact",
+        "Ink Free",
+        "Segoe Print",
+        "Segoe Script",
+    ]
+
+    try:
+        db = QFontDatabase()
+        installed = db.families()
+        priority_set = {pf.lower() for pf in priority_fonts}
+        ignored_substrings = (
+            "mdl2", "fluent", "nilesoft", "webdings", "wingdings", 
+            "symbol", "marlett", "outlook", "extra", "semibold", 
+            "bold", "light", "medium", "black", "condensed", "extralight",
+            "semilight", "semicondensed"
+        )
+        extra_fonts = []
+        for f in installed:
+            f_clean = f.strip()
+            if not f_clean or f_clean.startswith("@") or f_clean.lower() in priority_set:
+                continue
+            lower_f = f_clean.lower()
+            if any(sub in lower_f for sub in ignored_substrings):
+                continue
+            extra_fonts.append(f_clean)
+        
+        extra_fonts.sort()
+        return priority_fonts + extra_fonts
+    except Exception:
+        return priority_fonts
 
 def _init_nilesoft_font():
     global NILESOFT_FONT_FAMILY, _font_initialized
@@ -255,138 +432,28 @@ def get_mdl2_icon(glyph_code, size=32, color='#ffffff'):
         _mdl2_icon_cache[cache_key] = icon
     return icon
 
-def generate_theme_preview(nss_path, output_png_path):
-    theme_data = {}
-    if os.path.exists(nss_path):
-        with open(nss_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('theme') or line.startswith('{') or line.startswith('}'): continue
-                if '=' in line:
-                    key, value = line.split('=', 1)
-                    theme_data[key.strip()] = value.strip().strip('"\'')
-    
-    def get_int(key, default_val):
-        val = theme_data.get(key, str(default_val))
-        try:
-            return int(val)
-        except ValueError:
-            return default_val
 
-    bg_color = QColor(theme_data.get("background.color", "#2b2b2b"))
-    if bg_color.name() == "#000000" and theme_data.get("background.color") == "default":
-        bg_color = QColor("#2b2b2b")
-        
-    bg_opacity = get_int("background.opacity", 100)
-    border_color = QColor(theme_data.get("border.color", "#bf616a"))
-    border_size = get_int("border.size", 1)
-    text_color = QColor(theme_data.get("item.text.normal", "#ffffff"))
-    if text_color.name() == "#000000" and theme_data.get("item.text.normal") == "default":
-        text_color = QColor("#ffffff")
-        
-    border_radius = get_int("border.radius", 10)
-    if border_radius < 10:
-        border_radius = 16
-        
-    bg_image_path = theme_data.get("background.image", "")
-    bg_color.setAlpha(int(bg_opacity * 2.55))
-    
-    w, h = 260, 310
-    margin = 25
-    img = QImage(w, h, QImage.Format_ARGB32)
-    img.fill(Qt.transparent)
-    
-    painter = QPainter(img)
-    painter.setRenderHint(QPainter.Antialiasing)
-    painter.setRenderHint(QPainter.TextAntialiasing)
-    painter.setRenderHint(QPainter.SmoothPixmapTransform)
-    
-    shadow_enabled = theme_data.get("shadow.enabled", "true") == "true"
-    if shadow_enabled:
-        shadow_color = QColor(theme_data.get("shadow.color", "#000000"))
-        shadow_opacity = get_int("shadow.opacity", 20)
-        shadow_color.setAlpha(int(shadow_opacity * 2.55))
-        painter.setPen(Qt.NoPen)
-        for i in range(1, 6):
-            c = QColor(shadow_color)
-            c.setAlpha(int(c.alpha() / i))
-            painter.setBrush(c)
-            painter.drawRoundedRect(QRectF(margin + i, margin + i, w - margin*2, h - margin*2), border_radius + 2, border_radius + 2)
-        
-    menu_rect = QRectF(margin, margin, w - margin*2, h - margin*2)
-    path = QPainterPath()
-    path.addRoundedRect(menu_rect, border_radius, border_radius)
-    painter.setClipPath(path)
-    
-    if bg_image_path and os.path.exists(bg_image_path):
-        bg_pixmap = QPixmap(bg_image_path)
-        if not bg_pixmap.isNull():
-            box_w = int(w - margin*2)
-            box_h = int(h - margin*2)
-            bg_pixmap = bg_pixmap.scaled(box_w, box_h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            px_x = margin - (bg_pixmap.width() - box_w) / 2
-            px_y = margin - (bg_pixmap.height() - box_h) / 2
-            painter.drawPixmap(int(px_x), int(px_y), bg_pixmap)
-            
-            overlay_color = QColor(bg_color)
-            overlay_color.setAlpha(int(min(255, bg_opacity * 2.55 + 50))) 
-            painter.fillRect(menu_rect, overlay_color)
-    else:
-        painter.fillPath(path, bg_color)
-        
-    painter.setClipping(False)
-    
-    if border_size > 0:
-        pen = QPen(border_color, border_size)
-        painter.setPen(pen)
-        painter.drawRoundedRect(menu_rect, border_radius, border_radius)
-    
-    items = [
-        ("\uE81C", "Refresh", ""),
-        ("\uE8A7", "Options", ">"),
-        ("\uE713", "Manage", ">"),
-        ("\uE7B3", "Valorant", ">"),
-        ("\uE896", "Download", "")
-    ]
-    
-    font_name = theme_data.get("font.name", "Segoe UI Variable Text")
-    font_size_str = theme_data.get("font.size", "15")
-    try: font_size = int(font_size_str)
-    except ValueError: font_size = 15
-        
-    if font_name in ("auto", "default"): font_name = "Segoe UI Variable Text"
-    font = QFont(font_name, max(9, font_size - 3))
-    icon_font = QFont("Segoe Fluent Icons", max(10, font_size - 1))
-    
-    item_h = 36
-    y = margin + 30
-    
-    for icon, text, arrow in items:
-        painter.setFont(icon_font)
-        painter.setPen(text_color)
-        painter.drawText(margin + 18, y, 30, item_h, Qt.AlignLeft | Qt.AlignVCenter, icon)
-        
-        painter.setFont(font)
-        painter.drawText(margin + 58, y, w - margin*2 - 80, item_h, Qt.AlignLeft | Qt.AlignVCenter, text)
-        
-        if arrow:
-            painter.setFont(icon_font)
-            painter.drawText(margin + 20, y, w - margin*2 - 40, item_h, Qt.AlignRight | Qt.AlignVCenter, "\uE76C")
-            
-        y += item_h + 8
-            
-    painter.end()
-    img.save(output_png_path)
 
 class NSSAutoFixer:
+    @staticmethod
+    def _fix_corrupted_expressions(text):
+        def _heal(m):
+            k = m.group(1)
+            raw = m.group(2)
+            cleaned = raw.replace("\\\\'", "'").replace("\\'", "'")
+            return f"{k}{cleaned}"
+        return re.sub(r"""(\b\w+\s*=\s*)(?:'\\'|')(?:\\')?(@?if\s*\(.*?\))(?:\\')?(?:\\''|')""", _heal, text)
+
     @staticmethod
     def fix_line(line, column=0, message=""):
         fixed_line = line
         if column > 0 and column <= len(line):
             fixed_line = NSSAutoFixer._fix_at_column(line, column, message)
         
+        fixed_line = NSSAutoFixer._fix_corrupted_expressions(fixed_line)
         if fixed_line == line:
             fixed_line = re.sub(r'=\s*[/\\@#$^&*]+\s*([\'"])', r'=\1', fixed_line)
+            fixed_line = re.sub(r'\bmode\s*=\s*multiple\b', "mode='multiple'", fixed_line)
             fixed_line = NSSAutoFixer._fix_unclosed_quotes(fixed_line)
             fixed_line = NSSAutoFixer._try_fix_quotes(fixed_line)
             fixed_line = NSSAutoFixer._fix_unbalanced_delimiters(fixed_line)
@@ -394,16 +461,18 @@ class NSSAutoFixer:
 
     @staticmethod
     def fix_content(content):
+        content = NSSAutoFixer._fix_corrupted_expressions(content)
         content = re.sub(r"=''([^']+)''", r"='\1'", content)
         content = re.sub(r'=""([^"]+)""', r'="\1"', content)
         content = re.sub(r'(\b(?:menu|pos|title|find|image|icon)\s*=\s*)\(\s*(["\'][^"\']*["\'])\s*\)', r'\1\2)', content)
+        content = re.sub(r'\bmode\s*=\s*multiple\b', "mode='multiple'", content)
         
         lines = content.splitlines(keepends=True)
         healed_lines = []
         for line in lines:
             fixed = NSSAutoFixer.fix_line(line)
             if re.search(r'(?i)\b(tip|image|icon)\s*=\s*(?![\[])[^\r\n,)]+,', fixed):
-                fixed = re.sub(r'((?i)\b(?:tip|image|icon)\s*=\s*)([^\s\[][^)]*?,(?:(?!\s[a-z_.]+\s*=)[^)])*)', r'\1[\2', fixed)
+                fixed = re.sub(r'(?i)(\b(?:tip|image|icon)\s*=\s*)([^\s\[][^)]*?,(?:(?!\s[a-z_.]+\s*=)[^)])*)', r'\1[\2', fixed)
                 fixed = NSSAutoFixer._fix_unbalanced_delimiters(fixed)
             healed_lines.append(fixed)
             
@@ -536,12 +605,14 @@ class PillPushButton(QPushButton):
         if height:
             self.setFixedHeight(height)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFont(QFont("Segoe UI Variable Display", 9, QFont.Bold))
+        self.setFont(QFont("Google Sans", 11, QFont.Bold))
         self.setAttribute(Qt.WA_Hover, True)
-        self.setStyleSheet("background: transparent; border: none; outline: none;")
+        self.setStyleSheet("background: transparent; border: none; outline: none; font-weight: bold; font-size: 11px;")
 
     def sizeHint(self):
-        fm = self.fontMetrics()
+        font = QFont("Google Sans", 11, QFont.Bold)
+        font.setBold(True)
+        fm = QFontMetrics(font)
         w = fm.horizontalAdvance(self.text().strip()) + 32
         if self.icon_code:
             w += 22
@@ -603,13 +674,15 @@ class PillPushButton(QPushButton):
         p.setPen(QPen(border, 1.5))
         p.drawPath(path)
 
-        p.setFont(self.font())
+        btn_font = QFont("Google Sans", 11, QFont.Bold)
+        btn_font.setBold(True)
+        p.setFont(btn_font)
         p.setPen(fg)
 
         txt = self.text()
+        fm = QFontMetrics(btn_font)
         if self.icon_code:
             icon_pix = get_mdl2_icon(self.icon_code, 14, fg.name()).pixmap(14, 14)
-            fm = self.fontMetrics()
             txt_w = fm.horizontalAdvance(txt.strip())
             total_w = 14 + 6 + txt_w
             start_x = (self.width() - total_w) / 2.0
@@ -632,7 +705,7 @@ class PillLineEdit(QLineEdit):
         if height:
             self.setFixedHeight(height)
         self.setAttribute(Qt.WA_Hover, True)
-        self.setFont(QFont("Segoe UI Variable Text", 9))
+        self.setFont(QFont("Google Sans", 9))
         self.setStyleSheet("""
             QLineEdit {
                 background: transparent;
@@ -912,80 +985,166 @@ class AsyncFileIo:
 
 def validate_nss_syntax(content):
     stack = []
-    in_string = False
-    string_char = ''
-    is_triple = False
-    in_comment = False
-    in_multiline_comment = False
-
     i = 0
     n = len(content)
+
     while i < n:
-        char = content[i]
+        c = content[i]
 
-        if in_comment:
-            if char == '\n':
-                in_comment = False
-            i += 1
-            continue
-
-        if in_multiline_comment:
-            if char == '*' and i + 1 < n and content[i+1] == '/':
-                in_multiline_comment = False
+        # Comments
+        if c == '/' and i + 1 < n:
+            n1 = content[i + 1]
+            if n1 == '/':
                 i += 2
+                while i < n and content[i] != '\n':
+                    i += 1
                 continue
-            i += 1
-            continue
-
-        if in_string:
-            if is_triple:
-                if content[i:i+3] == string_char * 3:
-                    in_string = False
-                    is_triple = False
-                    i += 3
-                    continue
-            else:
-                if char == string_char and (i == 0 or content[i-1] != '\\'):
-                    in_string = False
-            i += 1
-            continue
-
-        if char == '/' and i + 1 < n:
-            next_char = content[i+1]
-            if next_char == '/':
-                in_comment = True
+            elif n1 == '*':
                 i += 2
-                continue
-            elif next_char == '*':
-                in_multiline_comment = True
-                i += 2
+                closed = False
+                while i + 1 < n:
+                    if content[i] == '*' and content[i + 1] == '/':
+                        i += 2
+                        closed = True
+                        break
+                    i += 1
+                if not closed:
+                    return False
                 continue
 
-        if char in ('"', "'"):
-            in_string = True
-            string_char = char
-            if i + 2 < n and content[i:i+3] == char * 3:
-                is_triple = True
+        # Double-quoted string: "..."
+        if c == '"':
+            if i + 2 < n and content[i:i+3] == '"""':
                 i += 3
+                closed = False
+                while i + 2 < n:
+                    if content[i:i+3] == '"""':
+                        i += 3
+                        closed = True
+                        break
+                    i += 1
+                if not closed:
+                    return False
                 continue
+            else:
+                i += 1
+                closed = False
+                while i < n:
+                    ch = content[i]
+                    if ch == '\\':
+                        i += 2
+                        continue
+                    elif ch == '"':
+                        closed = True
+                        i += 1
+                        break
+                    i += 1
+                if not closed:
+                    return False
+                continue
+
+        # Backtick string: `...`
+        if c == '`':
             i += 1
+            closed = False
+            while i < n:
+                ch = content[i]
+                if ch == '`':
+                    closed = True
+                    i += 1
+                    break
+                i += 1
+            if not closed:
+                return False
             continue
 
-        if char in ('{', '[', '('):
-            stack.append(char)
-        elif char == '}':
-            if not stack or stack[-1] != '{': return False
+        # Single-quoted string: '...'
+        if c == "'":
+            if i + 2 < n and content[i:i+3] == "'''":
+                i += 3
+                closed = False
+                while i + 2 < n:
+                    if content[i:i+3] == "'''":
+                        i += 3
+                        closed = True
+                        break
+                    i += 1
+                if not closed:
+                    return False
+                continue
+            else:
+                i += 1
+                closed = False
+                while i < n:
+                    ch = content[i]
+                    if ch == '@':
+                        if i + 1 < n and content[i + 1] == '"':
+                            i += 2
+                            while i < n:
+                                if content[i] == '\\':
+                                    i += 2
+                                    continue
+                                elif content[i] == '"':
+                                    i += 1
+                                    break
+                                i += 1
+                            continue
+
+                        m = re.match(r'^(?:[a-zA-Z0-9_\.]*\s*)?\(', content[i+1:])
+                        if m:
+                            paren_start = i + 1 + len(m.group(0)) - 1
+                            p_depth = 1
+                            j = paren_start + 1
+                            while j < n and p_depth > 0:
+                                if content[j] == '(':
+                                    p_depth += 1
+                                elif content[j] == ')':
+                                    p_depth -= 1
+                                    if p_depth == 0:
+                                        i = j + 1
+                                        break
+                                elif content[j] in ('"', "'", '`'):
+                                    q = content[j]
+                                    j += 1
+                                    while j < n:
+                                        if q == '"' and content[j] == '\\':
+                                            j += 2
+                                            continue
+                                        elif content[j] == q:
+                                            j += 1
+                                            break
+                                        j += 1
+                                    continue
+                                j += 1
+                            continue
+                    elif ch == "'":
+                        closed = True
+                        i += 1
+                        break
+                    i += 1
+                if not closed:
+                    return False
+                continue
+
+        # Delimiters
+        if c in ('(', '[', '{'):
+            stack.append(c)
+        elif c == ')':
+            if not stack or stack[-1] != '(':
+                return False
             stack.pop()
-        elif char == ']':
-            if not stack or stack[-1] != '[': return False
+        elif c == ']':
+            if not stack or stack[-1] != '[':
+                return False
             stack.pop()
-        elif char == ')':
-            if not stack or stack[-1] != '(': return False
+        elif c == '}':
+            if not stack or stack[-1] != '{':
+                return False
             stack.pop()
 
         i += 1
 
-    return not in_string and not in_multiline_comment and len(stack) == 0
+    return len(stack) == 0 or all(char == '{' for char in stack)
 
 def safe_file_write(filepath, content):
     if filepath.endswith('.nss') and not validate_nss_syntax(content):
@@ -1026,6 +1185,87 @@ def safe_file_write(filepath, content):
                 os.fsync(f.fileno())
         except:
             raise e
+
+def fix_nss_mode_syntax_once(project_root, cache_dir):
+    """One-time fix for unquoted mode=multiple in shell.nss and imports/file-manage.nss.
+    Safely adds quotes so mode='multiple' works, while preserving all other syntax.
+    Ignores files where the syntax is already quoted (mode='multiple' or mode="multiple").
+    """
+    try:
+        stamp_file = os.path.join(cache_dir, 'nss_mode_syntax_fixed.stamp')
+        if os.path.exists(stamp_file):
+            return False
+
+        targets = [
+            os.path.join(project_root, 'shell.nss'),
+            os.path.join(project_root, 'imports', 'file-manage.nss')
+        ]
+
+        launcher_internal = os.path.abspath(os.path.join(os.path.dirname(__file__), '_internal', 'imports', 'file-manage.nss'))
+        if os.path.exists(launcher_internal) and launcher_internal not in targets:
+            targets.append(launcher_internal)
+
+        pattern = re.compile(r'\bmode\s*=\s*multiple\b')
+        modified_any = False
+
+        for file_path in targets:
+            if not os.path.isfile(file_path):
+                continue
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='replace', newline='') as f:
+                    content = f.read()
+            except Exception:
+                continue
+
+            if not pattern.search(content):
+                continue
+
+            lines = content.splitlines(keepends=True)
+            file_changed = False
+            new_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped.startswith('//') and pattern.search(line):
+                    line = pattern.sub("mode='multiple'", line)
+                    file_changed = True
+                new_lines.append(line)
+
+            if file_changed:
+                new_content = "".join(new_lines)
+                try:
+                    temp_dir = os.path.dirname(os.path.abspath(file_path))
+                    fd, temp_path = tempfile.mkstemp(dir=temp_dir, text=True)
+                    with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
+                        f.write(new_content)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(temp_path, file_path)
+                    modified_any = True
+                except Exception:
+                    try:
+                        with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                            f.write(new_content)
+                        modified_any = True
+                    except Exception:
+                        pass
+
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(stamp_file, 'w', encoding='utf-8') as sf:
+                sf.write('1')
+        except Exception:
+            pass
+
+        if modified_any:
+            try:
+                trigger_shell_reload(close_only=True)
+            except Exception:
+                pass
+
+        return modified_any
+    except Exception:
+        return False
+
 
 def terminate_plugin_processes(directory):
     if not directory or not os.path.exists(directory):
@@ -1143,42 +1383,41 @@ def trigger_shell_reload(close_only=False, **kwargs):
             user32.SendMessageW(hwnd_menu, WM_CLOSE, 0, 0)
             hwnd_menu = user32.FindWindowW("#32768", None)
 
-        if send_ipc_command('CMD_RELOAD'):
-            if close_only: return
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
         else:
-            if getattr(sys, 'frozen', False):
-                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-            else:
-                exe_dir = os.path.dirname(os.path.abspath(__file__))
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
 
-            root = exe_dir
-            for _ in range(4):
-                if os.path.exists(os.path.join(root, 'shell.nss')): break
-                p = os.path.dirname(root)
-                if p == root: break
-                root = p
+        root = PROJECT_ROOT or exe_dir
+        for _ in range(4):
+            if os.path.exists(os.path.join(root, 'shell.nss')): break
+            p = os.path.dirname(root)
+            if p == root: break
+            root = p
 
-            if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
-                root = os.path.abspath(os.path.join(exe_dir, '..'))
+        if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
+            root = os.path.abspath(os.path.join(exe_dir, '..'))
 
-            for f in ['shell.nss', 'imports/modify.nss', 'imports/theme.nss']:
-                fp = os.path.normpath(os.path.join(root, f))
-                if os.path.exists(fp):
-                    try:
-                        with open(fp, 'a'): os.utime(fp, None)
-                    except: pass
+        for f in ['shell.nss', 'imports/modify.nss', 'imports/theme.nss']:
+            fp = os.path.normpath(os.path.join(root, f))
+            if os.path.exists(fp):
+                try:
+                    with open(fp, 'a'): os.utime(fp, None)
+                except: pass
 
-            exe = os.path.join(root, 'shell.exe')
-            if os.path.exists(exe):
-                time.sleep(0.05)
-                clean_environment = os.environ.copy()
-                for key in list(clean_environment.keys()):
-                    if key.startswith('_MEI'):
-                        clean_environment.pop(key, None)
-                subprocess.Popen([exe, '-reload'], env=clean_environment, creationflags=0x08000000)
-                time.sleep(0.1)
+        exe = os.path.join(root, 'shell.exe')
+        if os.path.exists(exe):
+            time.sleep(0.05)
+            clean_environment = os.environ.copy()
+            for key in list(clean_environment.keys()):
+                if key.startswith('_MEI'):
+                    clean_environment.pop(key, None)
+            subprocess.Popen([exe, '-reload'], env=clean_environment, creationflags=0x08000000)
+            time.sleep(0.1)
 
-            if close_only: return
+        send_ipc_command('CMD_RELOAD')
+
+        if close_only: return
 
         tray = user32.FindWindowW('Shell_TrayWnd', None)
         if tray: user32.PostMessageW(tray, WM_COMMAND, 28931, 0)
@@ -1288,11 +1527,13 @@ def save_last_image_dir(directory_path):
         pass
 
 class ModernDialog(QDialog):
-    def __init__(self, parent=None, title="Message", text=""):
+    def __init__(self, parent=None, title="Message", text="", width=None, height=None, **kwargs):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(width if width is not None else 400)
+        if height is not None:
+            self.setMinimumHeight(height)
         l = QVBoxLayout(self)
         self.f = QFrame()
         self.f.setObjectName("modalFrame")
@@ -1301,12 +1542,15 @@ class ModernDialog(QDialog):
         self.cl = QVBoxLayout(self.f)
         self.cl.setContentsMargins(30, 30, 30, 30)
         self.cl.setSpacing(15)
+        self.main_layout = self.cl
         self.tl = QLabel(title)
         self.tl.setStyleSheet("color: white; font-size: 20px; font-weight: bold; border: none;")
         self.cl.addWidget(self.tl)
         self.ml = QLabel(text)
         self.ml.setStyleSheet("color: #b0b0b0; font-size: 14px; border: none;")
         self.ml.setWordWrap(True)
+        if not text:
+            self.ml.hide()
         self.cl.addWidget(self.ml)
         self.bl = QHBoxLayout()
         self.bl.setSpacing(10)
@@ -1323,6 +1567,7 @@ class ModernDialog(QDialog):
         b = QPushButton(text)
         b.setFixedHeight(40)
         b.setCursor(Qt.PointingHandCursor)
+        b.setFont(QFont('Google Sans', 11, QFont.Bold))
         b.setObjectName(style_obj)
         b.clicked.connect(callback)
         self.bl.addWidget(b)
@@ -1365,7 +1610,7 @@ def make_initial_avatar_pixmap(initial="U", size=72, bg_color="#e78284", text_co
     painter.setPen(QPen(QColor(255, 255, 255, 45), 1.5))
     painter.drawEllipse(1, 1, size - 2, size - 2)
     painter.setPen(QColor(text_color))
-    font = QFont('Segoe UI Variable Display', max(10, int(size * 0.42)), QFont.Bold)
+    font = QFont('Google Sans', max(10, int(size * 0.42)), QFont.Bold)
     painter.setFont(font)
     ch = (initial or 'U')[:1].upper()
     painter.drawText(QRect(0, 0, size, size), Qt.AlignCenter, ch)
@@ -1432,6 +1677,7 @@ class AccountProfileDialog(QDialog):
                 border: 1px solid #ea999c;
                 border-radius: 12px;
                 color: #1e2030;
+                font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
                 font-size: 13px;
                 font-weight: bold;
             }
@@ -1453,6 +1699,7 @@ class AccountProfileDialog(QDialog):
                 border: 1px solid #363640;
                 border-radius: 12px;
                 color: #c6d0f5;
+                font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
                 font-size: 13px;
                 font-weight: bold;
             }
@@ -1629,12 +1876,13 @@ class CapsuleActionButton(QPushButton):
 
     def _get_display_text(self):
         if self._custom_text is not None:
-            return self._custom_text
+            return str(self._custom_text)
         if self._action_type == 'installing':
             return "Installing" + ("." * self._dot_count)
         defaults = {
             'install': 'Install',
             'uninstall': 'Uninstall',
+            'uninstalling': 'Uninstalling...',
             'update': 'Update',
             'enable': 'Enable',
             'disable': 'Disable',
@@ -1646,16 +1894,17 @@ class CapsuleActionButton(QPushButton):
 
     def _calculate_pill_width(self):
         txt = "Installing..." if self._action_type == 'installing' else self._get_display_text()
-        font_size = 9 if self._compact else 10
-        font = QFont('Segoe UI Variable Display', font_size, QFont.Bold)
+        font_size = 10 if self._compact else 11.5
+        font = QFont('Google Sans', int(font_size), QFont.Bold)
+        font.setBold(True)
         fm = QFontMetrics(font)
         txt_w = fm.horizontalAdvance(txt) if hasattr(fm, 'horizontalAdvance') else fm.width(txt)
         badge_diam = self._height - (6 if self._compact else 8)
         gap = 4 if self._compact else 8
-        pad_right = 8 if self._compact else 14
+        pad_right = 10 if self._compact else 16
         left_pad = 3 if self._compact else 4
         w = left_pad + badge_diam + gap + txt_w + pad_right
-        min_w = self._height + (24 if self._compact else 40)
+        min_w = self._height + (26 if self._compact else 44)
         return max(w, min_w)
 
     def _update_dimensions(self, animated=False):
@@ -1692,9 +1941,7 @@ class CapsuleActionButton(QPushButton):
 
     def set_state(self, action_type, text=None, animated=True):
         new_action = (action_type or 'install').lower()
-        if text is not None:
-            self._custom_text = text
-
+        self._custom_text = text
         self._action_type = new_action
 
         if new_action == 'installing':
@@ -1943,7 +2190,7 @@ class CapsuleActionButton(QPushButton):
             if self._action_type == 'install':
                 b_grad.setColorAt(0.0, QColor('#42be54'))
                 b_grad.setColorAt(1.0, QColor('#2ea043'))
-            elif self._action_type in ('uninstall', 'delete', 'cancel'):
+            elif self._action_type in ('uninstall', 'uninstalling', 'delete', 'cancel'):
                 b_grad.setColorAt(0.0, QColor('#f87171'))
                 b_grad.setColorAt(1.0, QColor('#dc2626'))
             elif self._action_type == 'update':
@@ -1979,7 +2226,7 @@ class CapsuleActionButton(QPushButton):
             icon_col = '#ffffff'
             if self._action_type == 'install':
                 self._draw_download_icon(p, cx, cy, size=16, stroke=2.0, color=icon_col)
-            elif self._action_type in ('uninstall', 'delete'):
+            elif self._action_type in ('uninstall', 'uninstalling', 'delete'):
                 self._draw_trash_icon(p, cx, cy, size=15, stroke=1.8, color=icon_col)
             elif self._action_type == 'update':
                 self._draw_sync_icon(p, cx, cy, size=15, stroke=2.0, color=icon_col)
@@ -1997,8 +2244,9 @@ class CapsuleActionButton(QPushButton):
         # Text rendering
         txt = self._get_display_text()
         p.setPen(QColor(255, 255, 255))
-        font_size = 9 if self._compact else 10
-        font = QFont('Segoe UI Variable Display', font_size, QFont.Bold)
+        font_size = 10 if self._compact else 11.5
+        font = QFont('Google Sans', int(font_size), QFont.Bold)
+        font.setBold(True)
         p.setFont(font)
         gap = 4.0 if self._compact else 8.0
         text_x = cx + badge_radius + gap
@@ -2330,6 +2578,12 @@ def get_combo_item_visuals(text, context_key=""):
     if t_clean == "control": return ("\uE765", "#2a2a2a", "#e78284")
     if t_clean in ("left mouse", "mouse"): return ("\uE962", "#2a2a2a", "#e78284")
 
+    # 9. Font typography
+    if "font" in k_clean:
+        if any(ar in t_clean for ar in ("marhey", "cairo", "arabic", "sakkal", "aldhabi", "andalus", "urdu")):
+            return ("\uE8D2", "#2a2a2a", "#ef9f76")
+        return ("\uE8D2", "#2a2a2a", "#8caaee")
+
     return ("\uE8D2", "#2a2a2a", "#b0b0b8")
 
 def draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color):
@@ -2341,7 +2595,7 @@ def draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color):
         painter.drawPixmap(int(px), int(py), glyph_or_pix)
     elif str(glyph_or_pix).startswith("num_"):
         digit_str = str(glyph_or_pix)[4:]
-        num_font = QFont("Segoe UI Variable Display", 9, QFont.Bold)
+        num_font = QFont("Google Sans", 9, QFont.Bold)
         painter.setFont(num_font)
         painter.setPen(QColor(icon_color))
         painter.drawText(badge_rect, Qt.AlignCenter, digit_str)
@@ -2428,9 +2682,14 @@ class ModernComboDelegate(QStyledItemDelegate):
         draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color)
 
         # Draw item text
-        text_font = QFont("Segoe UI Variable Display", 10)
-        text_font.setWeight(QFont.Medium if not (is_selected or is_hovered) else QFont.DemiBold)
-        painter.setFont(text_font)
+        if "font" in str(context_key).lower() and text and text != "(Default)":
+            text_font = QFont(text, 10)
+            text_font.setWeight(QFont.Medium if not (is_selected or is_hovered) else QFont.DemiBold)
+            painter.setFont(text_font)
+        else:
+            text_font = QFont("Google Sans", 10)
+            text_font.setWeight(QFont.Medium if not (is_selected or is_hovered) else QFont.DemiBold)
+            painter.setFont(text_font)
 
         text_x = badge_x + badge_size + 8
         text_w = rect.right() - text_x - 6
@@ -2485,7 +2744,7 @@ class ModernComboBox(QComboBox):
                 padding-left: 34px;
                 padding-right: 26px;
                 color: #ffffff;
-                font-family: 'Segoe UI Variable Display', 'Segoe UI';
+                font-family: 'Google Sans', 'Marhey', 'Segoe UI';
                 font-size: 12px;
                 font-weight: 500;
             }
@@ -2612,9 +2871,14 @@ class ModernComboBox(QComboBox):
         draw_badge_content(painter, badge_rect, glyph_or_pix, icon_color)
 
         # Draw item text
-        text_font = QFont("Segoe UI Variable Display", 10)
-        text_font.setWeight(QFont.DemiBold if is_active else QFont.Medium)
-        painter.setFont(text_font)
+        if "font" in str(self.context_key).lower() and current_text and current_text != "(Default)":
+            text_font = QFont(current_text, 10)
+            text_font.setWeight(QFont.DemiBold if is_active else QFont.Medium)
+            painter.setFont(text_font)
+        else:
+            text_font = QFont("Google Sans", 10)
+            text_font.setWeight(QFont.DemiBold if is_active else QFont.Medium)
+            painter.setFont(text_font)
         text_rect = QRectF(34, 0, self.width() - 58, self.height())
         if not current_text:
             painter.setPen(QColor("#ffffff") if is_active else QColor("#777777"))
@@ -2694,16 +2958,18 @@ class PillTabButton(QPushButton):
         self.setFixedHeight(self._height)
         self._icon_code = icon_code
         self._icon_size = icon_size
-        self.setFont(QFont('Segoe UI Variable Display', 10, QFont.Bold))
+        self.setFont(QFont('Google Sans', 11, QFont.Bold))
         self.setAttribute(Qt.WA_Hover, True)
-        self.setStyleSheet('background: transparent; border: none; outline: none;')
+        self.setStyleSheet('background: transparent; border: none; outline: none; font-weight: bold; font-size: 11px;')
         
     def sizeHint(self):
-        fm = self.fontMetrics()
+        font = QFont('Google Sans', 11, QFont.Bold)
+        font.setBold(True)
+        fm = QFontMetrics(font)
         has_icon = bool(self._icon_code or not self.icon().isNull())
         isize = getattr(self, '_icon_size', 16)
         w = fm.horizontalAdvance(self.text().strip()) + (isize + 10 if has_icon else 0) + 28
-        return QSize(max(w, 75), self._height)
+        return QSize(max(w, 78), self._height)
 
     def paintEvent(self, e):
         p = QPainter(self)
@@ -2738,7 +3004,9 @@ class PillTabButton(QPushButton):
         else:
             text_color = QColor('#8c92a4')
             
-        fm = self.fontMetrics()
+        tab_font = QFont('Google Sans', 11, QFont.Bold)
+        tab_font.setBold(True)
+        fm = QFontMetrics(tab_font)
         txt = self.text().strip()
         txt_w = fm.horizontalAdvance(txt)
         
@@ -2749,7 +3017,7 @@ class PillTabButton(QPushButton):
             total_w = isize + 8 + txt_w
             start_x = (self.width() - total_w) / 2.0
             p.drawPixmap(int(start_x), int((self.height() - isize) / 2.0), icon_pix)
-            p.setFont(self.font())
+            p.setFont(tab_font)
             p.setPen(text_color)
             p.drawText(int(start_x + isize + 8), int((self.height() + fm.ascent() - fm.descent()) / 2.0), txt)
         elif self._icon_code:
@@ -2757,11 +3025,626 @@ class PillTabButton(QPushButton):
             total_w = isize + 8 + txt_w
             start_x = (self.width() - total_w) / 2.0
             p.drawPixmap(int(start_x), int((self.height() - isize) / 2.0), icon_pix)
-            p.setFont(self.font())
+            p.setFont(tab_font)
             p.setPen(text_color)
             p.drawText(int(start_x + isize + 8), int((self.height() + fm.ascent() - fm.descent()) / 2.0), txt)
         else:
-            p.setFont(self.font())
+            p.setFont(tab_font)
             p.setPen(text_color)
             p.drawText(self.rect(), Qt.AlignCenter, txt)
+
+
+class PillNotification(QWidget):
+    """
+    Animated pill-shaped overlay notification displayed over the title bar.
+    Appears as a circular badge with icon, expands horizontally from both sides
+    with fading-in text, holds for 3s (pausing on hover), collapses back to circle
+    with fading-out text, and glides up while fading out.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("pillNotification")
+        self.setWindowFlags(Qt.SubWindow | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setCursor(Qt.PointingHandCursor)
+
+        self._height = 46
+        self._min_width = 46
+        self._pill_width = float(self._min_width)
+        self._text_opacity = 0.0
+        self._overall_opacity = 0.0
+        self._y_offset = -20.0
+        self._target_width = 280.0
+
+        self._title = ""
+        self._subtitle = ""
+        self._icon_pixmap = QPixmap()
+
+        self._is_hovered = False
+        self._active_anim = None
+
+        self._hold_timer = QTimer(self)
+        self._hold_timer.setSingleShot(True)
+        self._hold_timer.setInterval(3000)
+        self._hold_timer.timeout.connect(self._start_collapse_and_exit)
+        self._remaining_hold_time = 3000
+        self._hold_start_time = 0.0
+
+        self.hide()
+
+    def get_pill_width(self):
+        return self._pill_width
+
+    def set_pill_width(self, val):
+        self._pill_width = float(val)
+        self._sync_geometry()
+        self.update()
+
+    pillWidth = pyqtProperty(float, get_pill_width, set_pill_width)
+
+    def get_text_opacity(self):
+        return self._text_opacity
+
+    def set_text_opacity(self, val):
+        self._text_opacity = max(0.0, min(1.0, float(val)))
+        self.update()
+
+    textOpacity = pyqtProperty(float, get_text_opacity, set_text_opacity)
+
+    def get_overall_opacity(self):
+        return self._overall_opacity
+
+    def set_overall_opacity(self, val):
+        self._overall_opacity = max(0.0, min(1.0, float(val)))
+        self.update()
+
+    overallOpacity = pyqtProperty(float, get_overall_opacity, set_overall_opacity)
+
+    def get_y_offset(self):
+        return self._y_offset
+
+    def set_y_offset(self, val):
+        self._y_offset = float(val)
+        self._sync_geometry()
+        self.update()
+
+    yOffset = pyqtProperty(float, get_y_offset, set_y_offset)
+
+    def _sync_geometry(self):
+        parent = self.parentWidget()
+        if not parent:
+            return
+        pw = parent.width()
+        w = int(self._pill_width)
+        h = self._height
+        x = (pw - w) // 2
+        base_y = 6
+        y = int(base_y + self._y_offset)
+        self.setGeometry(x, y, w, h)
+
+    def update_position(self):
+        self._sync_geometry()
+
+    def show_notification(self, title: str, subtitle: str, icon=None):
+        self._hold_timer.stop()
+        if self._active_anim:
+            self._active_anim.stop()
+            self._active_anim = None
+
+        self._title = title or ""
+        self._subtitle = subtitle or ""
+
+        if isinstance(icon, QPixmap) and not icon.isNull():
+            self._icon_pixmap = icon
+        elif isinstance(icon, QIcon) and not icon.isNull():
+            self._icon_pixmap = icon.pixmap(32, 32)
+        elif isinstance(icon, str) and os.path.exists(icon):
+            self._icon_pixmap = QPixmap(icon)
+        else:
+            default_ico = resource_path('icons/icon.ico')
+            if os.path.exists(default_ico):
+                self._icon_pixmap = QPixmap(default_ico)
+            else:
+                self._icon_pixmap = QPixmap()
+
+        font_title = QFont("Google Sans", 11, QFont.Bold)
+        font_sub = QFont("Google Sans", 9)
+        fm_title = QFontMetrics(font_title)
+        fm_sub = QFontMetrics(font_sub)
+
+        tw = fm_title.horizontalAdvance(self._title)
+        sw = fm_sub.horizontalAdvance(self._subtitle) if self._subtitle else 0
+        text_w = max(tw, sw)
+
+        parent_w = self.parentWidget().width() if self.parentWidget() else 800
+        desired_w = 46 + 8 + text_w + 22
+        self._target_width = float(max(200, min(desired_w, parent_w - 60)))
+
+        self._pill_width = float(self._min_width)
+        self._text_opacity = 0.0
+        self._y_offset = -16.0
+        self._overall_opacity = 0.0
+        self._sync_geometry()
+
+        self.show()
+        self.raise_()
+
+        anim_in = QParallelAnimationGroup(self)
+        opac_in = QPropertyAnimation(self, b"overallOpacity", self)
+        opac_in.setDuration(180)
+        opac_in.setStartValue(0.0)
+        opac_in.setEndValue(1.0)
+        opac_in.setEasingCurve(QEasingCurve.OutQuad)
+        anim_in.addAnimation(opac_in)
+
+        y_in = QPropertyAnimation(self, b"yOffset", self)
+        y_in.setDuration(220)
+        y_in.setStartValue(-16.0)
+        y_in.setEndValue(0.0)
+        y_in.setEasingCurve(QEasingCurve.OutCubic)
+        anim_in.addAnimation(y_in)
+
+        anim_expand = QParallelAnimationGroup(self)
+        w_expand = QPropertyAnimation(self, b"pillWidth", self)
+        w_expand.setDuration(320)
+        w_expand.setStartValue(float(self._min_width))
+        w_expand.setEndValue(float(self._target_width))
+        w_expand.setEasingCurve(QEasingCurve.OutCubic)
+        anim_expand.addAnimation(w_expand)
+
+        txt_expand = QPropertyAnimation(self, b"textOpacity", self)
+        txt_expand.setDuration(280)
+        txt_expand.setStartValue(0.0)
+        txt_expand.setEndValue(1.0)
+        txt_expand.setEasingCurve(QEasingCurve.OutQuad)
+        anim_expand.addAnimation(txt_expand)
+
+        seq = QSequentialAnimationGroup(self)
+        seq.addAnimation(anim_in)
+        seq.addAnimation(anim_expand)
+
+        def on_expand_done():
+            self._hold_start_time = time.time()
+            self._remaining_hold_time = 3000
+            if not self._is_hovered:
+                self._hold_timer.start(3000)
+
+        seq.finished.connect(on_expand_done)
+        self._active_anim = seq
+        seq.start()
+
+    def _start_collapse_and_exit(self):
+        if self._active_anim:
+            self._active_anim.stop()
+            self._active_anim = None
+
+        anim_collapse = QParallelAnimationGroup(self)
+        w_collapse = QPropertyAnimation(self, b"pillWidth", self)
+        w_collapse.setDuration(280)
+        w_collapse.setStartValue(float(self._pill_width))
+        w_collapse.setEndValue(float(self._min_width))
+        w_collapse.setEasingCurve(QEasingCurve.InOutCubic)
+        anim_collapse.addAnimation(w_collapse)
+
+        txt_collapse = QPropertyAnimation(self, b"textOpacity", self)
+        txt_collapse.setDuration(180)
+        txt_collapse.setStartValue(float(self._text_opacity))
+        txt_collapse.setEndValue(0.0)
+        txt_collapse.setEasingCurve(QEasingCurve.InQuad)
+        anim_collapse.addAnimation(txt_collapse)
+
+        anim_out = QParallelAnimationGroup(self)
+        y_out = QPropertyAnimation(self, b"yOffset", self)
+        y_out.setDuration(240)
+        y_out.setStartValue(0.0)
+        y_out.setEndValue(-48.0)
+        y_out.setEasingCurve(QEasingCurve.InCubic)
+        anim_out.addAnimation(y_out)
+
+        opac_out = QPropertyAnimation(self, b"overallOpacity", self)
+        opac_out.setDuration(220)
+        opac_out.setStartValue(1.0)
+        opac_out.setEndValue(0.0)
+        opac_out.setEasingCurve(QEasingCurve.InQuad)
+        anim_out.addAnimation(opac_out)
+
+        seq = QSequentialAnimationGroup(self)
+        seq.addAnimation(anim_collapse)
+        seq.addAnimation(anim_out)
+
+        def on_exit_done():
+            self.hide()
+            self._active_anim = None
+
+        seq.finished.connect(on_exit_done)
+        self._active_anim = seq
+        seq.start()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._hold_timer.stop()
+            self._start_collapse_and_exit()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self._is_hovered = True
+        if self._hold_timer.isActive():
+            elapsed = int((time.time() - self._hold_start_time) * 1000)
+            self._remaining_hold_time = max(500, self._remaining_hold_time - elapsed)
+            self._hold_timer.stop()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self._is_hovered = False
+        if not self._active_anim and self.isVisible():
+            self._hold_start_time = time.time()
+            self._hold_timer.start(self._remaining_hold_time)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+
+        overall = self._overall_opacity
+        if overall <= 0.001:
+            return
+        p.setOpacity(overall)
+
+        w = self.width()
+        h = self.height()
+        radius = h / 2.0
+
+        rect = QRectF(0.5, 0.5, w - 1.0, h - 1.0)
+
+        # 1. Background capsule
+        path = QPainterPath()
+        path.addRoundedRect(rect, radius, radius)
+
+        bg_color = QColor(22, 22, 26, 246)
+        p.fillPath(path, bg_color)
+
+        border_pen = QPen(QColor(255, 255, 255, 30), 1.0)
+        p.setPen(border_pen)
+        p.drawPath(path)
+
+        # 2. Icon in circular area
+        icon_size = 32
+        icon_rect = QRectF((h - icon_size) / 2.0, (h - icon_size) / 2.0, icon_size, icon_size)
+
+        if not self._icon_pixmap.isNull():
+            p.save()
+            icon_clip = QPainterPath()
+            icon_clip.addRoundedRect(icon_rect, 16.0, 16.0)
+            p.setClipPath(icon_clip)
+            p.drawPixmap(icon_rect.toRect(), self._icon_pixmap)
+            p.restore()
+        else:
+            p.save()
+            p.setBrush(QColor(231, 130, 132, 220))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(icon_rect)
+            p.restore()
+
+        # 3. Text rendering (title and subtitle)
+        txt_opac = self._text_opacity * overall
+        if txt_opac > 0.01 and w > h + 10:
+            p.save()
+            p.setOpacity(txt_opac)
+
+            text_x = h + 6.0
+            text_w = max(0.0, w - text_x - 14.0)
+            text_clip = QRectF(text_x, 0.0, text_w, h)
+            p.setClipRect(text_clip)
+
+            font_title = QFont("Google Sans", 11, QFont.Bold)
+            font_title.setBold(True)
+            p.setFont(font_title)
+            p.setPen(QColor(255, 255, 255))
+            fm_t = QFontMetrics(font_title)
+            if self._subtitle:
+                title_text = fm_t.elidedText(self._title, Qt.ElideRight, int(text_w))
+                p.drawText(int(text_x), int(radius - 2), title_text)
+
+                font_sub = QFont("Google Sans", 9)
+                p.setFont(font_sub)
+                p.setPen(QColor(198, 208, 245))
+                fm_s = QFontMetrics(font_sub)
+                sub_text = fm_s.elidedText(self._subtitle, Qt.ElideRight, int(text_w))
+                p.drawText(int(text_x), int(radius + 15), sub_text)
+            else:
+                title_text = fm_t.elidedText(self._title, Qt.ElideRight, int(text_w))
+                baseline = int((h + fm_t.ascent() - fm_t.descent()) / 2.0)
+                p.drawText(int(text_x), baseline, title_text)
+
+            p.restore()
+
+
+class SlideFadeCanvas(QWidget):
+    def __init__(self, parent, old_pixmap, new_pixmap, direction_left=True, offset=70):
+        super().__init__(parent)
+        self.old_pixmap = old_pixmap
+        self.new_pixmap = new_pixmap
+        self.direction_left = direction_left
+        self.offset = offset
+        self.progress = 0.0
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setGeometry(0, 0, parent.width(), parent.height())
+
+    def set_progress(self, val):
+        self.progress = val
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.fillRect(self.rect(), QColor(18, 18, 18))
+        prog = self.progress
+
+        if self.direction_left:
+            old_x = -int(self.offset * prog)
+            new_x = int(self.offset * (1.0 - prog))
+        else:
+            old_x = int(self.offset * prog)
+            new_x = -int(self.offset * (1.0 - prog))
+
+        old_alpha = max(0.0, 1.0 - prog * 1.5)
+        if old_alpha > 0.005 and not self.old_pixmap.isNull():
+            p.setOpacity(old_alpha)
+            p.drawPixmap(old_x, 0, self.old_pixmap)
+
+        new_alpha = min(1.0, prog * 1.4)
+        if new_alpha > 0.005 and not self.new_pixmap.isNull():
+            p.setOpacity(new_alpha)
+            new_rect = QRect(new_x, 0, self.new_pixmap.width(), self.new_pixmap.height())
+            p.fillRect(new_rect, QColor(18, 18, 18))
+            p.drawPixmap(new_x, 0, self.new_pixmap)
+
+
+class AnimatedStackedWidget(QStackedWidget):
+    def __init__(self, parent=None, duration=240, offset=70):
+        super().__init__(parent)
+        self.duration = duration
+        self.offset = offset
+        self._animating = False
+        self._target_idx = None
+        self._canvas = None
+        self._anim = None
+
+    def is_animating(self):
+        return self._animating
+
+    def slide_to_index(self, next_idx, direction=None):
+        cur_idx = self.currentIndex()
+        if (cur_idx == next_idx and not self._animating) or next_idx < 0 or next_idx >= self.count():
+            return
+
+        if self._animating and self._target_idx == next_idx:
+            return
+
+        cur_widget = self.currentWidget()
+        next_widget = self.widget(next_idx)
+        if not cur_widget or not next_widget:
+            self.setCurrentIndex(next_idx)
+            return
+
+        if self._anim is not None:
+            try:
+                self._anim.stop()
+            except RuntimeError:
+                pass
+            self._anim = None
+
+        if self._canvas is not None:
+            try:
+                self._canvas.hide()
+                self._canvas.setParent(None)
+                self._canvas.deleteLater()
+            except (RuntimeError, Exception):
+                pass
+            self._canvas = None
+            self._animating = False
+
+        self._target_idx = next_idx
+
+        old_pixmap = cur_widget.grab()
+
+        if direction is not None:
+            direction_left = (direction == "left")
+        else:
+            direction_left = (next_idx > cur_idx)
+
+        next_widget.resize(self.size())
+        next_widget.setGeometry(0, 0, self.width(), self.height())
+        if next_widget.layout():
+            next_widget.layout().activate()
+        QApplication.sendPostedEvents(next_widget, QEvent.LayoutRequest)
+
+        self.setCurrentIndex(next_idx)
+        next_widget.show()
+        new_pixmap = next_widget.grab()
+
+        if old_pixmap.isNull() or new_pixmap.isNull() or self.width() <= 0 or self.height() <= 0:
+            self._target_idx = None
+            return
+
+        self._canvas = SlideFadeCanvas(self, old_pixmap, new_pixmap, direction_left=direction_left, offset=self.offset)
+        self._canvas.show()
+        self._canvas.raise_()
+
+        anim = QVariantAnimation(self)
+        self._anim = anim
+        anim.setDuration(self.duration)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.valueChanged.connect(self._canvas.set_progress)
+
+        self._animating = True
+
+        def _cleanup():
+            if self._canvas is not None:
+                try:
+                    self._canvas.hide()
+                    self._canvas.setParent(None)
+                    self._canvas.deleteLater()
+                except (RuntimeError, Exception):
+                    pass
+                self._canvas = None
+            self._anim = None
+            self._animating = False
+            self._target_idx = None
+
+        anim.finished.connect(_cleanup)
+        anim.start()
+
+    def slide_to_widget(self, next_widget, direction=None):
+        idx = self.indexOf(next_widget)
+        if idx >= 0:
+            self.slide_to_index(idx, direction=direction)
+        else:
+            self.setCurrentWidget(next_widget)
+
+    def setCurrentWidgetAnimated(self, next_widget, direction=None):
+        self.slide_to_widget(next_widget, direction=direction)
+
+    def setCurrentIndexAnimated(self, next_idx, direction=None):
+        self.slide_to_index(next_idx, direction=direction)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._canvas:
+            self._canvas.setGeometry(0, 0, self.width(), self.height())
+
+
+class CloudSyncConflictDialog(QDialog):
+    def __init__(self, conflicts, parent=None):
+        super().__init__(parent)
+        self.conflicts = conflicts or []
+        self.selected_paths = []
+        self.restore_all = False
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(440)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.mf = QFrame(self)
+        self.mf.setObjectName("conflictMainFrame")
+        self.mf.setStyleSheet("#conflictMainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mf)
+
+        cl = QVBoxLayout(self.mf)
+        cl.setContentsMargins(25, 25, 25, 25)
+        cl.setSpacing(14)
+
+        head = QLabel("Cloud Sync Conflict Detected")
+        head.setFont(QFont("Google Sans", 16, QFont.Bold))
+        head.setStyleSheet("font-size: 20px; font-weight: bold; color: white; border: none; background: transparent;")
+        cl.addWidget(head)
+
+        desc = QLabel("The following local files differ from your cloud backup. Select which files you want to restore from Google Drive or keep your local changes.")
+        desc.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
+        desc.setWordWrap(True)
+        cl.addWidget(desc)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        scroll_widget = QWidget()
+        scroll_widget.setStyleSheet("background: transparent;")
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(10)
+        scroll_layout.setContentsMargins(0, 4, 0, 4)
+        scroll_layout.setAlignment(Qt.AlignTop)
+
+        self.checkboxes = []
+        for item in self.conflicts:
+            card = QFrame()
+            card.setStyleSheet("QFrame { background: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.06); } QFrame:hover { background: rgba(255, 255, 255, 0.07); }")
+            card_lay = QHBoxLayout(card)
+            card_lay.setContentsMargins(14, 10, 14, 10)
+            card_lay.setSpacing(12)
+
+            cb = QCheckBox()
+            cb.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #45475a; background: transparent; } QCheckBox::indicator:checked { background: #e78284; border: 1.5px solid #e78284; }")
+            cb.setChecked(True)
+            cb.setProperty("rel_path", item.get('path', ''))
+            self.checkboxes.append(cb)
+            card_lay.addWidget(cb)
+
+            icon_lbl = QLabel("NSS")
+            icon_lbl.setFont(QFont("Google Sans", 9, QFont.Bold))
+            icon_lbl.setStyleSheet("color: #8caaee; background: rgba(140, 170, 238, 0.15); border-radius: 6px; padding: 4px 6px; font-weight: bold;")
+            card_lay.addWidget(icon_lbl)
+
+            info_lay = QVBoxLayout()
+            info_lay.setSpacing(3)
+            path_lbl = QLabel(item.get('path', 'Unknown file'))
+            path_lbl.setFont(QFont("Google Sans", 11, QFont.Bold))
+            path_lbl.setStyleSheet("color: white; font-weight: bold; border: none; background: transparent;")
+            info_lay.addWidget(path_lbl)
+
+            local_time_str = time.strftime("%b %d, %H:%M", time.localtime(item['local_mtime'])) if item.get('local_mtime') else 'Unknown'
+            cloud_time_str = time.strftime("%b %d, %H:%M", time.localtime(item['cloud_mtime'])) if item.get('cloud_mtime') else 'Unknown'
+            diff_lbl = QLabel(f"Local: {local_time_str} • Cloud Backup: {cloud_time_str}")
+            diff_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; border: none; background: transparent;")
+            info_lay.addWidget(diff_lbl)
+
+            card_lay.addLayout(info_lay, 1)
+            scroll_layout.addWidget(card)
+
+        scroll.setWidget(scroll_widget)
+        cl.addWidget(scroll, 1)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        btns.addStretch()
+
+        keep_btn = PillPushButton("Keep Local", "secondary", height=34)
+        keep_btn.setFixedWidth(110)
+        keep_btn.clicked.connect(self._on_keep_local)
+        btns.addWidget(keep_btn)
+
+        sync_sel_btn = PillPushButton("Restore Selected", "primary", height=34)
+        sync_sel_btn.setFixedWidth(140)
+        sync_sel_btn.clicked.connect(self._on_restore_selected)
+        btns.addWidget(sync_sel_btn)
+
+        sync_all_btn = PillPushButton("Restore All", "secondary", height=34)
+        sync_all_btn.setFixedWidth(110)
+        sync_all_btn.clicked.connect(self._on_restore_all)
+        btns.addWidget(sync_all_btn)
+
+        cl.addLayout(btns)
+
+    def _on_keep_local(self):
+        self.selected_paths = []
+        self.restore_all = False
+        self.reject()
+
+    def _on_restore_selected(self):
+        self.selected_paths = [cb.property("rel_path") for cb in self.checkboxes if cb.isChecked()]
+        self.restore_all = False
+        self.accept()
+
+    def _on_restore_all(self):
+        self.selected_paths = [cb.property("rel_path") for cb in self.checkboxes]
+        self.restore_all = True
+        self.accept()
+
+    def get_selected_paths(self):
+        if not self.selected_paths:
+            return [cb.property("rel_path") for cb in self.checkboxes if cb.isChecked()]
+        return self.selected_paths
+
+
 

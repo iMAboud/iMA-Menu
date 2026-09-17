@@ -35,6 +35,7 @@ excluded_binaries = {
     'qwbmp.dll',
     'qt5websockets.dll',
     'libssl-3.dll',
+    'libcrypto-3.dll',
 }
 
 datas = [
@@ -83,7 +84,8 @@ a = Analysis(
         'PyQt5.QtXmlPatterns', 'PyQt5.QtOpenGL', 'PyQt5.QtOpenGLWidgets',
         'tkinter', 'unittest', 'pydoc',
         'unicodedata', 'multiprocessing', '_multiprocessing',
-        'ssl', '_ssl', 'webbrowser', 'tarfile'
+        'ssl', '_ssl', 'webbrowser', 'tarfile',
+        'items_widget', 'items_manager'
     ],
     noarchive=False,
     optimize=2,

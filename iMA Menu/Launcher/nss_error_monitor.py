@@ -1,9 +1,8 @@
 import os
 import re
 import time
-import subprocess
 from PyQt5.QtCore import QObject, QTimer, QFileSystemWatcher, pyqtSignal
-from utils import (PROJECT_ROOT, resource_path, safe_file_write, NSSAutoFixer)
+from utils import NSSAutoFixer
 
 
 class NSSErrorEntry:

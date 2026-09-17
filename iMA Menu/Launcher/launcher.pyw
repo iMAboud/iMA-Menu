@@ -83,18 +83,17 @@ import json
 import shutil
 import re
 import subprocess
-import hashlib
 import gc
 from collections import deque, OrderedDict
 import ctypes
 from ctypes import wintypes
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
-                             QScrollArea, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QProgressBar, QTextBrowser, QStackedWidget, 
-                             QTabWidget, QDialog, QDialogButtonBox, QLineEdit, QScrollBar, QAbstractSlider, QComboBox, 
-                             QTabBar, QSizePolicy, QFrame, QCheckBox, QFileDialog, QInputDialog, QShortcut, QButtonGroup)
-from PyQt5.QtGui import QColor, QPixmap, QFont, QPainter, QPainterPath, QPen, QTextOption, QIcon, QCursor, QKeySequence, QLinearGradient, QRegion
+                             QScrollArea, QGraphicsOpacityEffect, QStackedWidget, 
+                             QDialog, QLineEdit, QScrollBar, 
+                             QSizePolicy, QFrame, QFileDialog, QInputDialog, QShortcut, QButtonGroup)
+from PyQt5.QtGui import QColor, QPixmap, QImage, QFont, QPainter, QPainterPath, QPen, QIcon, QCursor, QKeySequence, QLinearGradient, QRegion
 from PyQt5.QtCore import (Qt, pyqtSignal, QObject, QThread, QTimer, QPropertyAnimation, QEasingCurve, 
-                             QSize, QEvent, QPoint, QRect, QRectF, pyqtProperty, QFileSystemWatcher, QParallelAnimationGroup,
+                             QSize, QEvent, QPoint, QRect, QRectF, QFileSystemWatcher, QParallelAnimationGroup,
                              QAbstractNativeEventFilter)
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
@@ -122,16 +121,16 @@ class SingleInstanceNativeFilter(QAbstractNativeEventFilter):
                 pass
         return False, 0
 
-from utils import (resource_path, safe_file_write, set_window_effect, UnsavedChangesDialog, 
-                   trigger_shell_reload, terminate_plugin_processes, get_mdl2_icon, global_undo_stack,
-                   ModernDialog, ModernSwitch, PillProgressBar, FlowLayout, normalize_path,
+from utils import (resource_path, safe_file_write, UnsavedChangesDialog, 
+                   trigger_shell_reload, terminate_plugin_processes, global_undo_stack,
+                   ModernDialog, ModernSwitch, PillProgressBar,
                    make_circular_pixmap, make_initial_avatar_pixmap, AccountProfileDialog,
-                   CapsuleActionButton, PillTabButton, PillPushButton)
-from plugin_registry import PluginRegistry, git_blob_sha, version_cmp, atomic_json_write, safe_json_read, delete_to_recycle_bin
+                   CapsuleActionButton, PillTabButton, PillPushButton, fix_nss_mode_syntax_once,
+                   PillNotification, AnimatedStackedWidget, CloudSyncConflictDialog)
+from plugin_registry import PluginRegistry, atomic_json_write, safe_json_read, delete_to_recycle_bin
 from plugin_workers import (
     FetchPluginsThread, IconDownloadWorker, InstallationWorker,
-    DetailsFetchWorker, ClickableWidget, DetailsPopup, init_plugin_workers,
-    find_riot_client_path, fetch_ima_switcher_release
+    DetailsFetchWorker, ClickableWidget, DetailsPopup, init_plugin_workers
 )
 
 # Win32 Constants
@@ -144,7 +143,48 @@ HTBOTTOM = 15
 HTBOTTOMLEFT = 16
 HTBOTTOMRIGHT = 17
 HTCAPTION = 2
+HTMINBUTTON = 8
+HTMAXBUTTON = 9
+HTCLOSE = 20
+WM_GETMINMAXINFO = 0x0024
+WM_SETCURSOR = 0x0020
+WM_NCCALCSIZE = 0x0083
 WM_NCHITTEST = 0x0084
+WM_NCMOUSEMOVE = 0x00A0
+WM_NCLBUTTONDOWN = 0x00A1
+WM_NCLBUTTONUP = 0x00A2
+WM_NCMOUSELEAVE = 0x02A2
+WM_SYSCOMMAND = 0x0112
+WS_THICKFRAME = 0x00040000
+WS_CAPTION = 0x00C00000
+WS_MAXIMIZEBOX = 0x00010000
+WS_MINIMIZEBOX = 0x00020000
+
+class _Win32Point(ctypes.Structure):
+    _fields_ = [('x', ctypes.c_long), ('y', ctypes.c_long)]
+
+class _Win32MinMaxInfo(ctypes.Structure):
+    _fields_ = [
+        ('ptReserved', _Win32Point),
+        ('ptMaxSize', _Win32Point),
+        ('ptMaxPosition', _Win32Point),
+        ('ptMinTrackSize', _Win32Point),
+        ('ptMaxTrackSize', _Win32Point),
+    ]
+
+class _Win32Rect(ctypes.Structure):
+    _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long), ('right', ctypes.c_long), ('bottom', ctypes.c_long)]
+
+class _Win32MonitorInfo(ctypes.Structure):
+    _fields_ = [('cbSize', ctypes.c_ulong), ('rcMonitor', _Win32Rect), ('rcWork', _Win32Rect), ('dwFlags', ctypes.c_ulong)]
+
+class _Win32NcCalcSizeParams(ctypes.Structure):
+    _fields_ = [('rgrc', _Win32Rect * 3), ('lppos', ctypes.c_void_p)]
+
+class _Win32Margins(ctypes.Structure):
+    _fields_ = [('cxLeftWidth', ctypes.c_int), ('cxRightWidth', ctypes.c_int), ('cyTopHeight', ctypes.c_int), ('cyBottomHeight', ctypes.c_int)]
+
+
 APP_REPO = "iMAboud/iMA-Menu-Plugins"
 _GITHUB_REPO = "iMAboud/iMA-Menu-Plugins"
 GITHUB_PLUGINS_JSON_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/plugins.json"
@@ -154,8 +194,7 @@ APP_LATEST_RELEASE_URL = f"https://api.github.com/repos/{APP_REPO}/releases/late
 APP_RELEASES_API_URL = f"https://api.github.com/repos/{APP_REPO}/releases"
 REQUEST_TIMEOUT = 10
 
-import github_client
-from github_client import github_api_get, cdn_get, get_latest_tree_sha
+from github_client import github_api_get, cdn_get
 
 # --- Robust Path Detection & Directory Initialization ---
 def _initialize_app_paths():
@@ -320,8 +359,118 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.0.23'
+APP_VERSION = '2.0.27'
 VERSION = APP_VERSION
+
+def _ensure_folder_ownership_async():
+    """Silently ensures user ownership and full write permissions on PROJECT_ROOT in background.
+    Runs once on first launch and on updates, or if write permissions fail.
+    Logs errors to ownership.log only if taking ownership fails.
+    """
+    if os.name != 'nt':
+        return
+
+    def _worker():
+        try:
+            target_dir = PROJECT_ROOT
+            if not target_dir or not os.path.exists(target_dir):
+                return
+
+            stamp_file = os.path.join(CACHE_DIR, 'ownership.stamp')
+            log_file = os.path.join(PROJECT_ROOT, 'ownership.log')
+
+            # If current version was already configured and permissions are functional, skip
+            if os.path.exists(stamp_file):
+                try:
+                    with open(stamp_file, 'r', encoding='utf-8') as sf:
+                        cached_v = sf.read().strip()
+                    if cached_v == VERSION and _can_write_to_dir(target_dir) and _can_write_to_dir(PLUGINS_DIR):
+                        return
+                except Exception:
+                    pass
+
+            username = os.environ.get('USERNAME')
+            if not username:
+                try:
+                    import getpass
+                    username = getpass.getuser()
+                except Exception:
+                    username = None
+
+            errors = []
+
+            # 1. takeown /f "{target_dir}" /r /d y
+            try:
+                cmd_takeown = f'takeown /f "{target_dir}" /r /d y'
+                p1 = subprocess.run(
+                    cmd_takeown, shell=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    text=True, creationflags=0x08000000
+                )
+                if p1.returncode != 0 and p1.stderr and p1.stderr.strip():
+                    errors.append(f"takeown failed (code {p1.returncode}): {p1.stderr.strip()}")
+            except Exception as e:
+                errors.append(f"takeown exception: {e}")
+
+            # 2. icacls "{target_dir}" /grant *S-1-5-32-544:F /t /c /l /q
+            try:
+                cmd_icacls_admin = f'icacls "{target_dir}" /grant *S-1-5-32-544:F /t /c /l /q'
+                p2 = subprocess.run(
+                    cmd_icacls_admin, shell=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    text=True, creationflags=0x08000000
+                )
+                if p2.returncode != 0 and p2.stderr and p2.stderr.strip():
+                    errors.append(f"icacls (admin) failed (code {p2.returncode}): {p2.stderr.strip()}")
+            except Exception as e:
+                errors.append(f"icacls (admin) exception: {e}")
+
+            # 3. icacls "{target_dir}" /grant "{username}":F /t /c /l /q
+            if username:
+                try:
+                    cmd_icacls_user = f'icacls "{target_dir}" /grant "{username}":F /t /c /l /q'
+                    p3 = subprocess.run(
+                        cmd_icacls_user, shell=True,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                        text=True, creationflags=0x08000000
+                    )
+                    if p3.returncode != 0 and p3.stderr and p3.stderr.strip():
+                        errors.append(f"icacls (user) failed (code {p3.returncode}): {p3.stderr.strip()}")
+                except Exception as e:
+                    errors.append(f"icacls (user) exception: {e}")
+
+            # If write permissions succeeded on root and plugins:
+            if _can_write_to_dir(target_dir) and _can_write_to_dir(PLUGINS_DIR):
+                try:
+                    os.makedirs(CACHE_DIR, exist_ok=True)
+                    with open(stamp_file, 'w', encoding='utf-8') as sf:
+                        sf.write(VERSION)
+                    if os.path.exists(log_file) and not errors:
+                        os.remove(log_file)
+                except Exception:
+                    pass
+            elif errors:
+                # Log only on failure
+                try:
+                    with open(log_file, 'a', encoding='utf-8') as lf:
+                        lf.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] iMA Menu ownership configuration failed (v{VERSION})\n")
+                        for err in errors:
+                            lf.write(f"  - {err}\n")
+                        lf.write("\n")
+                except Exception:
+                    pass
+
+        except Exception as ex:
+            try:
+                with open(os.path.join(PROJECT_ROOT, 'ownership.log'), 'a', encoding='utf-8') as lf:
+                    lf.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Unexpected error: {ex}\n")
+            except Exception:
+                pass
+
+    threading.Thread(target=_worker, daemon=True, name="OwnershipWorker").start()
+
+_ensure_folder_ownership_async()
+fix_nss_mode_syntax_once(PROJECT_ROOT, CACHE_DIR)
 
 class UpdateWorker(QObject):
     check_finished = pyqtSignal(bool, str, str)
@@ -476,7 +625,9 @@ class SettingsManager:
     def __init__(self):
         self.defaults = {
             "auto_update": False,
-            "auto_check_updates": False
+            "auto_check_updates": False,
+            "auto_cloud_backup": True,
+            "last_cloud_backup": 0
         }
         self.settings = self.defaults.copy()
         self.load()
@@ -545,25 +696,7 @@ def get_plugin_install_path(plugin_data):
         return os.path.join(PLUGINS_DIR, plugin_data['name'])
     return resolve_path(install_path_str)
 
-class ModernTabBar(QTabBar):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setDrawBase(False)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setObjectName("modernTabBar")
 
-class ModernTabWidget(QTabWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setTabBar(ModernTabBar())
-        self.setObjectName("modernTabWidget")
-        self.setIconSize(QSize(28, 28))
-        self.setStyleSheet("""
-            QTabWidget#modernTabWidget::pane { 
-                border: none; 
-                background: transparent; 
-            }
-        """)
 _crisp_pixmap_cache = OrderedDict()
 _MAX_PIXMAP_CACHE_SIZE = 128
 
@@ -881,6 +1014,97 @@ init_plugin_workers(
     add_directory_to_system_path_fn=add_to_path
 )
 
+
+class UninstallWorker(QObject):
+    """Background worker for non-blocking plugin uninstallation and folder deletion."""
+    finished = pyqtSignal(str, str)
+    error = pyqtSignal(str, str, str)
+
+    def __init__(self, plugin_name, plugin_data, to_recycle_bin=False):
+        super().__init__()
+        self.plugin_name = plugin_name
+        self.plugin_data = plugin_data
+        self.to_recycle_bin = to_recycle_bin
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        plugin_name = self.plugin_name
+        plugin_data = self.plugin_data
+        try:
+            if plugin_name.lower() in ('ima switcher', 'ima-switcher', 'switcher', 'valo'):
+                appdata_dir = os.path.join(os.getenv('LOCALAPPDATA', ''), 'iMA Switcher')
+                for item in ('iMA Switcher.exe', 'iMA_Switcher_Update.exe', 'version.txt', 'version'):
+                    target_file = os.path.join(appdata_dir, item)
+                    if os.path.isfile(target_file):
+                        try:
+                            os.remove(target_file)
+                        except OSError:
+                            pass
+
+                try:
+                    remove_nss_import({'nss_path': appdata_dir, 'nss_file': 'valo.nss'}, os.path.join(PROJECT_ROOT, 'shell.nss'))
+                    remove_nss_import({'nss_path': 'imports', 'nss_file': 'valo.nss'}, os.path.join(PROJECT_ROOT, 'shell.nss'))
+                    remove_nss_import('valo', os.path.join(PROJECT_ROOT, 'shell.nss'))
+                except Exception:
+                    pass
+
+                self.finished.emit(plugin_name, "uninstalled")
+                return
+
+            if self.to_recycle_bin:
+                target_plugin_dir = os.path.abspath(os.path.join(PLUGINS_DIR, plugin_name))
+                if os.path.exists(target_plugin_dir):
+                    terminate_plugin_processes(target_plugin_dir)
+                    delete_to_recycle_bin(target_plugin_dir)
+
+                try:
+                    remove_nss_import({'name': plugin_name, 'nss_file': f"{plugin_name}.nss", 'nss_path': f"iMA Menu/plugins/{plugin_name}"}, os.path.join(PROJECT_ROOT, 'shell.nss'))
+                    remove_nss_import(plugin_name, os.path.join(PROJECT_ROOT, 'shell.nss'))
+                except Exception:
+                    pass
+            else:
+                target_plugin_dir = os.path.abspath(get_plugin_install_path(plugin_data))
+                if os.path.exists(target_plugin_dir):
+                    cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
+                    if not os.path.exists(cached_icon_path) and os.path.isdir(target_plugin_dir):
+                        try:
+                            for fname in os.listdir(target_plugin_dir):
+                                if fname.lower().endswith(('.png', '.ico', '.jpg', '.svg')):
+                                    src_icon = os.path.join(target_plugin_dir, fname)
+                                    img = QImage(src_icon)
+                                    if not img.isNull():
+                                        img.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation).save(cached_icon_path, "PNG")
+                                        break
+                        except Exception:
+                            pass
+                    terminate_plugin_processes(target_plugin_dir)
+                    gc.collect()
+                    time.sleep(0.1)
+                    try:
+                        shutil.rmtree(target_plugin_dir)
+                    except Exception:
+                        time.sleep(0.3)
+                        shutil.rmtree(target_plugin_dir, ignore_errors=True)
+                    if os.path.exists(target_plugin_dir):
+                        try:
+                            os.rmdir(target_plugin_dir)
+                        except Exception:
+                            pass
+
+                try:
+                    remove_nss_import(plugin_data, os.path.join(PROJECT_ROOT, 'shell.nss'))
+                    remove_nss_import(plugin_name, os.path.join(PROJECT_ROOT, 'shell.nss'))
+                except Exception:
+                    pass
+
+            self.finished.emit(plugin_name, "uninstalled")
+        except Exception as e:
+            self.error.emit(plugin_name, "failed", str(e))
+
+
 class PluginLogic(QObject):
     plugins_fetched = pyqtSignal(list)
     fetch_error = pyqtSignal(str)
@@ -898,6 +1122,7 @@ class PluginLogic(QObject):
         self.installation_queue = deque()
         self.current_installing_plugin = None
         self.all_plugins_data = {}
+        self._cached_tree_data = None
         self._cached_icon_urls = {}
         self._downloading_icons = set()
         icon_urls_file = os.path.join(ICONS_CACHE_DIR, '_icon_urls.json')
@@ -944,12 +1169,10 @@ class PluginLogic(QObject):
         self.active_threads['plugin_list'] = (thread, worker)
 
     def _on_plugins_fetched(self, plugins, tree_data):
+        self._cached_tree_data = tree_data
         self.all_plugins_data = {}
         for p in plugins:
-            item = dict(p)
-            if tree_data:
-                item['_tree_data'] = tree_data
-            self.all_plugins_data[p['name']] = item
+            self.all_plugins_data[p['name']] = dict(p)
         self.registry.merge_remote_manifest(plugins, tree_data)
         ui_plugins = self.registry.get_all_plugins_for_ui()
         self.plugins_fetched.emit(ui_plugins)
@@ -1169,6 +1392,9 @@ class PluginLogic(QObject):
             return
 
         plugin_data = self.installation_queue.popleft()
+        if getattr(self, '_cached_tree_data', None) and '_tree_data' not in plugin_data:
+            plugin_data = dict(plugin_data)
+            plugin_data['_tree_data'] = self._cached_tree_data
         self.current_installing_plugin = plugin_data['name']
         self.install_started.emit(self.current_installing_plugin)
         
@@ -1220,93 +1446,44 @@ class PluginLogic(QObject):
             self.installation_queue = deque([p for p in self.installation_queue if p['name'] != plugin_name])
             self.operation_finished.emit(plugin_name, "cancelled_from_queue")
 
-    def uninstall_plugin(self, plugin_name):
-        try:
-            plugin_data = self.all_plugins_data.get(plugin_name, {'name': plugin_name})
+    def _start_uninstall_worker(self, plugin_name, to_recycle_bin=False):
+        plugin_data = self.all_plugins_data.get(plugin_name, {'name': plugin_name})
+        thread_key = f"uninstall_{plugin_name}"
+        if thread_key in self.active_threads:
+            return
 
-            if plugin_name.lower() in ('ima switcher', 'ima-switcher', 'switcher', 'valo'):
-                appdata_dir = os.path.join(os.getenv('LOCALAPPDATA', ''), 'iMA Switcher')
-                for item in ('iMA Switcher.exe', 'iMA_Switcher_Update.exe', 'version.txt', 'version'):
-                    target_file = os.path.join(appdata_dir, item)
-                    if os.path.isfile(target_file):
-                        try: os.remove(target_file)
-                        except OSError: pass
+        thread = QThread(self)
+        worker = UninstallWorker(plugin_name, plugin_data, to_recycle_bin=to_recycle_bin)
+        worker.moveToThread(thread)
+        self.active_threads[thread_key] = (thread, worker)
 
-                try:
-                    remove_nss_import({'nss_path': appdata_dir, 'nss_file': 'valo.nss'}, os.path.join(PROJECT_ROOT, 'shell.nss'))
-                    remove_nss_import({'nss_path': 'imports', 'nss_file': 'valo.nss'}, os.path.join(PROJECT_ROOT, 'shell.nss'))
-                    remove_nss_import('valo', os.path.join(PROJECT_ROOT, 'shell.nss'))
-                    trigger_shell_reload()
-                except Exception:
-                    pass
-
-                self.registry.mark_uninstalled(plugin_name)
-                sync_tools_menu(PROJECT_ROOT, self.registry)
-                self.operation_finished.emit(plugin_name, "uninstalled")
-                return
-
-            target_plugin_dir = os.path.abspath(get_plugin_install_path(plugin_data))
-            if os.path.exists(target_plugin_dir):
-                # Ensure icon is cached locally before deleting the plugin folder
-                cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
-                if not os.path.exists(cached_icon_path) and os.path.isdir(target_plugin_dir):
-                    try:
-                        for fname in os.listdir(target_plugin_dir):
-                            if fname.lower().endswith(('.png', '.ico', '.jpg', '.svg')):
-                                src_icon = os.path.join(target_plugin_dir, fname)
-                                p = load_crisp_pixmap(src_icon, 128)
-                                if not p.isNull():
-                                    p.save(cached_icon_path, "PNG")
-                                    break
-                    except Exception:
-                        pass
-                terminate_plugin_processes(target_plugin_dir)
-                import gc, time
-                gc.collect()
-                time.sleep(0.1)
-                try:
-                    shutil.rmtree(target_plugin_dir)
-                except Exception:
-                    time.sleep(0.3)
-                    shutil.rmtree(target_plugin_dir, ignore_errors=True)
-                if os.path.exists(target_plugin_dir):
-                    try:
-                        os.rmdir(target_plugin_dir)
-                    except Exception:
-                        pass
-
-            try:
-                remove_nss_import(plugin_data, os.path.join(PROJECT_ROOT, 'shell.nss'))
-                remove_nss_import(plugin_name, os.path.join(PROJECT_ROOT, 'shell.nss'))
-            except Exception:
-                pass
-
-            self.registry.mark_uninstalled(plugin_name)
+        def _on_uninstall_finished(name, status):
+            self.cleanup_thread(thread_key)
+            self.registry.mark_uninstalled(name)
             sync_tools_menu(PROJECT_ROOT, self.registry)
             trigger_shell_reload()
-            self.operation_finished.emit(plugin_name, "uninstalled")
-        except Exception as e:
-            self.operation_error.emit(plugin_name, "failed", str(e))
+            self.operation_finished.emit(name, status)
+
+        def _on_uninstall_error(name, status, err):
+            self.cleanup_thread(thread_key)
+            self.operation_error.emit(name, status, err)
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(_on_uninstall_finished)
+        worker.error.connect(_on_uninstall_error)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        thread.finished.connect(lambda: self.cleanup_thread(thread_key))
+
+        thread.start()
+
+    def uninstall_plugin(self, plugin_name):
+        self._start_uninstall_worker(plugin_name, to_recycle_bin=False)
 
     def delete_local_plugin(self, plugin_name):
-        try:
-            target_plugin_dir = os.path.abspath(os.path.join(PLUGINS_DIR, plugin_name))
-            if os.path.exists(target_plugin_dir):
-                terminate_plugin_processes(target_plugin_dir)
-                delete_to_recycle_bin(target_plugin_dir)
-
-            try:
-                remove_nss_import({'name': plugin_name, 'nss_file': f"{plugin_name}.nss", 'nss_path': f"iMA Menu/plugins/{plugin_name}"}, os.path.join(PROJECT_ROOT, 'shell.nss'))
-                remove_nss_import(plugin_name, os.path.join(PROJECT_ROOT, 'shell.nss'))
-            except Exception:
-                pass
-
-            self.registry.mark_uninstalled(plugin_name)
-            sync_tools_menu(PROJECT_ROOT, self.registry)
-            trigger_shell_reload()
-            self.operation_finished.emit(plugin_name, "uninstalled")
-        except Exception as e:
-            self.operation_error.emit(plugin_name, "failed", str(e))
+        self._start_uninstall_worker(plugin_name, to_recycle_bin=True)
 
     def get_local_plugin_version(self, plugin_name):
         return self.registry.get_installed_version(plugin_name)
@@ -1314,17 +1491,23 @@ class PluginLogic(QObject):
     def cleanup_thread(self, key):
         if key in self.active_threads:
             thread, worker = self.active_threads.pop(key)
-            thread.quit()
-            thread.deleteLater()
+            try:
+                thread.quit()
+                thread.deleteLater()
+            except RuntimeError:
+                pass
 
     def stop_all_threads(self):
         for key, (thread, worker) in list(self.active_threads.items()):
-            if hasattr(worker, 'cancel'):
-                worker.cancel()
-            thread.quit()
-            if not thread.wait(100):
-                thread.terminate()
-            thread.deleteLater()
+            try:
+                if hasattr(worker, 'cancel'):
+                    worker.cancel()
+                thread.quit()
+                if not thread.wait(100):
+                    thread.terminate()
+                thread.deleteLater()
+            except RuntimeError:
+                pass
 
 class AutoHideScrollManager(QObject):
     """Universal auto-hiding scrollbar manager.
@@ -1399,6 +1582,8 @@ class AutoHideScrollManager(QObject):
         elif event.type() == QEvent.Show:
             if isinstance(obj, QScrollBar):
                 self.attach(obj)
+            elif type(obj).__name__ == 'QLabel' and (obj.windowFlags() & Qt.ToolTip):
+                obj.setAttribute(Qt.WA_TranslucentBackground, True)
             elif hasattr(obj, 'findChildren'):
                 for sb in obj.findChildren(QScrollBar):
                     self.attach(sb)
@@ -1471,7 +1656,8 @@ class NavTabButton(QPushButton):
             p.setOpacity(1.0)
 
         # Draw text
-        font = QFont('Segoe UI Variable Display', 10, QFont.Bold if is_checked else QFont.Normal)
+        font = QFont('Google Sans', 11, QFont.Bold)
+        font.setBold(True)
         p.setFont(font)
         text_color = QColor(255, 255, 255) if is_checked else (QColor(198, 208, 245) if is_hovered else QColor(140, 146, 164))
         p.setPen(text_color)
@@ -1492,7 +1678,7 @@ class PluginManager(QWidget):
         self._apply_rounded_mask()
         
         self.setWindowIcon(QIcon(resource_path('icons/icon.ico')))
-        self.setup_cache_dirs()
+
         
         # Universal Auto-Hide Scrollbar Manager
         self.scroll_manager = AutoHideScrollManager(self)
@@ -1566,14 +1752,48 @@ class PluginManager(QWidget):
         self.title_bar = self.create_title_bar()
         self.content_layout.addWidget(self.title_bar)
 
-        self.stacked_widget = QStackedWidget()
+        self.notification = PillNotification(self)
+
+        self.stacked_widget = AnimatedStackedWidget(self, duration=220)
         self.stacked_widget.currentChanged.connect(self.update_refresh_btn_visibility)
         self.content_layout.addWidget(self.stacked_widget)
 
         self.plugins_page = QWidget()
         self.plugins_layout = QVBoxLayout(self.plugins_page)
         self.plugins_layout.setContentsMargins(10, 10, 10, 10)
-        self.plugins_layout.setSpacing(10)
+        self.plugins_layout.setSpacing(6)
+
+        # Pill-shaped Segmented Tabs Container (Plugins / Items)
+        self.plugins_sub_tab_container = QFrame()
+        self.plugins_sub_tab_container.setObjectName("pillTabContainer")
+        self.plugins_sub_tab_container.setStyleSheet("background-color: transparent; border: none; padding: 0px;")
+        pst_layout = QHBoxLayout(self.plugins_sub_tab_container)
+        pst_layout.setContentsMargins(0, 0, 0, 0)
+        pst_layout.setSpacing(4)
+
+        self.plugins_tab_sub_btn = PillTabButton(" Plugins", 0xEA86, height=30)
+        self.plugins_tab_sub_btn.setChecked(True)
+        self.plugins_tab_sub_btn.clicked.connect(lambda: self.switch_plugins_sub_tab(0))
+
+        self.items_tab_sub_btn = PillTabButton(" Items", 0xE710, height=30)
+        self.items_tab_sub_btn.clicked.connect(lambda: self.switch_plugins_sub_tab(1))
+
+        self.plugins_sub_tab_group = QButtonGroup(self)
+        self.plugins_sub_tab_group.setExclusive(True)
+        self.plugins_sub_tab_group.addButton(self.plugins_tab_sub_btn)
+        self.plugins_sub_tab_group.addButton(self.items_tab_sub_btn)
+
+        pst_layout.addWidget(self.plugins_tab_sub_btn)
+        pst_layout.addWidget(self.items_tab_sub_btn)
+
+        plugins_top_bar = QHBoxLayout()
+        plugins_top_bar.setContentsMargins(0, 0, 0, 0)
+        plugins_top_bar.addWidget(self.plugins_sub_tab_container)
+        plugins_top_bar.addStretch()
+        self.plugins_layout.addLayout(plugins_top_bar)
+        self.plugins_sub_tab_container.hide()
+
+        self.plugins_inner_stack = QStackedWidget()
 
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
@@ -1583,8 +1803,14 @@ class PluginManager(QWidget):
         self.grid_layout.setAlignment(Qt.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
         self.scroll_area.setStyleSheet("#scrollArea { border: 0px; background: transparent; }")
-        self.plugins_layout.addWidget(self.scroll_area)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.debounce_check_visible_cards)
+        self.plugins_inner_stack.addWidget(self.scroll_area)
+
+        self.items_page = None
+        self.items_placeholder = QWidget()
+        self.plugins_inner_stack.addWidget(self.items_placeholder)
+
+        self.plugins_layout.addWidget(self.plugins_inner_stack)
         self.stacked_widget.addWidget(self.plugins_page)
         
         self.visible_check_timer = QTimer()
@@ -1602,7 +1828,7 @@ class PluginManager(QWidget):
 
         self.loading_label = QLabel("Loading plugins...", self)
         self.loading_label.setAlignment(Qt.AlignCenter)
-        self.loading_label.setFont(QFont('Segoe UI Variable Display', 16, QFont.Bold))
+        self.loading_label.setFont(QFont('Google Sans', 16, QFont.Bold))
         self.loading_label.setObjectName("loadingLabel")
         self.loading_label.hide()
         self.content_layout.addWidget(self.loading_label)
@@ -1628,8 +1854,117 @@ class PluginManager(QWidget):
         
         QTimer.singleShot(800, self._setup_file_watcher)
         QTimer.singleShot(1200, self.fetch_plugins_list)
+        QTimer.singleShot(1500, self._auto_check_app_update)
         QTimer.singleShot(1800, self._start_error_monitor)
         QTimer.singleShot(2500, self._take_global_nss_snapshot)
+        QTimer.singleShot(3000, self._check_scheduled_cloud_backup)
+
+        # 3. Non-blocking idle pre-warming for instant, lag-free tab transitions
+        QTimer.singleShot(450, self._prewarm_modify_page)
+        QTimer.singleShot(750, self._prewarm_theme_page)
+        QTimer.singleShot(1050, self._prewarm_settings_page)
+        QTimer.singleShot(1400, self._prewarm_theme_subtabs)
+        self._setup_native_window()
+
+    def _setup_native_window(self):
+        """Enable native Windows Aero Snap, resize borders, animations and Snap Layouts via Win32 API."""
+        try:
+            wid = self.winId()
+            if not wid:
+                return
+            hwnd = int(wid)
+            self._hwnd = hwnd
+            user32 = ctypes.windll.user32
+            dwmapi = ctypes.windll.dwmapi
+
+            GWL_STYLE = -16
+            style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+            user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_CAPTION | WS_MAXIMIZEBOX | WS_MINIMIZEBOX)
+
+            # Extend frame into client area for native DWM aero drop shadow
+            m = _Win32Margins(1, 1, 1, 1)
+            dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(m))
+
+            # Enable native rounded corners on Windows 11
+            DWMWA_WINDOW_CORNER_PREFERENCE = 33
+            val = ctypes.c_int(2)  # DWMWCP_ROUND
+            try:
+                dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(val), ctypes.sizeof(val))
+            except Exception:
+                pass
+
+            user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0004 | 0x0020)
+        except Exception as e:
+            print(f"Warning: native window setup failed: {e}")
+
+    def _prewarm_modify_page(self):
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
+            QTimer.singleShot(300, self._prewarm_modify_page)
+            return
+        if self._modify_page_widget is None:
+            self.get_modify_page()
+
+    def _prewarm_theme_page(self):
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
+            QTimer.singleShot(300, self._prewarm_theme_page)
+            return
+        if self._theme_page_widget is None:
+            self.get_theme_page()
+
+    def _prewarm_settings_page(self):
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
+            QTimer.singleShot(300, self._prewarm_settings_page)
+            return
+        if self._settings_page_widget is None:
+            self.get_settings_page()
+
+    def _prewarm_theme_subtabs(self):
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
+            QTimer.singleShot(300, self._prewarm_theme_subtabs)
+            return
+        if hasattr(self, '_ensure_theme_editor_initialized'):
+            try:
+                self._ensure_theme_editor_initialized()
+            except Exception:
+                pass
+        if hasattr(self, '_ensure_cursor_page_initialized'):
+            try:
+                self._ensure_cursor_page_initialized()
+            except Exception:
+                pass
+
+    def _auto_check_app_update(self):
+        if not self.settings_manager.get('auto_check_updates'):
+            return
+        self.check_app_update(manual=False)
+
+    def _check_scheduled_cloud_backup(self):
+        if not self.settings_manager.get('auto_cloud_backup'):
+            return
+        if self.sync_manager is None:
+            self._init_sync_manager()
+        if not self.sync_manager or not self.sync_manager.access_token:
+            return
+        last_backup = float(self.settings_manager.get('last_cloud_backup', 0) or 0)
+        now = time.time()
+        if now - last_backup >= 86400:
+            self.sync_manager.backup(silent=True)
+
+    def _on_sync_conflict_detected(self, conflicts, zip_path):
+        if hasattr(self, 'sync_dl_msg') and self.sync_dl_msg.isVisible():
+            self.sync_dl_msg.close()
+        dlg = CloudSyncConflictDialog(conflicts, self)
+        res = dlg.exec_()
+        if res == 1:
+            if dlg.restore_all:
+                self.sync_manager.apply_restore(zip_path, None)
+            else:
+                self.sync_manager.apply_restore(zip_path, dlg.get_selected_paths())
+        else:
+            self.sync_manager.cancel_restore(zip_path)
+
+    def _preload_items_manager(self):
+        pass
 
     def _init_sync_manager(self):
         if self.sync_manager is None:
@@ -1639,6 +1974,7 @@ class PluginManager(QWidget):
             self.sync_manager.sync_progress.connect(self.on_sync_progress)
             self.sync_manager.sync_finished.connect(self.on_sync_finished)
             self.sync_manager.profile_updated.connect(self._update_sync_ui_state)
+            self.sync_manager.conflict_detected.connect(self._on_sync_conflict_detected)
             avatar_file = os.path.join(PROJECT_ROOT, 'cache', 'profile_avatar.png')
             if self.sync_manager.access_token and (not self.sync_manager.user_name or not os.path.exists(avatar_file)):
                 self.sync_manager.fetch_user_profile(background=True)
@@ -1655,7 +1991,8 @@ class PluginManager(QWidget):
     def load_cached_plugins_immediately(self):
         local_plugins = self.plugin_logic.registry.get_local_plugins_for_ui()
         is_plugins_page = (self.stacked_widget.currentWidget() == self.plugins_page) if hasattr(self, 'stacked_widget') else True
-        if len(local_plugins) > 0 and is_plugins_page:
+        sub_idx = getattr(self, 'plugins_inner_stack', None).currentIndex() if hasattr(self, 'plugins_inner_stack') else 0
+        if len(local_plugins) > 0 and is_plugins_page and sub_idx == 0:
             self.plugins_tab_container.show()
         else:
             self.plugins_tab_container.hide()
@@ -1743,28 +2080,7 @@ class PluginManager(QWidget):
                     self.nss_snapshot[os.path.abspath(path)] = file.read()
             except: pass
 
-    def save_theme_and_update_status(self):
-        self._is_internal_change = True
-        try:
-            editor_saved = self.theme_editor_page.save_theme() if getattr(self, 'theme_editor_page', None) else False
-            switcher_saved = self.theme_switcher_page.save_theme() if getattr(self, 'theme_switcher_page', None) else False
-            
-            if editor_saved or switcher_saved:
-                self.commit_tinted_icons()
-                self.update_snapshot(os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'))
-                self.reload_shell()
-                self.theme_status_label.setText("Theme Saved")
-                self.theme_status_label.setStyleSheet("color: #e78284;")
-                QTimer.singleShot(3000, self.theme_status_label.clear)
-        finally:
-            self._is_internal_change = False
 
-    def reset_theme_and_update_status(self):
-        if getattr(self, 'theme_editor_page', None) and self.theme_editor_page.reset_theme():
-            self.revert_tinted_icons()
-            self.theme_status_label.setText("Reset to Default")
-            self.theme_status_label.setStyleSheet("color: #ffffff;")
-            QTimer.singleShot(3000, self.theme_status_label.clear)
 
     def commit_tinted_icons(self):
         prev_dir = os.path.join(PROJECT_ROOT, 'imports', 'icons', 'preview')
@@ -1970,22 +2286,22 @@ class PluginManager(QWidget):
             self._is_internal_change = False
 
     def show_sync_status(self, text):
-        if hasattr(self, 'title_status_label') and self.title_status_label:
-            self.title_status_label.setText(text)
-            self.title_status_label.setStyleSheet("color: #ff6b81; font-size: 13px; font-weight: bold; background: transparent;")
-            QTimer.singleShot(2500, self.title_status_label.clear)
-        elif hasattr(self, 'theme_status_label') and self.theme_status_label:
-            self.theme_status_label.setText(text)
-            self.theme_status_label.setStyleSheet("color: #e78284;")
-            QTimer.singleShot(2500, self.theme_status_label.clear)
-
-    def setup_cache_dirs(self):
-        # Folders are now initialized at startup globally
-        pass
-
-    def _apply_shadow_effect(self, widget):
-        # No-op on micro UI elements to prevent GPU/CPU rasterization bottlenecks during scrolling/resizing
-        pass
+        if not text:
+            return
+        if hasattr(self, 'notification') and self.notification:
+            is_sync_msg = text.startswith("Synced ") or text in (
+                "Synced Imports", "Synced Theme", "Synced Themes", 
+                "Synced Rules", "Synced Plugins & Icons"
+            )
+            recent_action = (time.time() - getattr(self, '_last_action_time', 0)) < 4.5
+            if is_sync_msg and (self.notification.isVisible() or recent_action):
+                return
+            icon_pix = None
+            if any(k in text.lower() for k in ("refresh", "sync")):
+                r_path = resource_path('icons/refresh.png')
+                if os.path.exists(r_path):
+                    icon_pix = QPixmap(r_path)
+            self.notification.show_notification(text, "", icon_pix)
 
     def create_title_bar(self):
         title_bar = QWidget()
@@ -2000,19 +2316,13 @@ class PluginManager(QWidget):
         title_layout.addWidget(app_icon_label)
 
         title_label = QLabel("iMA Menu")
-        title_label.setFont(QFont('Segoe UI Variable Display', 16, QFont.Bold))
+        title_label.setFont(QFont('Google Sans', 18, QFont.Bold))
         title_label.setObjectName("titleLabel")
+        title_label.setStyleSheet("color: #ffffff; background: transparent; font-weight: 800; font-size: 18px;")
         title_layout.addWidget(title_label)
 
         title_layout.addStretch(1)
-
-        self.title_status_label = QLabel("")
-        self.title_status_label.setObjectName("titleStatusLabel")
-        self.title_status_label.setAlignment(Qt.AlignCenter)
-        self.title_status_label.setStyleSheet("color: #ff6b81; font-size: 13px; font-weight: bold; background: transparent;")
-        title_layout.addWidget(self.title_status_label, 2)
-
-        title_layout.addStretch(1)
+        self.title_status_label = None
 
         # Dynamic Top Navigation Bar (Store / Local) in title bar left of open folder
         self.current_plugins_tab = "store"
@@ -2078,79 +2388,105 @@ class PluginManager(QWidget):
         self.refresh_button.setStyleSheet(floating_icon_btn_style)
         self.refresh_button.clicked.connect(self.handle_global_refresh)
 
-        # Single pill-shaped container for minimize, maximize, and close
-        window_controls_pill = QFrame()
-        window_controls_pill.setObjectName("windowControlsPill")
-        window_controls_pill.setFixedHeight(28)
-        window_controls_pill.setStyleSheet("""
+        # macOS-style circular pastel window controls pill
+        self.window_controls_pill = QFrame()
+        self.window_controls_pill.setObjectName("windowControlsPill")
+        self.window_controls_pill.setFixedHeight(28)
+        self.window_controls_pill.setStyleSheet("""
             QFrame#windowControlsPill {
                 background-color: rgba(255, 255, 255, 0.04);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 14px;
             }
-            QPushButton.windowControlBtn {
-                background: transparent;
+            QPushButton.macDotBtn {
                 border: none;
-                border-radius: 11px;
-                color: #8c92a4;
-                font-family: 'Segoe MDL2 Assets';
-                font-size: 10px;
-                min-width: 28px;
-                max-width: 28px;
-                min-height: 22px;
-                max-height: 22px;
+                border-radius: 7px;
+                min-width: 14px;
+                max-width: 14px;
+                min-height: 14px;
+                max-height: 14px;
             }
-            QPushButton.windowControlBtn:hover {
-                background: rgba(255, 255, 255, 0.08);
-                color: #ffffff;
+            QPushButton#macMinBtn {
+                background-color: #c6a853;
             }
-            QPushButton#closeControlBtn:hover {
-                background: #e78284;
-                color: #ffffff;
+            QPushButton#macMinBtn:hover {
+                background-color: #d9b85c;
+            }
+            QPushButton#macMinBtn:pressed {
+                background-color: #b39747;
+            }
+            QPushButton#macMaxBtn {
+                background-color: #4ab494;
+            }
+            QPushButton#macMaxBtn:hover, QPushButton#macMaxBtn[hovered="true"] {
+                background-color: #5ecaa8;
+            }
+            QPushButton#macMaxBtn:pressed {
+                background-color: #3fa082;
+            }
+            QPushButton#macCloseBtn {
+                background-color: #da7d9b;
+            }
+            QPushButton#macCloseBtn:hover {
+                background-color: #e68ea9;
+            }
+            QPushButton#macCloseBtn:pressed {
+                background-color: #c46c88;
             }
         """)
-        wc_layout = QHBoxLayout(window_controls_pill)
-        wc_layout.setContentsMargins(2, 2, 2, 2)
-        wc_layout.setSpacing(1)
+        wc_layout = QHBoxLayout(self.window_controls_pill)
+        wc_layout.setContentsMargins(12, 0, 12, 0)
+        wc_layout.setSpacing(14)
 
-        minimize_button = QPushButton("\uE921")
-        minimize_button.setProperty("class", "windowControlBtn")
-        minimize_button.setCursor(Qt.PointingHandCursor)
-        minimize_button.clicked.connect(self.showMinimized)
+        self.minimize_button = QPushButton()
+        self.minimize_button.setObjectName("macMinBtn")
+        self.minimize_button.setProperty("class", "macDotBtn")
+        self.minimize_button.setCursor(Qt.PointingHandCursor)
+        self.minimize_button.setToolTip("Minimize")
+        self.minimize_button.clicked.connect(self.showMinimized)
 
-        self.maximize_button = QPushButton("\uE922")
-        self.maximize_button.setProperty("class", "windowControlBtn")
+        self.maximize_button = QPushButton()
+        self.maximize_button.setObjectName("macMaxBtn")
+        self.maximize_button.setProperty("class", "macDotBtn")
         self.maximize_button.setCursor(Qt.PointingHandCursor)
+        self.maximize_button.setToolTip("Maximize / Snap Layouts")
         self.maximize_button.clicked.connect(self.toggle_maximize)
 
-        close_button = QPushButton("\uE8BB")
-        close_button.setObjectName("closeControlBtn")
-        close_button.setProperty("class", "windowControlBtn")
-        close_button.setCursor(Qt.PointingHandCursor)
-        close_button.clicked.connect(self.close)
+        self.close_button = QPushButton()
+        self.close_button.setObjectName("macCloseBtn")
+        self.close_button.setProperty("class", "macDotBtn")
+        self.close_button.setCursor(Qt.PointingHandCursor)
+        self.close_button.setToolTip("Close")
+        self.close_button.clicked.connect(self.close)
 
-        wc_layout.addWidget(minimize_button)
+        wc_layout.addWidget(self.minimize_button)
         wc_layout.addWidget(self.maximize_button)
-        wc_layout.addWidget(close_button)
+        wc_layout.addWidget(self.close_button)
 
         title_layout.addWidget(open_folder_button)
         title_layout.addWidget(self.refresh_button)
-        title_layout.addWidget(window_controls_pill)
+        title_layout.addWidget(self.window_controls_pill)
         return title_bar
 
     def toggle_maximize(self):
         if self.isMaximized():
             self.showNormal()
-            self.maximize_button.setText("\uE922")
+            if hasattr(self, 'maximize_button') and self.maximize_button:
+                self.maximize_button.setToolTip("Maximize / Snap Layouts")
         else:
             self.showMaximized()
-            self.maximize_button.setText("\uE923")
+            if hasattr(self, 'maximize_button') and self.maximize_button:
+                self.maximize_button.setToolTip("Restore")
+
 
     def update_refresh_btn_visibility(self, index):
         # Refresh button is always persistent across all tabs
         self.refresh_button.setVisible(True)
         if hasattr(self, 'plugins_tab_container'):
-            self.plugins_tab_container.setVisible(index == 0)
+            cur_w = self.stacked_widget.currentWidget()
+            is_plugins_root = (cur_w == self.plugins_page)
+            sub_idx = getattr(self, 'plugins_inner_stack', None).currentIndex() if hasattr(self, 'plugins_inner_stack') else 0
+            self.plugins_tab_container.setVisible(is_plugins_root and sub_idx == 0)
         
         # Keep matching side panel button checked
         if hasattr(self, 'side_plugins_btn'):
@@ -2167,7 +2503,12 @@ class PluginManager(QWidget):
     def handle_global_refresh(self):
         cur_w = self.stacked_widget.currentWidget()
         if cur_w == self.plugins_page:
-            self.refresh_plugins()
+            sub_idx = getattr(self, 'plugins_inner_stack', None).currentIndex() if hasattr(self, 'plugins_inner_stack') else 0
+            if sub_idx == 1 and hasattr(self, 'items_page') and self.items_page:
+                self.items_page.refresh_catalog()
+                self.show_sync_status("Items Refreshed")
+            else:
+                self.refresh_plugins()
         elif hasattr(self, '_modify_page_widget') and cur_w == self._modify_page_widget and self._modify_page_widget is not None:
             self._modify_page_widget.load_and_init_ui()
             self.show_sync_status("Rules Refreshed")
@@ -2243,9 +2584,13 @@ class PluginManager(QWidget):
     def resizeEvent(self, event):
         self._apply_rounded_mask()
         super().resizeEvent(event)
-        self.resize_timer.start(50)
+        if hasattr(self, 'resize_timer') and self.resize_timer:
+            self.resize_timer.start(50)
         if hasattr(self, 'details_popup') and self.details_popup and self.details_popup.isVisible():
             self.details_popup.setGeometry(self.rect().adjusted(40, 50, -40, -30))
+        if hasattr(self, 'notification') and self.notification and self.notification.isVisible():
+            self.notification.update_position()
+
 
     def recalculate_plugin_grid(self):
         if not hasattr(self, 'grid_layout') or not self.plugin_cards:
@@ -2264,14 +2609,19 @@ class PluginManager(QWidget):
             self.grid_layout.setColumnStretch(0, 1)
             self.grid_layout.setColumnStretch(1, 1)
             
+            is_plugins_tab = not hasattr(self, 'plugins_inner_stack') or self.plugins_inner_stack.currentIndex() == 0
             for i, (plugin_name, card) in enumerate(self.plugin_cards.items()):
                 row, col = i // cols, i % cols
                 self.grid_layout.addWidget(card, row, col)
-                card.show()
+                if is_plugins_tab:
+                    card.show()
+                else:
+                    card.hide()
         finally:
             self.scroll_content.setUpdatesEnabled(True)
         
-        QTimer.singleShot(50, self.check_visible_cards)
+        if is_plugins_tab:
+            QTimer.singleShot(50, self.check_visible_cards)
 
     def get_modify_page(self):
         if self._modify_page_widget is None:
@@ -2302,9 +2652,11 @@ class PluginManager(QWidget):
             self.theme_main_tab_container = QFrame()
             self.theme_main_tab_container.setObjectName("pillTabContainer")
             self.theme_main_tab_container.setStyleSheet("background-color: transparent; border: none; padding: 0px;")
+            self.theme_main_tab_container.setFixedHeight(40)
             theme_main_tab_lay = QHBoxLayout(self.theme_main_tab_container)
             theme_main_tab_lay.setContentsMargins(0, 0, 0, 0)
             theme_main_tab_lay.setSpacing(4)
+            theme_main_tab_lay.setAlignment(Qt.AlignVCenter)
 
             self.themes_tab_btn = PillTabButton(" Themes", 0xE790, height=30)
             self.themes_tab_btn.setChecked(True)
@@ -2338,38 +2690,44 @@ class PluginManager(QWidget):
             self.mouse_placeholder = QWidget()
 
             self.theme_save_button = PillPushButton("Save", "primary", height=30)
-            self.theme_save_button.setFixedWidth(70)
+            self.theme_save_button.setFixedWidth(74)
             self.theme_reset_button = PillPushButton("Reset", "reset", height=30)
-            self.theme_reset_button.setFixedWidth(70)
+            self.theme_reset_button.setFixedWidth(74)
             self.sync_container = QFrame(); self.sync_container.setObjectName("syncContainer")
-            self.sync_container.setStyleSheet("QFrame#syncContainer { background: rgba(255, 255, 255, 0.05); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); }")
-            sync_cl = QHBoxLayout(self.sync_container); sync_cl.setContentsMargins(15, 0, 8, 0); sync_cl.setSpacing(10)
+            self.sync_container.setFixedHeight(30)
+            self.sync_container.setStyleSheet("QFrame#syncContainer { background: rgba(255, 255, 255, 0.05); border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.1); }")
+            sync_cl = QHBoxLayout(self.sync_container); sync_cl.setContentsMargins(14, 0, 4, 0); sync_cl.setSpacing(8)
 
-            self.sync_label = QLabel("Sync Colors"); self.sync_label.setStyleSheet("color: white; font-weight: 500; font-size: 11px; background: transparent; border: none;")
-            self.theme_sync_button = QPushButton("\uE117"); self.theme_sync_button.setFont(QFont('Segoe MDL2 Assets', 12))
-            self.theme_sync_button.setFixedSize(30, 30); self.theme_sync_button.setCursor(QCursor(Qt.PointingHandCursor))
-            self.theme_sync_button.setStyleSheet("QPushButton { color: white; background: rgba(255,255,255,0.1); border: none; border-radius: 15px; } QPushButton:hover { background: rgba(255,255,255,0.2); }")
+            self.sync_label = QLabel("Sync")
+            self.sync_label.setFont(QFont("Google Sans", 11, QFont.Bold))
+            self.sync_label.setStyleSheet("color: white; font-weight: bold; font-size: 11pt; background: transparent; border: none;")
+            self.theme_sync_button = QPushButton("\uE117"); self.theme_sync_button.setFont(QFont('Segoe MDL2 Assets', 11))
+            self.theme_sync_button.setFixedSize(24, 24); self.theme_sync_button.setCursor(QCursor(Qt.PointingHandCursor))
+            self.theme_sync_button.setStyleSheet("QPushButton { color: white; background: rgba(255,255,255,0.1); border: none; border-radius: 12px; } QPushButton:hover { background: rgba(255,255,255,0.2); }")
             self.theme_sync_button.clicked.connect(lambda: self.trigger_global_tint(force=True))
 
             sync_cl.addWidget(self.sync_label); sync_cl.addWidget(self.theme_sync_button)
 
-            top_header_layout = QHBoxLayout()
+            self.theme_top_header_bar = QWidget()
+            self.theme_top_header_bar.setFixedHeight(58)
+            top_header_layout = QHBoxLayout(self.theme_top_header_bar)
             top_header_layout.setContentsMargins(15, 10, 15, 8)
-            top_header_layout.addWidget(self.theme_main_tab_container)
+            top_header_layout.addWidget(self.theme_main_tab_container, 0, Qt.AlignVCenter)
             top_header_layout.addStretch(1)
 
             right_controls = QHBoxLayout()
             right_controls.setContentsMargins(0, 0, 0, 0)
             right_controls.setSpacing(10)
-            right_controls.addWidget(self.theme_switcher_page.tab_container)
-            right_controls.addWidget(self.sync_container)
-            right_controls.addWidget(self.theme_save_button)
-            right_controls.addWidget(self.theme_reset_button)
+            right_controls.setAlignment(Qt.AlignVCenter)
+            right_controls.addWidget(self.theme_switcher_page.tab_container, 0, Qt.AlignVCenter)
+            right_controls.addWidget(self.sync_container, 0, Qt.AlignVCenter)
+            right_controls.addWidget(self.theme_save_button, 0, Qt.AlignVCenter)
+            right_controls.addWidget(self.theme_reset_button, 0, Qt.AlignVCenter)
 
             top_header_layout.addLayout(right_controls)
-            self.theme_layout.addLayout(top_header_layout)
+            self.theme_layout.addWidget(self.theme_top_header_bar)
 
-            self.theme_stacked_widget = QStackedWidget()
+            self.theme_stacked_widget = AnimatedStackedWidget(self, duration=240, offset=70)
             self.theme_stacked_widget.setObjectName("themeStackedWidget")
             self.theme_stacked_widget.setStyleSheet("QStackedWidget#themeStackedWidget { background-color: #121212; border: none; }")
             self.theme_stacked_widget.addWidget(self.theme_switcher_page)
@@ -2404,38 +2762,50 @@ class PluginManager(QWidget):
             self.theme_reset_button.clicked.connect(on_reset_clicked)
             self.theme_switcher_page.theme_applied.connect(self.trigger_global_tint)
             self.theme_switcher_page.reload_requested.connect(self.reload_shell)
+            self.theme_switcher_page.theme_selected.connect(self._on_theme_picked)
+
+            def _ensure_theme_editor_initialized():
+                if not self._theme_editor_initialized:
+                    self._theme_editor_initialized = True
+                    self.theme_editor_page = ThemeEditorWidget(
+                        theme_path=os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'),
+                        theme_dir=os.path.join(PROJECT_ROOT, 'theme')
+                    )
+                    self.theme_stacked_widget.removeWidget(self.editor_placeholder)
+                    self.editor_placeholder.deleteLater()
+                    self.theme_stacked_widget.insertWidget(1, self.theme_editor_page)
+                    self.theme_switcher_page.theme_selected.connect(self.theme_editor_page.reload_theme)
+                    self.theme_editor_page.reload_requested.connect(self.reload_shell)
+                    self._update_widgets_autosave()
+
+            def _ensure_cursor_page_initialized():
+                if not self._cursor_page_initialized:
+                    self._cursor_page_initialized = True
+                    self.cursor_page = CursorGalleryWidget(
+                        cursor_dir=os.path.join(PROJECT_ROOT, 'cursor')
+                    )
+                    self.theme_stacked_widget.removeWidget(self.mouse_placeholder)
+                    self.mouse_placeholder.deleteLater()
+                    self.theme_stacked_widget.insertWidget(2, self.cursor_page)
+                    right_controls.insertWidget(1, self.cursor_page.tab_container, 0, Qt.AlignVCenter)
+                    self.cursor_page.status_message_requested.connect(self.show_sync_status)
+                    self.cursor_page.cursor_selected.connect(self._on_cursor_changed)
+                    self.cursor_page.tab_container.setVisible(self.theme_stacked_widget.currentIndex() == 2)
+
+            self._ensure_theme_editor_initialized = _ensure_theme_editor_initialized
+            self._ensure_cursor_page_initialized = _ensure_cursor_page_initialized
 
             def switch_theme_page_tab(idx):
                 if idx == 0:
                     self.themes_tab_btn.setChecked(True)
                 elif idx == 1:
                     self.editor_tab_btn.setChecked(True)
-                    if not self._theme_editor_initialized:
-                        self._theme_editor_initialized = True
-                        self.theme_editor_page = ThemeEditorWidget(
-                            theme_path=os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'),
-                            theme_dir=os.path.join(PROJECT_ROOT, 'theme')
-                        )
-                        self.theme_stacked_widget.removeWidget(self.editor_placeholder)
-                        self.editor_placeholder.deleteLater()
-                        self.theme_stacked_widget.insertWidget(1, self.theme_editor_page)
-                        self.theme_switcher_page.theme_selected.connect(self.theme_editor_page.reload_theme)
-                        self.theme_editor_page.reload_requested.connect(self.reload_shell)
-                        self._update_widgets_autosave()
+                    _ensure_theme_editor_initialized()
                 elif idx == 2:
                     self.mouse_tab_btn.setChecked(True)
-                    if not self._cursor_page_initialized:
-                        self._cursor_page_initialized = True
-                        self.cursor_page = CursorGalleryWidget(
-                            cursor_dir=os.path.join(PROJECT_ROOT, 'cursor')
-                        )
-                        self.theme_stacked_widget.removeWidget(self.mouse_placeholder)
-                        self.mouse_placeholder.deleteLater()
-                        self.theme_stacked_widget.insertWidget(2, self.cursor_page)
-                        right_controls.insertWidget(1, self.cursor_page.tab_container)
-                        self.cursor_page.status_message_requested.connect(self.show_sync_status)
+                    _ensure_cursor_page_initialized()
 
-                self.theme_stacked_widget.setCurrentIndex(idx)
+                self.theme_stacked_widget.slide_to_index(idx)
                 self.theme_switcher_page.tab_container.setVisible(idx == 0)
                 self.sync_container.setVisible(idx in (0, 1))
                 if self._cursor_page_initialized and self.cursor_page:
@@ -2450,6 +2820,29 @@ class PluginManager(QWidget):
             self.stacked_widget.addWidget(self._theme_page_widget)
             self._update_widgets_autosave()
         return self._theme_page_widget
+
+    def _on_theme_picked(self, theme_name):
+        self._last_action_time = time.time()
+        display_name = theme_name.replace("theme_", "").replace("_", " ")
+        if display_name.islower():
+            display_name = display_name.title()
+        icon_path = os.path.join(PROJECT_ROOT, 'theme', f"{theme_name}.png")
+        icon_pix = QPixmap(icon_path) if os.path.exists(icon_path) else None
+        if hasattr(self, 'notification') and self.notification:
+            self.notification.show_notification(
+                display_name,
+                f"{display_name} theme applied!",
+                icon_pix
+            )
+
+    def _on_cursor_changed(self, cursor_name, pixmap):
+        self._last_action_time = time.time()
+        if hasattr(self, 'notification') and self.notification:
+            self.notification.show_notification(
+                cursor_name,
+                f"{cursor_name} cursor applied!",
+                pixmap
+            )
 
     def get_settings_page(self):
         if self._settings_page_widget is None:
@@ -2483,7 +2876,9 @@ class PluginManager(QWidget):
             self.unsetCursor()
             btn.setChecked(True)
             w = page_getter()
-            self.stacked_widget.setCurrentWidget(w)
+            if self.stacked_widget.currentWidget() == w and not self.stacked_widget.is_animating():
+                return
+            self.stacked_widget.setCurrentWidgetAnimated(w)
 
         def create_nav_item(icon_name, label_text, page_getter):
             btn = NavTabButton(icon_name, label_text)
@@ -2513,6 +2908,37 @@ class PluginManager(QWidget):
             os.startfile(PROJECT_ROOT)
         except Exception as e:
             print(f"Error opening root folder: {e}")
+
+    def switch_plugins_sub_tab(self, idx):
+        if not hasattr(self, 'plugins_inner_stack'):
+            return
+        if idx == 1:
+            return
+            self.scroll_area.hide()
+            if self.items_page is None:
+                from items_widget import ItemsWidget
+                self.items_page = ItemsWidget(project_root=PROJECT_ROOT, parent=self)
+                self.items_page.reload_requested.connect(self.reload_shell)
+                self.plugins_inner_stack.removeWidget(self.items_placeholder)
+                self.plugins_inner_stack.addWidget(self.items_page)
+            else:
+                self.items_page.refresh_installed_only()
+            self.items_page.show()
+            self.items_tab_sub_btn.setChecked(True)
+            self.plugins_inner_stack.setCurrentIndex(1)
+            self.plugins_tab_container.hide()
+        else:
+            if self.items_page:
+                self.items_page.hide()
+            self.scroll_area.show()
+            self.plugins_tab_sub_btn.setChecked(True)
+            self.plugins_inner_stack.setCurrentIndex(0)
+            local_plugins = self.plugin_logic.registry.get_local_plugins_for_ui()
+            if len(local_plugins) > 0 and self.stacked_widget.currentWidget() == self.plugins_page:
+                self.plugins_tab_container.show()
+            else:
+                self.plugins_tab_container.hide()
+            self.check_visible_cards()
 
     def switch_plugins_tab(self, tab_name):
         self.current_plugins_tab = tab_name
@@ -2548,7 +2974,8 @@ class PluginManager(QWidget):
     def on_plugins_fetched(self, plugins):
         local_plugins = self.plugin_logic.registry.get_local_plugins_for_ui()
         is_plugins_page = (self.stacked_widget.currentWidget() == self.plugins_page) if hasattr(self, 'stacked_widget') else True
-        if len(local_plugins) > 0 and is_plugins_page:
+        sub_idx = getattr(self, 'plugins_inner_stack', None).currentIndex() if hasattr(self, 'plugins_inner_stack') else 0
+        if len(local_plugins) > 0 and is_plugins_page and sub_idx == 0:
             self.plugins_tab_container.show()
         else:
             self.plugins_tab_container.hide()
@@ -2599,12 +3026,30 @@ class PluginManager(QWidget):
 
         # Arrange grid only if card membership changed to preserve scroll & avoid layout flicker
         self.loading_label.hide()
-        self.scroll_area.show()
+        is_plugins_sub = not hasattr(self, 'plugins_inner_stack') or self.plugins_inner_stack.currentIndex() == 0
+        if is_plugins_sub:
+            self.scroll_area.show()
+        else:
+            self.scroll_area.hide()
+
         if cards_changed or not self.grid_layout.count():
             self.recalculate_plugin_grid()
         
         # Trigger icon loading for the visible cards
-        QTimer.singleShot(100, self.check_visible_cards)
+        if is_plugins_sub:
+            QTimer.singleShot(100, self.check_visible_cards)
+
+        # Automatically queue updates for installed plugins if enabled
+        if self.settings_manager.get('auto_update'):
+            self._auto_update_available_plugins()
+
+    def _auto_update_available_plugins(self):
+        if not self.settings_manager.get('auto_update'):
+            return
+        plugins_data = self.plugin_logic.registry._data.get('plugins', {})
+        for name, entry in list(plugins_data.items()):
+            if entry.get('status') == 'update_available':
+                self.add_to_installation_queue(name)
 
     def on_fetch_error(self, error_message):
         self.loading_label.setText(f"Error: {error_message}")
@@ -2613,26 +3058,7 @@ class PluginManager(QWidget):
         if self.plugin_logic.current_installing_plugin: return
         self.fetch_plugins_list()
 
-    def display_plugins(self, plugins):
-        for i in reversed(range(self.grid_layout.count())):
-            widget = self.grid_layout.itemAt(i).widget()
-            if widget:
-                widget.deleteLater()
 
-        self.plugin_cards.clear()
-        self.plugin_progress_bars.clear()
-        self.plugin_buttons.clear()
-        self.plugin_update_buttons.clear()
-        self.plugin_action_layouts.clear()
-        self.plugin_description_labels.clear()
-        self.plugin_icon_labels.clear()
-        self.icons_loaded.clear()
-
-        self.all_plugins_data = {p['name']: p for p in plugins}
-
-        self.recalculate_plugin_grid()
-
-        QTimer.singleShot(100, self.check_visible_cards)
 
     def create_plugin_card(self, plugin):
         plugin_name = plugin['name']
@@ -2675,13 +3101,13 @@ class PluginManager(QWidget):
         text_layout.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
 
         title = QLabel(plugin_name)
-        title.setFont(QFont('Segoe UI Variable Display', 12, QFont.Bold))
-        title.setStyleSheet("color: #ffffff; background: transparent;")
+        title.setFont(QFont('Google Sans', 14, QFont.Bold))
+        title.setStyleSheet("color: #ffffff; background: transparent; font-weight: bold; font-size: 14px;")
         title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         text_layout.addWidget(title)
 
         description = QLabel(plugin.get('description', 'No description available.'))
-        description.setFont(QFont('Segoe UI Variable Text', 10))
+        description.setFont(QFont('Google Sans', 10))
         description.setStyleSheet("color: #8c92a4; background: transparent;")
         description.setWordWrap(True)
         description.setMaximumHeight(38)
@@ -2840,11 +3266,15 @@ class PluginManager(QWidget):
         is_local = plugin_info.get('_is_local') or status == 'local'
         is_installing = (self.plugin_logic.current_installing_plugin == plugin_name)
         is_queued = plugin_name in [p['name'] for p in self.plugin_logic.installation_queue]
+        is_uninstalling = f"uninstall_{plugin_name}" in self.plugin_logic.active_threads
 
         try: self.details_popup.action_button.clicked.disconnect()
         except TypeError: pass
 
-        if is_installing:
+        if is_uninstalling:
+            self.details_popup.action_button.setEnabled(False)
+            self.details_popup.action_button.set_state('uninstalling')
+        elif is_installing:
             self.details_popup.action_button.set_state('installing')
             self.details_popup.action_button.clicked.connect(lambda: self.cancel_operation(plugin_name))
         elif is_queued:
@@ -2933,6 +3363,7 @@ class PluginManager(QWidget):
 
         is_queued = plugin_name in [p['name'] for p in self.plugin_logic.installation_queue]
         is_installing = self.plugin_logic.current_installing_plugin == plugin_name
+        is_uninstalling = f"uninstall_{plugin_name}" in self.plugin_logic.active_threads
 
         plugin_info = self.all_plugins_data.get(plugin_name, {})
         state = self.plugin_logic.registry.get_plugin_state(plugin_name)
@@ -2943,11 +3374,16 @@ class PluginManager(QWidget):
         is_installed = status in ('installed', 'update_available', 'delisted', 'local')
         
         # Auto Update Logic
-        if has_update and self.settings_manager.get('auto_update') and not is_queued and not is_installing:
+        if has_update and self.settings_manager.get('auto_update') and not is_queued and not is_installing and not is_uninstalling:
              self.add_to_installation_queue(plugin_name)
              return
 
-        if is_installing:
+        if is_uninstalling:
+            action_button.set_height(34)
+            action_button.set_compact(False)
+            action_button.setEnabled(False)
+            action_button.set_state('uninstalling')
+        elif is_installing:
             action_button.set_height(34)
             action_button.set_compact(False)
             action_button.set_state('installing')
@@ -3073,8 +3509,23 @@ class PluginManager(QWidget):
             self.details_popup.action_button.setValue(0)
             self.update_popup_button(plugin_name)
 
-        if status == "installed" or status == "uninstalled":
+        if status in ("installed", "uninstalled"):
             self.reload_shell()
+
+        if status in ("installed", "uninstalled", "deleted"):
+            self._last_action_time = time.time()
+            icon_pix = self._pixmap_cache.get(plugin_name)
+            if not icon_pix or icon_pix.isNull():
+                lbl = self.plugin_icon_labels.get(plugin_name)
+                if lbl and lbl.pixmap() and not lbl.pixmap().isNull():
+                    icon_pix = lbl.pixmap()
+            if hasattr(self, 'notification') and self.notification:
+                verb = "uninstalled" if status in ("uninstalled", "deleted") else "installed"
+                self.notification.show_notification(
+                    plugin_name,
+                    f"{plugin_name} {verb} successfully!",
+                    icon_pix
+                )
 
     def cancel_operation(self, plugin_name):
         self.plugin_logic.cancel_operation(plugin_name)
@@ -3122,54 +3573,60 @@ class PluginManager(QWidget):
 
     def nativeEvent(self, event_type, message):
         if event_type == "windows_generic_MSG":
-            msg = wintypes.MSG.from_address(message.__int__())
-            WM_NCHITTEST = 0x0084
-            WM_NCCALCSIZE = 0x0083
-            HTCAPTION = 2
-            HTLEFT = 10
-            HTRIGHT = 11
-            HTTOP = 12
-            HTTOPLEFT = 13
-            HTTOPRIGHT = 14
-            HTBOTTOM = 15
-            HTBOTTOMLEFT = 16
-            HTBOTTOMRIGHT = 17
+            addr = message.__int__() if hasattr(message, '__int__') else int(message)
+            msg = wintypes.MSG.from_address(addr)
 
-            if msg.message == WM_NCHITTEST:
+            if msg.message == WM_GETMINMAXINFO:
+                if msg.lParam:
+                    hwnd = msg.hWnd
+                    h_mon = ctypes.windll.user32.MonitorFromWindow(hwnd, 2)
+                    mi = _Win32MonitorInfo()
+                    mi.cbSize = ctypes.sizeof(_Win32MonitorInfo)
+                    if ctypes.windll.user32.GetMonitorInfoW(h_mon, ctypes.byref(mi)):
+                        mmi = ctypes.cast(msg.lParam, ctypes.POINTER(_Win32MinMaxInfo)).contents
+                        work = mi.rcWork
+                        mon = mi.rcMonitor
+                        mmi.ptMaxPosition.x = abs(work.left - mon.left)
+                        mmi.ptMaxPosition.y = abs(work.top - mon.top)
+                        mmi.ptMaxSize.x = abs(work.right - work.left)
+                        mmi.ptMaxSize.y = abs(work.bottom - work.top)
+                        mmi.ptMinTrackSize.x = 750
+                        mmi.ptMinTrackSize.y = 500
+                return True, 0
+
+            elif msg.message == WM_NCHITTEST:
                 x, y = msg.pt.x, msg.pt.y
                 pos = self.mapFromGlobal(QPoint(x, y))
                 lx, ly = pos.x(), pos.y()
                 w, h = self.width(), self.height()
 
-                # Sizing borders: NEVER return resize hit codes when maximized!
+                # Native sizing borders: active when not maximized
                 if not self.isMaximized():
-                    child = self.childAt(lx, ly)
-                    is_interactive = False
-                    curr = child
-                    while curr and curr is not self:
-                        if (curr.inherits("QAbstractButton") or 
-                            curr.inherits("QLineEdit") or 
-                            curr.inherits("QComboBox") or 
-                            curr.inherits("QTabBar") or 
-                            curr.inherits("QSlider") or 
-                            curr.inherits("QScrollBar") or
-                            curr.objectName() in ("navTabButton", "pillTabContainer", "sidePanel")):
-                            is_interactive = True
-                            break
-                        curr = curr.parentWidget()
+                    border = 8
+                    corner = 20  # Generous corner hit zone for diagonal resizing
+                    if lx < corner and ly < corner: return True, HTTOPLEFT
+                    if lx > w - corner and ly < corner: return True, HTTOPRIGHT
+                    if lx < corner and ly > h - corner: return True, HTBOTTOMLEFT
+                    if lx > w - corner and ly > h - corner: return True, HTBOTTOMRIGHT
+                    if lx < border: return True, HTLEFT
+                    if lx > w - border: return True, HTRIGHT
+                    if ly < border: return True, HTTOP
+                    if ly > h - border: return True, HTBOTTOM
 
-                    if not is_interactive:
-                        border = 8
-                        if lx < border:
-                            if ly < border: return True, HTTOPLEFT
-                            if ly > h - border: return True, HTBOTTOMLEFT
-                            return True, HTLEFT
-                        if lx > w - border:
-                            if ly < border: return True, HTTOPRIGHT
-                            if ly > h - border: return True, HTBOTTOMRIGHT
-                            return True, HTRIGHT
-                        if ly < border: return True, HTTOP
-                        if ly > h - border: return True, HTBOTTOM
+                # Windows 11 Snap Layouts flyout on maximize button hover
+                if hasattr(self, 'maximize_button') and self.maximize_button and self.maximize_button.isVisible():
+                    btn_pos = self.maximize_button.mapFromGlobal(QPoint(x, y))
+                    if self.maximize_button.rect().contains(btn_pos):
+                        if not self.maximize_button.property("hovered"):
+                            self.maximize_button.setProperty("hovered", True)
+                            self.maximize_button.style().unpolish(self.maximize_button)
+                            self.maximize_button.style().polish(self.maximize_button)
+                        return True, HTMAXBUTTON
+                    else:
+                        if self.maximize_button.property("hovered"):
+                            self.maximize_button.setProperty("hovered", False)
+                            self.maximize_button.style().unpolish(self.maximize_button)
+                            self.maximize_button.style().polish(self.maximize_button)
 
                 # Title bar drag: only at the top and never over interactive controls
                 if ly < 45:
@@ -3180,15 +3637,52 @@ class PluginManager(QWidget):
                             curr.inherits("QLineEdit") or 
                             curr.inherits("QComboBox") or 
                             curr.inherits("QTabBar") or
-                            curr.objectName() in ("navTabButton", "windowControlsPill")):
+                            curr.objectName() in ("navTabButton", "windowControlsPill", "pillNotification")):
                             return False, 0
                         curr = curr.parentWidget()
                     return True, HTCAPTION
 
                 return False, 0
 
+            elif msg.message == WM_SETCURSOR:
+                hit = msg.lParam & 0xFFFF
+                if hit == HTMAXBUTTON:
+                    ctypes.windll.user32.SetCursor(ctypes.windll.user32.LoadCursorW(0, 32649))  # IDC_HAND
+                    return True, 1
+
             elif msg.message == WM_NCCALCSIZE:
+                if msg.wParam and self.isMaximized():
+                    bx = ctypes.windll.user32.GetSystemMetrics(32) + ctypes.windll.user32.GetSystemMetrics(92)
+                    by = ctypes.windll.user32.GetSystemMetrics(33) + ctypes.windll.user32.GetSystemMetrics(92)
+                    params = ctypes.cast(msg.lParam, ctypes.POINTER(_Win32NcCalcSizeParams)).contents
+                    params.rgrc[0].left += bx
+                    params.rgrc[0].top += by
+                    params.rgrc[0].right -= bx
+                    params.rgrc[0].bottom -= by
                 return True, 0
+
+            elif msg.message == WM_NCLBUTTONDOWN and msg.wParam == HTMAXBUTTON:
+                return True, 0
+
+            elif msg.message == WM_NCLBUTTONUP and msg.wParam == HTMAXBUTTON:
+                self.toggle_maximize()
+                return True, 0
+
+            elif msg.message == WM_NCMOUSEMOVE:
+                if hasattr(self, 'maximize_button') and self.maximize_button:
+                    is_over = (msg.wParam == HTMAXBUTTON)
+                    if self.maximize_button.property("hovered") != is_over:
+                        self.maximize_button.setProperty("hovered", is_over)
+                        self.maximize_button.style().unpolish(self.maximize_button)
+                        self.maximize_button.style().polish(self.maximize_button)
+
+            elif msg.message == WM_NCMOUSELEAVE:
+                if hasattr(self, 'maximize_button') and self.maximize_button:
+                    if self.maximize_button.property("hovered"):
+                        self.maximize_button.setProperty("hovered", False)
+                        self.maximize_button.style().unpolish(self.maximize_button)
+                        self.maximize_button.style().polish(self.maximize_button)
+
 
             elif msg.message == 0x02E0:  # WM_DPICHANGED
                 try:
@@ -3219,6 +3713,7 @@ class PluginManager(QWidget):
         return super().nativeEvent(event_type, message)
 
     def showEvent(self, event):
+        self._setup_native_window()
         self._apply_rounded_mask()
         super().showEvent(event)
 
@@ -3226,17 +3721,17 @@ class PluginManager(QWidget):
         super().changeEvent(event)
         if event.type() in (QEvent.WindowStateChange, QEvent.StyleChange):
             self._apply_rounded_mask()
+            if hasattr(self, 'maximize_button') and self.maximize_button:
+                if self.isMaximized():
+                    self.maximize_button.setToolTip("Restore")
+                else:
+                    self.maximize_button.setToolTip("Maximize / Snap Layouts")
             self.update()
 
     def _apply_rounded_mask(self):
-        """Clip window to rounded rect at OS level when not maximized."""
-        if self.isMaximized():
-            self.clearMask()
-            return
-        radius = getattr(self, '_corner_radius', 28)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), radius, radius)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        """Allow Windows DWM to handle native rounded corners and shadows without clipping masks."""
+        self.clearMask()
+
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -3316,6 +3811,11 @@ class PluginManager(QWidget):
 
         # Hide window immediately for instant visual exit feeling
         self.hide()
+        if hasattr(self, 'scroll_manager'):
+            try:
+                QApplication.instance().removeEventFilter(self.scroll_manager)
+            except Exception:
+                pass
         # Stop threads and trigger final reload via IPC (instant)
         self.plugin_logic.stop_all_threads()
         from utils import send_ipc_command
@@ -3338,7 +3838,7 @@ class PluginManager(QWidget):
                                 with open(fp, 'r', encoding='utf-8') as file: self.tint_backups[fp] = file.read()
                             except: pass
 
-        from modify_widget import scan_nss_items, _extract_glyph_codes, _extract_all_colors, ManualSyncConflictDialog, GlobalTintWorker
+        from modify_widget import scan_nss_items, _extract_glyph_codes, _extract_all_colors, GlobalTintWorker
         items = scan_nss_items(PROJECT_ROOT)
         manual_items = []
         for i in items:
@@ -3404,7 +3904,7 @@ class PluginManager(QWidget):
             self.theme_sync_button.setEnabled(False)
         self.show_sync_status(f"Syncing {mode.title()} colors...")
 
-        thread = QThread()
+        thread = QThread(self)
         worker = GlobalTintWorker(PROJECT_ROOT, mode, colors, skip_manual_keys)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -3429,6 +3929,7 @@ class PluginManager(QWidget):
         worker.finished.connect(on_tint_finished)
         worker.finished.connect(lambda: self._active_tint_threads.remove((thread, worker)) if (thread, worker) in self._active_tint_threads else None)
         worker.finished.connect(self.reload_shell)
+        worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         self._active_tint_threads.append((thread, worker))
         thread.start()
@@ -3441,16 +3942,19 @@ class PluginManager(QWidget):
         header = QHBoxLayout()
         header.setSpacing(15)
         header.setContentsMargins(0, 0, 0, 10)
-        title = QLabel("Settings"); title.setFont(QFont('Segoe UI Variable Display', 26, QFont.Bold)); title.setStyleSheet("color: white; background: transparent; border: none;")
+        title = QLabel("Settings")
+        title.setFont(QFont('Google Sans', 26, QFont.Bold))
+        title.setStyleSheet("color: white; background: transparent; font-weight: bold; font-size: 26px; border: none;")
         header.addWidget(title)
         header.addStretch()
         
         self.ver_label = QLabel(f"V {VERSION}")
+        self.ver_label.setFont(QFont('Google Sans', 14, QFont.Bold))
         self.ver_label.setStyleSheet("color: #b0b0b0; font-size: 14px; font-weight: bold; border: none; background: transparent;")
         header.addWidget(self.ver_label)
         
         self.update_btn = PillPushButton("Check for Update", "primary", height=34)
-        self.update_btn.setFixedWidth(140)
+        self.update_btn.setFixedWidth(148)
         self.update_btn.setFocusPolicy(Qt.NoFocus)
         self.update_btn.clicked.connect(lambda: self.check_app_update(manual=True))
         header.addWidget(self.update_btn)
@@ -3459,6 +3963,7 @@ class PluginManager(QWidget):
 
         self.auto_update_sw = self._create_setting_row(layout, "Auto Update Plugins", "Automatically install updates on startup", "auto_update")
         self.auto_check_sw = self._create_setting_row(layout, "Auto Check Updates", "Show notification when updates are available", "auto_check_updates")
+        self.auto_backup_sw = self._create_setting_row(layout, "Daily Cloud Backup", "Automatically back up settings daily when logged into Google Drive", "auto_cloud_backup")
         
         self._create_import_row(layout)
         self._create_sync_section(layout)
@@ -3467,20 +3972,9 @@ class PluginManager(QWidget):
         # Force a UI state update to ensure buttons are visible based on login status
         QTimer.singleShot(100, self._update_sync_ui_state)
 
-        # Check for update on startup (silently)
-        QTimer.singleShot(5000, lambda: self.check_app_update(manual=False))
-
     def check_app_update(self, manual=False, force=False):
-        import time
         if not manual and not force:
-            last_check = self.settings_manager.get('last_update_check') or 0
-            if last_check == 0 and os.path.exists(os.path.join(TEMP_DIR, 'ima_last_update_check.txt')):
-                try:
-                    with open(os.path.join(TEMP_DIR, 'ima_last_update_check.txt')) as f:
-                        last_check = float(f.read().strip())
-                except Exception:
-                    last_check = 0
-            if time.time() - last_check < 86400:
+            if not self.settings_manager.get('auto_check_updates'):
                 return
 
         now = time.time()
@@ -3495,7 +3989,7 @@ class PluginManager(QWidget):
 
         if getattr(self, '_update_dialog_active', False):
             return
-        if manual:
+        if manual and hasattr(self, 'update_btn') and self.update_btn is not None:
             self.update_btn.setText('Checking...'); self.update_btn.setEnabled(False)
 
         self._update_threads = getattr(self, '_update_threads', [])
@@ -3519,7 +4013,7 @@ class PluginManager(QWidget):
         thread.start()
 
     def on_check_finished(self, has_update, latest_version, download_url, manual, force=False):
-        if manual:
+        if manual and hasattr(self, 'update_btn') and self.update_btn is not None:
             self.update_btn.setText('Check for Update')
             self.update_btn.setEnabled(True)
 
@@ -3527,7 +4021,8 @@ class PluginManager(QWidget):
             if download_url:
                 self._update_dialog_active = True
                 self.latest_app_version = latest_version
-                self.ver_label.setText(f"Current: {VERSION} | <span style='color: #e78284;'>Latest: {latest_version}</span>")
+                if hasattr(self, 'ver_label') and self.ver_label is not None:
+                    self.ver_label.setText(f"Current: {VERSION} | <span style='color: #e78284;'>Latest: {latest_version}</span>")
                 title = 'Re-install Launcher' if force else 'Update Available'
                 msg = f"Re-install iMA Menu Launcher <b>v{latest_version}</b> now?" if force else f"A new version of iMA Menu Launcher is available: <b>v{latest_version}</b><br><br>Would you like to download and install it now?"
                 btn_txt = 'Re-install Now' if force else 'Update Now'
@@ -3680,11 +4175,13 @@ class PluginManager(QWidget):
     def _create_setting_row(self, layout, title, desc, key):
         row = QFrame(); row.setStyleSheet("QFrame { background: rgba(255,255,255,0.04); border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); } QFrame:hover { background: rgba(255,255,255,0.06); }")
         rl = QHBoxLayout(row); rl.setContentsMargins(20, 15, 20, 15)
-        v = QVBoxLayout(); t = QLabel(title); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
+        v = QVBoxLayout(); t = QLabel(title); t.setFont(QFont('Google Sans', 15, QFont.Bold)); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
         d = QLabel(desc); d.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
         v.addWidget(t); v.addWidget(d); rl.addLayout(v); rl.addStretch()
         sw = ModernSwitch(checked=self.settings_manager.get(key)); sw.stateChanged.connect(lambda v: self.settings_manager.set(key, v))
         if key == "auto_save": sw.stateChanged.connect(self._update_widgets_autosave)
+        elif key == "auto_update": sw.stateChanged.connect(lambda v: self._auto_update_available_plugins() if v else None)
+        elif key == "auto_check_updates": sw.stateChanged.connect(lambda v: self.check_app_update(manual=False) if v else None)
         rl.addWidget(sw); layout.addWidget(row); return sw
 
     def _update_widgets_autosave(self):
@@ -3696,7 +4193,7 @@ class PluginManager(QWidget):
     def _create_import_row(self, layout):
         row = QFrame(); row.setStyleSheet("QFrame { background: rgba(255,255,255,0.04); border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); } QFrame:hover { background: rgba(255,255,255,0.06); }")
         rl = QHBoxLayout(row); rl.setContentsMargins(20, 15, 20, 15)
-        v = QVBoxLayout(); t = QLabel("Import NSS Files"); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
+        v = QVBoxLayout(); t = QLabel("Import NSS Files"); t.setFont(QFont('Google Sans', 15, QFont.Bold)); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
         d = QLabel("Copy external files to imports and shell.nss"); d.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
         v.addWidget(t); v.addWidget(d); rl.addLayout(v); rl.addStretch()
         
@@ -3793,11 +4290,13 @@ class PluginManager(QWidget):
         self._init_sync_manager()
         row = QFrame(); row.setStyleSheet("QFrame { background: rgba(255,255,255,0.04); border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); } QFrame:hover { background: rgba(255,255,255,0.06); }")
         rl = QHBoxLayout(row); rl.setContentsMargins(20, 15, 20, 15)
-        v = QVBoxLayout(); t = QLabel("Google Drive Sync"); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
+        v = QVBoxLayout(); t = QLabel("Google Drive Sync"); t.setFont(QFont('Google Sans', 15, QFont.Bold)); t.setStyleSheet("color: white; font-size: 15px; font-weight: bold; border: none; background: transparent;")
         user_email = self.sync_manager.user_email if self.sync_manager else ""
         self.sync_status_label = QLabel("Not logged in" if not user_email else f"Logged in as {user_email}")
         self.sync_status_label.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
-        v.addWidget(t); v.addWidget(self.sync_status_label); rl.addLayout(v); rl.addStretch()
+        self.sync_last_backup_label = QLabel("")
+        self.sync_last_backup_label.setStyleSheet("color: #8caaee; font-size: 11px; font-weight: bold; border: none; background: transparent;")
+        v.addWidget(t); v.addWidget(self.sync_status_label); v.addWidget(self.sync_last_backup_label); rl.addLayout(v); rl.addStretch()
         
         self.sync_login_btn = PillPushButton("Login", "primary", height=34)
         self.sync_login_btn.setFixedWidth(100)
@@ -3867,6 +4366,15 @@ class PluginManager(QWidget):
             user_email = self.sync_manager.user_email or ""
             display_str = f"Logged in as {user_name} ({user_email})" if user_name and user_email else f"Logged in as {user_email or user_name}"
             self.sync_status_label.setText(display_str)
+
+            if hasattr(self, 'sync_last_backup_label'):
+                last_ts = float(self.settings_manager.get('last_cloud_backup', 0) or 0)
+                if last_ts > 0:
+                    time_str = time.strftime("%b %d, %Y at %I:%M %p", time.localtime(last_ts))
+                    self.sync_last_backup_label.setText(f"Last backup: {time_str}")
+                else:
+                    self.sync_last_backup_label.setText("Last backup: Never")
+                self.sync_last_backup_label.show()
             
             avatar_pix = self._get_profile_pixmap(size=36)
             if avatar_pix and not avatar_pix.isNull():
@@ -3884,6 +4392,9 @@ class PluginManager(QWidget):
             self.sync_logout_btn.setToolTip(tip or "Google Account Profile")
         else:
             self.sync_status_label.setText("Not logged in")
+            if hasattr(self, 'sync_last_backup_label'):
+                self.sync_last_backup_label.setText("")
+                self.sync_last_backup_label.hide()
             self.sync_logout_btn.setIcon(QIcon())
             self.sync_logout_btn.setText("\uE77B")
             self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #e78284; color: white; }")
@@ -3910,12 +4421,20 @@ class PluginManager(QWidget):
         self.sync_perc.setText(f"{percentage}%")
 
     def on_sync_finished(self, success, message):
+        had_dl_msg = hasattr(self, 'sync_dl_msg') and self.sync_dl_msg.isVisible()
         if hasattr(self, 'sync_dl_msg'): self.sync_dl_msg.close()
         if success:
+            if "backup" in message.lower():
+                self.settings_manager.set('last_cloud_backup', time.time())
             self.full_ui_refresh()
-            ModernDialog(self, "Cloud Sync", message).show()
+            self._update_sync_ui_state()
+            if had_dl_msg:
+                ModernDialog(self, "Cloud Sync", message).show()
+            else:
+                self.show_sync_status("Cloud Backup Complete")
         else:
-            ModernDialog(self, "Cloud Sync Error", message).show()
+            if had_dl_msg:
+                ModernDialog(self, "Cloud Sync Error", message).show()
 
 if __name__ == '__main__':
     if os.name == 'nt':
@@ -3925,6 +4444,56 @@ if __name__ == '__main__':
         except Exception:
             pass
 
+    # Check for standalone edit rule popup before single-instance check
+    if "--edit-rule" in sys.argv:
+        try:
+            import argparse
+            parser = argparse.ArgumentParser(description="iMA Menu Rule Editor Popup")
+            parser.add_argument("--edit-rule", action="store_true")
+            parser.add_argument("--id", type=str, default="")
+            parser.add_argument("--title", type=str, default="")
+            parser.add_argument("--original-title", type=str, default="")
+            parser.add_argument("--in", "--in-menu", dest="in_menu", type=str, default="")
+            parser.add_argument("--type", dest="item_type", type=str, default="")
+            parser.add_argument("--icon", type=str, default="")
+            parser.add_argument("--src-file", type=str, default="")
+            parser.add_argument("--src-line", type=int, default=0)
+            parser.add_argument("--is-custom", action="store_true")
+            args, _ = parser.parse_known_args()
+
+            QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+            QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+            app = QApplication(sys.argv)
+            app_font = QFont('Google Sans', 10)
+            app_font.setFamilies(['Google Sans', 'Marhey', 'Segoe UI'])
+            app_font.setWeight(QFont.Medium)
+            app.setFont(app_font)
+            try:
+                with open(resource_path('style.css')) as f:
+                    app.setStyleSheet(f.read())
+            except Exception:
+                pass
+
+            from modify_widget import open_standalone_rule_editor, set_project_root
+            set_project_root(PROJECT_ROOT)
+            open_standalone_rule_editor(
+                title=args.title,
+                target_id=args.id,
+                in_menu=args.in_menu,
+                item_type=args.item_type,
+                icon=args.icon,
+                project_root=PROJECT_ROOT,
+                original_title=args.original_title,
+                src_file=args.src_file,
+                src_line=args.src_line,
+                is_custom=args.is_custom
+            )
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error in standalone rule editor: {e}")
+            sys.exit(1)
+
+    if os.name == 'nt':
         # Single instance check
         try:
             kernel32 = ctypes.windll.kernel32
@@ -3961,7 +4530,13 @@ if __name__ == '__main__':
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
-    app_font = QFont('Segoe UI Variable Display', 10)
+    try:
+        from utils import init_app_fonts
+        init_app_fonts()
+    except Exception:
+        pass
+    app_font = QFont('Google Sans', 10)
+    app_font.setFamilies(['Google Sans', 'Marhey', 'Segoe UI'])
     app_font.setWeight(QFont.Medium)
     app.setFont(app_font)
     try:

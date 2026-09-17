@@ -6,7 +6,6 @@ Extracted from launcher.pyw for clean architecture and reduced token consumption
 
 import os
 import re
-import sys
 import json
 import time
 import shutil
@@ -16,14 +15,14 @@ import html
 from pathlib import Path
 
 from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-                             QTextBrowser, QSizePolicy, QLayout)
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QIcon, QPixmap, QTextOption, QPainterPath
-from PyQt5.QtCore import (Qt, pyqtSignal, QSize, QEvent, QPoint, QRect, QRectF, QObject, 
-                          QPropertyAnimation, QEasingCurve, QParallelAnimationGroup)
+                             QTextBrowser)
+from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QTextOption, QPainterPath
+from PyQt5.QtCore import (Qt, pyqtSignal, QObject, 
+                          QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRectF, QRect)
 
 from github_client import github_api_get, cdn_get, get_latest_tree_sha, RequestException
 from plugin_registry import atomic_json_write, safe_json_read, git_blob_sha
-from utils import resource_path, safe_file_write, terminate_plugin_processes, CapsuleActionButton
+from utils import resource_path, safe_file_write, terminate_plugin_processes, CapsuleActionButton, get_mdl2_icon
 
 PROJECT_ROOT = None
 PLUGINS_DIR = None
@@ -812,7 +811,7 @@ class DetailsFetchWorker(QObject):
         return f'''<!DOCTYPE html>
         <html><head><meta charset="utf-8">
         <style>
-            body {{ font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; font-size: 13.5px; line-height: 1.65; color: #c6d0f5; background-color: transparent; margin: 0; padding: 0 4px 0 0; }}
+            body {{ font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; font-size: 13.5px; line-height: 1.65; color: #c6d0f5; background-color: transparent; margin: 0; padding: 0 4px 0 0; }}
             h1, h2, h3, h4 {{ color: #ffffff; font-weight: 600; margin-top: 1.1em; margin-bottom: 0.4em; }}
             h1 {{ font-size: 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 6px; }}
             h2 {{ font-size: 15px; color: #ea999c; }}
@@ -859,6 +858,7 @@ class PopupHeaderButton(QPushButton):
         self.setCursor(Qt.PointingHandCursor)
         self.setAttribute(Qt.WA_Hover, True)
         self.is_circle = is_circle
+        self._icon_path = icon_path
         self._pixmap = QPixmap(icon_path) if icon_path and os.path.exists(icon_path) else QPixmap()
         self.setStyleSheet("background: transparent; border: none; outline: none;")
 
@@ -893,10 +893,25 @@ class PopupHeaderButton(QPushButton):
 
         if not self._pixmap.isNull():
             isize = 16 if self.is_circle else 18
-            scaled = self._pixmap.scaled(isize, isize, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            ix = int((self.width() - scaled.width()) / 2.0)
-            iy = int((self.height() - scaled.height()) / 2.0)
+            dpr = self.devicePixelRatioF() if hasattr(self, 'devicePixelRatioF') else 1.0
+            if dpr < 1.0:
+                dpr = 1.0
+            scaled = self._pixmap.scaled(int(isize * dpr), int(isize * dpr), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            scaled.setDevicePixelRatio(dpr)
+            ix = int((self.width() - isize) / 2.0)
+            iy = int((self.height() - isize) / 2.0)
+            p.setOpacity(1.0 if is_hov else 0.85)
             p.drawPixmap(ix, iy, scaled)
+            p.setOpacity(1.0)
+        else:
+            if self.is_circle:
+                p.setFont(QFont("Google Sans", 10, QFont.Bold))
+                p.setPen(QColor("#ffffff") if is_hov else QColor("#bac2de"))
+                p.drawText(self.rect(), Qt.AlignCenter, "✕")
+            else:
+                code = 0xED25 if ("open" in str(self._icon_path).lower()) else 0xE70F
+                icon = get_mdl2_icon(code, 16, "#ffffff" if is_hov else "#bac2de")
+                p.drawPixmap(int((self.width() - 16) / 2.0), int((self.height() - 16) / 2.0), icon.pixmap(16, 16))
         p.end()
 
 
@@ -910,6 +925,7 @@ class DetailsPopup(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setObjectName("detailsPopup")
+        self.setStyleSheet("QToolTip { background-color: #18181c; color: #ffffff; border: 1.5px solid rgba(231, 130, 132, 0.7); border-radius: 14px; padding: 5px 15px; font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: bold; }")
         self.setWindowOpacity(0.0)
 
         self.layout = QVBoxLayout(self)
@@ -956,7 +972,8 @@ class DetailsPopup(QWidget):
         title_layout.addWidget(icon_label)
 
         title_label = QLabel(self.plugin_data['name'])
-        title_label.setFont(QFont('Segoe UI Variable Display', 18, QFont.Bold))
+        title_label.setFont(QFont('Google Sans', 20, QFont.Bold))
+        title_label.setStyleSheet("color: #ffffff; background: transparent; font-weight: bold; font-size: 20px;")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
@@ -966,11 +983,13 @@ class DetailsPopup(QWidget):
             self.folder_button.setToolTip("Open Plugin Directory")
             self.folder_button.clicked.connect(lambda _, p=plugin_dir: os.startfile(p))
             title_layout.addWidget(self.folder_button)
+            title_layout.addSpacing(6)
 
             self.edit_button = PopupHeaderButton(resource_path('icons/modify.png'), is_circle=False)
             self.edit_button.setToolTip("Edit Item/Menu (.nss)")
             self.edit_button.clicked.connect(self._open_plugin_nss_editor)
             title_layout.addWidget(self.edit_button)
+            title_layout.addSpacing(6)
 
         close_button = PopupHeaderButton(resource_path('icons/x.png'), is_circle=True)
         close_button.setToolTip("Close")

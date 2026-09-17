@@ -1,20 +1,17 @@
-import sys
 import os
 import time
-import threading
-import glob
 import shutil
+import re
 import urllib.parse
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabBar,
-    QScrollArea, QFrame, QButtonGroup, QGridLayout, QPushButton, QGraphicsDropShadowEffect, QLayout, QSizePolicy, QInputDialog, QMessageBox, QMenu, QAction, QFileDialog, QDialog, QLineEdit, QApplication, QCheckBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QScrollArea, QFrame, QButtonGroup, QPushButton, QMessageBox, QFileDialog, QDialog, QLineEdit, QCheckBox
 )
-from PyQt5.QtGui import QPixmap, QIcon, QCursor, QColor, QFont, QPainter, QPainterPath, QImage
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QRect, QPoint, QMetaObject, Q_ARG, QThread
+from PyQt5.QtGui import QPixmap, QCursor, QColor, QFont, QPainter, QPainterPath, QImage
+from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from utils import safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir, FlowLayout, PillTabButton
 from github_client import github_api_get, cdn_get, get_latest_tree_sha
-from plugin_registry import safe_json_read, atomic_json_write, git_blob_sha, file_matches_git_sha
-import re
+from plugin_registry import safe_json_read, atomic_json_write, file_matches_git_sha
 
 class ClickableLabel(QLabel):
     clicked = pyqtSignal()
@@ -34,7 +31,7 @@ class AddThemeDialog(QDialog):
             QLabel { color: white; font-weight: bold; font-size: 14px; }
             QLineEdit { background-color: #25252b; color: white; border: 2px solid #555566; border-radius: 12px; padding: 10px; font-size: 14px; }
             QLineEdit:focus { border: 2px solid #e78284; }
-            QPushButton { border-radius: 12px; font-weight: bold; font-size: 13px; padding: 8px 16px; }
+            QPushButton { border-radius: 12px; font-weight: bold; font-size: 13px; padding: 8px 16px; font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif; }
             QPushButton#primaryBtn { background-color: #e78284; color: white; border: none; }
             QPushButton#primaryBtn:hover { background-color: #e62045; }
             QPushButton#secondaryBtn { background-color: rgba(255,255,255,0.05); color: white; border: 1px solid rgba(255,255,255,0.1); }
@@ -151,7 +148,7 @@ class EditThemeDialog(QDialog):
             QLabel { color: white; font-weight: bold; font-size: 14px; }
             QLineEdit { background-color: #25252b; color: white; border: 2px solid #555566; border-radius: 12px; padding: 10px; font-size: 14px; }
             QLineEdit:focus { border: 2px solid #e78284; }
-            QPushButton { border-radius: 12px; font-weight: bold; font-size: 13px; padding: 8px 16px; font-family: 'Segoe Fluent Icons', 'Segoe UI'; }
+            QPushButton { border-radius: 12px; font-weight: bold; font-size: 13px; padding: 8px 16px; font-family: 'Segoe Fluent Icons', 'Google Sans', 'Marhey', 'Segoe UI'; }
             QPushButton#primaryBtn { background-color: #e78284; color: white; border: none; }
             QPushButton#primaryBtn:hover { background-color: #e62045; }
             QPushButton#secondaryBtn { background-color: rgba(255,255,255,0.05); color: white; border: 1px solid rgba(255,255,255,0.1); }
@@ -291,7 +288,7 @@ class CustomConfirmDialog(QDialog):
         self.setStyleSheet("""
             QDialog { background-color: #1a1a1e; }
             QLabel { color: white; font-weight: bold; font-size: 14px; }
-            QPushButton { border-radius: 12px; font-weight: bold; font-size: 13px; padding: 8px 24px; }
+            QPushButton { border-radius: 12px; font-weight: bold; font-size: 13px; padding: 8px 24px; font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif; }
             QPushButton#primaryBtn { background-color: #e78284; color: white; border: none; }
             QPushButton#primaryBtn:hover { background-color: #e62045; }
             QPushButton#secondaryBtn { background-color: rgba(255,255,255,0.05); color: white; border: 1px solid rgba(255,255,255,0.1); }
@@ -734,13 +731,13 @@ class ThemeSwitcherWidget(QWidget):
         header_layout.setSpacing(12)
 
         my_themes_title = QLabel("Custom Themes")
-        my_themes_title.setFont(QFont('Segoe UI', 13, QFont.Bold))
-        my_themes_title.setStyleSheet("color: white; background: transparent;")
+        my_themes_title.setFont(QFont('Google Sans', 15, QFont.Bold))
+        my_themes_title.setStyleSheet("color: white; background: transparent; font-weight: bold; font-size: 15px;")
 
         self.add_theme_btn = QPushButton("\uE109  Add Theme")
         self.add_theme_btn.setObjectName("addThemeBtn")
         self.add_theme_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.add_theme_btn.setFont(QFont('Segoe UI', 11, QFont.Bold))
+        self.add_theme_btn.setFont(QFont('Google Sans', 11, QFont.Bold))
         self.add_theme_btn.setStyleSheet("""
             QPushButton#addThemeBtn {
                 background: rgba(231, 130, 132, 0.18);

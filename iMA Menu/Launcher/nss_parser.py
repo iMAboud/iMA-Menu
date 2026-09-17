@@ -7,8 +7,7 @@ All functions strictly preserve 100% of Nilesoft syntax formatting and keyword t
 import os
 import re
 import sys
-import json
-from utils import safe_file_write, normalize_path
+from utils import safe_file_write
 
 _RE_WORD_KEY = re.compile(r'^\w+$')
 _RE_ID_EXTRACT = re.compile(r'(?:id\.\w+)')
@@ -29,14 +28,7 @@ def read_file(path):
     except Exception:
         return ""
 
-def write_file(path, content, on_success=None, on_error=None):
-    try:
-        safe_file_write(path, content)
-        if on_success:
-            on_success()
-    except Exception as e:
-        if on_error:
-            on_error(str(e))
+
 
 
 class NSSLexer:
@@ -118,6 +110,52 @@ class NSSLexer:
         return tokens
 
 
+def is_enclosed_string(s):
+    if len(s) < 2:
+        return False
+    qc = s[0]
+    if qc not in ("'", '"'):
+        return False
+    if s[-1] != qc:
+        return False
+    i = 1
+    while i < len(s) - 1:
+        c = s[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == qc:
+            return False
+        i += 1
+    return True
+
+
+def heal_corrupted_nss_expr(val):
+    if not val or not isinstance(val, str):
+        return val
+    s = val.strip()
+    while True:
+        changed = False
+        if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
+            inner = s[1:-1].strip()
+            if (inner.startswith("\\'") and inner.endswith("\\'")) or (inner.startswith('\\"') and inner.endswith('\\"')):
+                s = inner[2:-2].strip()
+                changed = True
+                continue
+            if re.match(r'^(?:@?if\s*\(|sel\.|path\.|io\.|str\.|sys\.|key\.|cmd\.|app\.|@sel)', inner, re.I):
+                s = inner
+                changed = True
+                continue
+        if s.startswith("\\'") and s.endswith("\\'"):
+            s = s[2:-2].strip()
+            changed = True
+            continue
+        break
+    if re.match(r'^(?:@?if\s*\(|sel\.|path\.|io\.|str\.|sys\.|key\.|cmd\.|app\.|@sel)', s, re.I):
+        s = s.replace("\\\\'", "'").replace("\\'", "'")
+    return s
+
+
 def parse_nss_args(text, tokens):
     props = {}
     order = []
@@ -173,6 +211,7 @@ def parse_nss_args(text, tokens):
                 else:
                     break
 
+            val = heal_corrupted_nss_expr(val)
             props[key] = val
             order.append(key)
         else:
@@ -304,6 +343,23 @@ def format_nss_value(k, v):
         return f"{k}=''"
     v = v.strip()
     
+    if k == 'admin':
+        if str(v).lower() in ('true', '1'):
+            return "admin=true"
+        return ""
+    if k == 'window':
+        clean_w = str(v).lower().strip('\'" ')
+        if clean_w in ('normal', 'min', 'max', 'hidden'):
+            return f"window={clean_w}"
+        return f"window={v}"
+    if k == 'wait':
+        if str(v).lower() in ('true', '1'):
+            return "wait=true"
+        return ""
+
+    # Heal any expressions corrupted with escaped quotes
+    v = heal_corrupted_nss_expr(v)
+
     # Strip unnecessary enclosing parentheses if wrapping a single path/string
     while v.startswith('(') and v.endswith(')'):
         inner = v[1:-1].strip()
@@ -311,21 +367,6 @@ def format_nss_value(k, v):
             v = inner
         else:
             break
-
-    # Normalize: strip existing quotes to prevent nesting
-    while (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
-        if v.startswith('[') or (v.count("'") + v.count('"')) > 2:
-            if v.startswith("''") and v.endswith("''"):
-                v = v[2:-2]
-                continue
-            break
-        v = v[1:-1]
-    
-    v = v.strip()
-    
-    is_quoted = (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"'))
-    if is_quoted:
-        return f"{k}={v}"
 
     is_wrapped = v.startswith('[') and v.endswith(']')
     is_image_res = v.lower().startswith('image.res(') and v.endswith(')')
@@ -341,29 +382,29 @@ def format_nss_value(k, v):
     )
     is_nilesoft_obj = any(v.lower().startswith(p) for p in nilesoft_prefixes)
     is_func_call = bool(re.match(r'^[a-zA-Z_@][\w@.]*\s*\(', v)) and v.endswith(')')
-    is_expression = is_func_call or (('(' in v and ')' in v) and not (v.startswith('@app.dir') or v.startswith('@sel.path'))) or any(op in v for op in ('==', '!=', '&&', '||', ' + ', '+'))
+    is_expression = is_func_call or (('(' in v and ')' in v) and not (v.startswith('@app.dir') or v.startswith('@sel.path'))) or any(op in v for op in ('==', '!=', '&&', '||', ' + ', '+', '<=', '>=', '<', '>'))
     is_complex = ('@if' in v or '@sel' in v or 'key.' in v or is_expression)
-    
-    # A real path does not have function calls or expressions
-    is_path = ('\\' in v or '/' in v or (':' in v and not v.startswith('0x'))) and not (is_image_res or is_image_svg or is_wrapped or is_glyph or is_func_call or is_expression)
-    
-    keywords = (
-        'true', 'false', 'none', 'inherit', 'parent', 'all', 'auto', 'before', 'after', 
-        'both', 'top', 'bottom', 'middle', 'left', 'right', 'contains', 'starts', 'ends', 
-        'exact', 'single', 'multiple', 'if', 'else', 'any', 'not', 'and', 'or', 'normal', 'hidden', 'remove'
-    )
-    has_space = ' ' in v
-    has_dot = '.' in v
-    
+
+    # Expressions, arrays, glyphs, image funcs, nilesoft objects must NEVER be quoted or escaped
     if is_wrapped or is_glyph or is_image_res or is_image_svg:
+        return f"{k}={v}"
+    if is_complex or is_nilesoft_obj or is_func_call:
         return f"{k}={v}"
     if is_svg_tag:
         return f"{k}='{v}'"
-    if is_path:
-        return f"{k}='{v}'"
-    if k in ('find', 'title', 'menu', 'in', 'cmd', 'path') and not (is_complex or is_nilesoft_obj or is_glyph or is_func_call):
-        return f"{k}='{v}'"
-    if k in ('args', 'arg') and (v.startswith('/') or v.startswith('-') or (' ' in v and not is_func_call and not v.startswith('@'))):
+
+    # Already valid quoted string literal
+    if is_enclosed_string(v):
+        return f"{k}={v}"
+
+    # Normalize double-wrapped quotes like ''val'' or ""val""
+    while (v.startswith("''") and v.endswith("''")) or (v.startswith('""') and v.endswith('""')):
+        v = v[1:-1].strip()
+
+    if is_enclosed_string(v):
+        return f"{k}={v}"
+
+    if k in ('args', 'arg'):
         if "'" in v and '"' not in v:
             return f'{k}="{v}"'
         elif '"' in v and "'" not in v:
@@ -373,13 +414,27 @@ def format_nss_value(k, v):
             return f"{k}='{escaped}'"
         return f"{k}='{v}'"
 
+    keywords = (
+        'true', 'false', 'none', 'inherit', 'parent', 'all', 'auto', 'before', 'after', 
+        'both', 'top', 'bottom', 'middle', 'left', 'right', 'contains', 'starts', 'ends', 
+        'exact', 'single', 'multiple', 'if', 'else', 'any', 'not', 'and', 'or', 'normal', 'hidden', 'remove'
+    )
+    has_space = ' ' in v
+    has_dot = '.' in v
     has_pipe = '|' in v
-    should_not_quote = is_complex or is_nilesoft_obj or is_glyph or is_func_call or (v.isdigit() and not has_dot) or v.lower() in keywords
-    if has_pipe and not (is_expression or is_complex):
+
+    is_path = ('\\' in v or '/' in v or (':' in v and not v.startswith('0x')))
+    if is_path:
+        return f"{k}='{v}'"
+    if k in ('find', 'title', 'menu', 'in', 'cmd', 'path'):
+        return f"{k}='{v}'"
+
+    should_not_quote = (v.isdigit() and not has_dot) or v.lower() in keywords
+    if has_pipe:
         should_not_quote = False
 
     if should_not_quote:
-        if has_space and not (is_expression or is_complex):
+        if has_space:
             return f"{k}='{v}'"
         return f"{k}={v}"
     
@@ -450,41 +505,7 @@ def save_imported_item(data, new_props):
         print(f"Failed to save changes to {fp}: {e}")
 
 
-def mass_save_op(item_data, new_props):
-    pts = []
-    handled = set()
-    orig_order = item_data['props'].get('_order', [])
-    for k in orig_order:
-        if k == 'sep':
-            v = new_props.get('sep')
-            if v:
-                pts.append(format_nss_value('sep', v))
-                handled.add('sep')
-        elif k in new_props:
-            raw_v = new_props[k]
-            if raw_v is None or raw_v == 'None':
-                if k in ('menu', 'type'):
-                    handled.add(k)
-                    continue
-            v = raw_v.strip() if isinstance(raw_v, str) else str(raw_v)
-            if k in ('pos', 'vis', 'remove', 'hidden', 'type') and not v:
-                handled.add(k)
-                continue
-            if k in ('menu', 'type') and (raw_v is None or v == 'None'):
-                handled.add(k)
-                continue
-            pts.append(format_nss_value(k, v))
-            handled.add(k)
-    for k, v in new_props.items():
-        if k and k not in handled and k not in ('_order', 'file', 'start', 'end', 'raw_inner', 'indent', 'cmd_end', 'has_children') and re.match(r'^\w+$', k):
-            if v is None or v == 'None':
-                continue
-            v_s = str(v).strip()
-            if k in ('pos', 'vis', 'remove', 'hidden', 'type') and not v_s:
-                continue
-            pts.append(format_nss_value(k, v_s))
-    
-    return f"{item_data['type']}({ ' '.join(pts) })"
+
 
 
 def _get_custom_menus_from_nss():

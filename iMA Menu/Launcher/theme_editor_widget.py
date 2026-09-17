@@ -1,20 +1,16 @@
-import sys
 import os
-import shutil
 import json
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QCheckBox, QSlider, QComboBox, QColorDialog, QGridLayout,
-    QFrame, QButtonGroup, QRadioButton, QTabWidget, QScrollArea, QGraphicsDropShadowEffect, QStackedWidget, QDialog,
-    QSpinBox, QAbstractSpinBox, QDialogButtonBox, QFileDialog, QListWidget, QListWidgetItem, QSizePolicy,
-    QStyledItemDelegate, QStyle
+    QLabel, QLineEdit, QCheckBox, QSlider, QGridLayout,
+    QFrame, QButtonGroup, QRadioButton, QScrollArea, QStackedWidget, QDialog,
+    QSpinBox, QAbstractSpinBox, QDialogButtonBox, QFileDialog, QListWidget, QListWidgetItem,
+    QStyledItemDelegate, QStyle, QMessageBox
 )
 from PyQt5.QtGui import QIcon, QColor, QFont, QPainter, QBrush, QPen, QPixmap, QPainterPath, QLinearGradient
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPoint, QEvent, QTimer, QObject, QRect, QRectF, QPropertyAnimation, pyqtProperty
 
-from utils import resource_path, get_font_icon, get_mdl2_icon, safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir, ModernComboBox, PillLineEdit
-
-from PyQt5.QtWidgets import QMessageBox
+from utils import resource_path, get_mdl2_icon, get_shell_dll_version, get_default_image_dir, save_last_image_dir, ModernComboBox, PillLineEdit, get_supported_theme_fonts
 
 DEFAULT_COLOR_PALETTE = [
     "#f5e0dc", "#f2cdcd", "#f5c2e7", "#cba6f7", "#f38ba8", "#eba0ac", "#fab387", "#f9e2af",
@@ -931,7 +927,7 @@ class ThemeCategoryDelegate(QStyledItemDelegate):
             icon.paint(painter, icon_rect.toRect(), Qt.AlignCenter)
 
         text = index.data(Qt.DisplayRole)
-        painter.setFont(QFont("Segoe UI Variable Display", 10, QFont.Bold if is_selected else QFont.DemiBold))
+        painter.setFont(QFont("Google Sans", 10, QFont.Bold if is_selected else QFont.DemiBold))
         painter.setPen(fg)
         txt_rect = QRectF(rect.left() + 44, rect.top(), rect.width() - 50, rect.height())
         painter.drawText(txt_rect, Qt.AlignLeft | Qt.AlignVCenter, text)
@@ -1699,7 +1695,12 @@ class ThemeEditorWidget(QWidget):
         options = []
         if key == "name": options = ["auto", "classic", "white", "black", "modern"]
         elif key == "view": options = ["auto", "compact", "small", "medium", "large", "wide"]
-        elif key == "font.name": options = ["Segoe UI Variable Text", "Comic Sans MS", "Impact", "Arial", "Helvetica", "Times New Roman", "Courier New", "Calibri", "Cambria", "Garamond", "Georgia", "Tahoma", "Trebuchet MS", "Century Gothic", "Franklin Gothic Medium", "Consolas"]
+        elif key == "font.name":
+            options = get_supported_theme_fonts()
+            if value and value not in options:
+                options.insert(0, value)
+            dropdown.setMinimumWidth(180)
+            dropdown.popup_min_width = 240
         elif key == "dark": options = ["true", "false", "default"]
         elif key == "background.effect": options = ["Disabled", "Transparent", "Blur", "Acrylic", "Noise"]
 

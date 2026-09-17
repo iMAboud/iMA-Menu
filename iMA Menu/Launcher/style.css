@@ -2,10 +2,26 @@
 QWidget {
     background-color: transparent;
     color: #c6d0f5;
-    font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+    font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
     font-size: 13px;
     font-weight: 500;
     outline: none;
+}
+
+*:focus {
+    outline: none;
+}
+
+QLabel,
+QLabel:focus {
+    border: none;
+    outline: none;
+}
+
+QLabel#titleLabel {
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 800;
 }
 
 /* Explicitly set background for popups/dialogs */
@@ -15,13 +31,13 @@ QMessageBox {
 }
 
 QToolTip {
-    background-color: #121212;
-    color: #c6d0f5;
-    border: 1px solid rgba(231, 130, 132, 0.5);
-    border-radius: 8px;
-    padding: 6px 12px;
-    font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
-    font-size: 12px;
+    background-color: #18181c;
+    color: #ffffff;
+    border: 1.5px solid rgba(231, 130, 132, 0.7);
+    border-radius: 14px;
+    padding: 5px 15px;
+    font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+    font-size: 11.5px;
     font-weight: bold;
 }
 
@@ -31,6 +47,8 @@ QPushButton {
     color: #c6d0f5;
     outline: none;
     border-radius: 12px;
+    font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+    font-size: 13px;
     font-weight: bold;
 }
 
@@ -138,7 +156,7 @@ QPushButton#installButton {
     border-radius: 14px;
     color: #232634;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: bold;
     min-height: 28px;
 }
@@ -159,6 +177,7 @@ QPushButton#addThemeBtn {
     border-radius: 14px;
     color: #232634;
     padding: 4px 10px;
+    font-size: 13px;
     font-weight: bold;
     min-height: 26px;
 }
@@ -179,7 +198,7 @@ QPushButton#updateButton {
     border-radius: 14px;
     color: #232634;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: bold;
     min-height: 28px;
 }
@@ -196,6 +215,7 @@ QPushButton#modifyButton {
     border-radius: 14px;
     color: #c6d0f5;
     padding: 4px 10px;
+    font-size: 13px;
     font-weight: bold;
 }
 
@@ -213,7 +233,7 @@ QPushButton#dangerBtn {
     border-radius: 14px;
     color: #232634;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: bold;
     min-height: 28px;
 }
@@ -232,8 +252,8 @@ QPushButton#cancelBtn {
     border: 1px solid #51576d;
     border-radius: 14px;
     color: #c6d0f5;
-    padding: 3px 6px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 13px;
     font-weight: bold;
     min-height: 26px;
 }
@@ -251,8 +271,8 @@ QPushButton#secondaryBtn {
     border: 1px solid #51576d;
     border-radius: 14px;
     color: #c6d0f5;
-    padding: 3px 6px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 13px;
     font-weight: bold;
     min-height: 26px;
 }
@@ -607,7 +627,7 @@ QComboBox {
     border-radius: 10px;
     padding: 0px 24px 0px 32px;
     font-size: 12px;
-    font-family: 'Segoe UI Variable Display', 'Segoe UI';
+    font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI';
     font-weight: 500;
     background: #18181a;
     color: #c6d0f5;
