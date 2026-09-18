@@ -1,0 +1,45 @@
+theme
+{
+  name = "modern"
+  view = view.medium
+  dark = true
+  border.enabled = true
+  border.size = 2
+  border.color = #d946ef
+  border.opacity = 29
+  border.radius = 3
+  image.enabled = true
+  image.color = [#38bdf8, #d946ef]
+  background.color = #0d0b1a
+  background.opacity = 100
+  background.effect = 0
+  item.opacity = 0
+  item.radius = 3
+  item.text.normal = #e0e7ff
+  item.text.select = #ffffff
+  item.text.normal.disabled = #e0e7ff
+  item.text.select.disabled = #e0e7ff
+  item.back.select = #d946ef
+  item.back.select.disabled = #0d0b1a
+  item.border.normal = default
+  item.border.normal.disabled = #0d0b1a
+  item.border.select = default
+  item.border.select.disabled = #0d0b1a
+  font.size = auto
+  font.name = "Segoe UI Variable Text"
+  font.weight = true
+  font.italic = false
+  shadow.enabled = true
+  shadow.size = 2
+  shadow.opacity = 40
+  shadow.color = #05040a
+  separator.size = 0
+  separator.color = #ffffff
+  separator.opacity = 0
+  symbol.normal = #38bdf8
+  symbol.select = #ffffff
+  symbol.normal.disabled = #38bdf8
+  symbol.select.disabled = #ffffff
+  item.back.normal = #0d0b1a
+  item.back.normal.disabled = #0d0b1a
+}
