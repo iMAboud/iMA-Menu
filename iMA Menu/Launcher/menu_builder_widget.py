@@ -2551,6 +2551,7 @@ class MenuBuilderWidget(QWidget):
         return titles
 
     def load_file(self, filepath):
+        self._is_loaded = True
         self.current_file = filepath
         self._refresh_sidebar_files()
 

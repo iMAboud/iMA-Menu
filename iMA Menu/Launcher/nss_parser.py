@@ -142,7 +142,7 @@ def heal_corrupted_nss_expr(val):
                 s = inner[2:-2].strip()
                 changed = True
                 continue
-            if re.match(r'^(?:@?if\s*\(|sel\.|path\.|io\.|str\.|sys\.|key\.|cmd\.|app\.|@sel)', inner, re.I):
+            if re.match(r'^(?:@?if\s*\(|sel\.|path\.|io\.|str\.|sys\.|key\.|cmd\.|app\.|@sel|!?wnd\.)', inner, re.I):
                 s = inner
                 changed = True
                 continue
@@ -151,7 +151,7 @@ def heal_corrupted_nss_expr(val):
             changed = True
             continue
         break
-    if re.match(r'^(?:@?if\s*\(|sel\.|path\.|io\.|str\.|sys\.|key\.|cmd\.|app\.|@sel)', s, re.I):
+    if re.match(r'^(?:@?if\s*\(|sel\.|path\.|io\.|str\.|sys\.|key\.|cmd\.|app\.|@sel|!?wnd\.)', s, re.I):
         s = s.replace("\\\\'", "'").replace("\\'", "'")
     return s
 
@@ -356,6 +356,10 @@ def format_nss_value(k, v):
         if str(v).lower() in ('true', '1'):
             return "wait=true"
         return ""
+
+    clean_val = v.strip('\'" ')
+    if clean_val.lower().startswith(('wnd.is_', '!wnd.is_', 'wnd.', '!wnd.')):
+        return f"{k}={clean_val}"
 
     # Heal any expressions corrupted with escaped quotes
     v = heal_corrupted_nss_expr(v)

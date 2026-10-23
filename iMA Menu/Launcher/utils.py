@@ -183,19 +183,7 @@ NILESOFT_FONT_FAMILY = 'Nilesoft.Shell'
 _font_initialized = False
 _app_fonts_initialized = False
 
-def init_app_fonts():
-    """Initializes and registers all bundled fonts, GDI session resources, and Arabic fallbacks."""
-    global _app_fonts_initialized
-    if _app_fonts_initialized:
-        return
-    _app_fonts_initialized = True
-
-    _init_nilesoft_font()
-
-    fonts_dir = resource_path('fonts')
-    if not os.path.exists(fonts_dir):
-        fonts_dir = os.path.join(os.path.dirname(resource_path('')), 'fonts')
-
+def _register_system_fonts_worker(fonts_dir):
     user_fonts_dir = os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\Windows\Fonts')
     has_user_fonts_dir = False
     try:
@@ -222,11 +210,6 @@ def init_app_fonts():
         for fname in os.listdir(fonts_dir):
             if fname.lower().endswith(('.ttf', '.otf')) and fname.lower() != 'nilesoft.ttf':
                 fpath = os.path.join(fonts_dir, fname)
-                try:
-                    QFontDatabase.addApplicationFont(fpath)
-                except Exception:
-                    pass
-
                 if os.name == 'nt':
                     try:
                         ctypes.windll.gdi32.AddFontResourceExW(fpath, 0x10, 0)
@@ -259,6 +242,35 @@ def init_app_fonts():
                 ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001D, 0, 0, 2, 500, None)
         except Exception:
             pass
+
+def init_app_fonts():
+    """Initializes and registers all bundled fonts, GDI session resources, and Arabic fallbacks."""
+    global _app_fonts_initialized
+    if _app_fonts_initialized:
+        return
+    _app_fonts_initialized = True
+
+    _init_nilesoft_font()
+
+    fonts_dir = resource_path('fonts')
+    if not os.path.exists(fonts_dir):
+        fonts_dir = os.path.join(os.path.dirname(resource_path('')), 'fonts')
+
+    if os.path.exists(fonts_dir):
+        for fname in os.listdir(fonts_dir):
+            if fname.lower().endswith(('.ttf', '.otf')) and fname.lower() != 'nilesoft.ttf':
+                fpath = os.path.join(fonts_dir, fname)
+                try:
+                    QFontDatabase.addApplicationFont(fpath)
+                except Exception:
+                    pass
+
+    import threading
+    def _deferred_system_fonts():
+        import time
+        time.sleep(2.5)
+        _register_system_fonts_worker(fonts_dir)
+    threading.Thread(target=_deferred_system_fonts, daemon=True, name="SystemFontsWorker").start()
 
     # Configure robust font substitutions so Arabic always falls back cleanly to Marhey / Cairo
     # and Google Sans is prioritized as modern app font across all UI widgets
@@ -1267,6 +1279,48 @@ def fix_nss_mode_syntax_once(project_root, cache_dir):
         return False
 
 
+def restore_open_with_once(project_root, cache_dir):
+    """One-time fix: legacy modify(find='Open' ...) is a contains-match that also hid 'Open with'.
+    Rewrites it to an exact match find='"Open"' so the native 'Open with' item returns.
+    """
+    try:
+        stamp_file = os.path.join(cache_dir, 'open_with_restored.stamp')
+        if os.path.exists(stamp_file):
+            return False
+
+        file_path = os.path.join(project_root, 'imports', 'modify.nss')
+        pattern = re.compile(r'(\bmodify\s*\([^)\n]*?\bfind\s*=\s*)([\'"])(open)\2(?=[\s)])', re.IGNORECASE)
+        modified = False
+
+        if os.path.isfile(file_path):
+            with open(file_path, 'r', encoding='utf-8', errors='replace', newline='') as f:
+                content = f.read()
+            new_lines = []
+            for line in content.splitlines(keepends=True):
+                if not line.strip().startswith('//'):
+                    line = pattern.sub(lambda m: f"{m.group(1)}'\"{m.group(3)}\"'", line)
+                new_lines.append(line)
+            new_content = "".join(new_lines)
+            if new_content != content:
+                fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(file_path)), text=True)
+                with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
+                    f.write(new_content)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(temp_path, file_path)
+                modified = True
+
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(stamp_file, 'w', encoding='utf-8') as sf:
+            sf.write('1')
+
+        if modified:
+            trigger_shell_reload(close_only=True)
+        return modified
+    except Exception:
+        return False
+
+
 def terminate_plugin_processes(directory):
     if not directory or not os.path.exists(directory):
         return
@@ -1397,14 +1451,6 @@ def trigger_shell_reload(close_only=False, **kwargs):
 
         if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
             root = os.path.abspath(os.path.join(exe_dir, '..'))
-
-        for f in ['shell.nss', 'imports/modify.nss', 'imports/theme.nss']:
-            fp = os.path.normpath(os.path.join(root, f))
-            if os.path.exists(fp):
-                try:
-                    with open(fp, 'a'): os.utime(fp, None)
-                except: pass
-
         exe = os.path.join(root, 'shell.exe')
         if os.path.exists(exe):
             time.sleep(0.05)
@@ -1877,10 +1923,15 @@ class CapsuleActionButton(QPushButton):
     def _get_display_text(self):
         if self._custom_text is not None:
             return str(self._custom_text)
-        if self._action_type == 'installing':
-            return "Installing" + ("." * self._dot_count)
+        if self._action_type in ('installing', 'downloading'):
+            prefix = "Downloading" if self._action_type == 'downloading' else "Installing"
+            return prefix + ("." * self._dot_count)
         defaults = {
             'install': 'Install',
+            'download': 'Download',
+            'downloading': 'Downloading...',
+            'open': 'Open',
+            'launch': 'Launch',
             'uninstall': 'Uninstall',
             'uninstalling': 'Uninstalling...',
             'update': 'Update',
@@ -1893,7 +1944,10 @@ class CapsuleActionButton(QPushButton):
         return defaults.get(self._action_type, self._action_type.capitalize())
 
     def _calculate_pill_width(self):
-        txt = "Installing..." if self._action_type == 'installing' else self._get_display_text()
+        if self._action_type in ('installing', 'downloading'):
+            txt = "Downloading..." if self._action_type == 'downloading' else "Installing..."
+        else:
+            txt = self._get_display_text()
         font_size = 10 if self._compact else 11.5
         font = QFont('Google Sans', int(font_size), QFont.Bold)
         font.setBold(True)
@@ -1944,7 +1998,7 @@ class CapsuleActionButton(QPushButton):
         self._custom_text = text
         self._action_type = new_action
 
-        if new_action == 'installing':
+        if new_action in ('installing', 'downloading'):
             self.setToolTip("Click to Cancel")
             self._dot_count = 0
             if not self._dot_timer.isActive():
@@ -1970,7 +2024,7 @@ class CapsuleActionButton(QPushButton):
         if val > 0:
             if self._spin_timer.isActive():
                 self._spin_timer.stop()
-        elif self._action_type == 'installing' and not self._spin_timer.isActive():
+        elif self._action_type in ('installing', 'downloading') and not self._spin_timer.isActive():
             self._spin_timer.start()
 
         if self._prog_anim.state() == QVariantAnimation.Running:
@@ -2110,6 +2164,18 @@ class CapsuleActionButton(QPushButton):
         p.drawLine(QPointF(cx - half, cy - half), QPointF(cx + half, cy + half))
         p.drawLine(QPointF(cx + half, cy - half), QPointF(cx - half, cy + half))
 
+    @staticmethod
+    def _draw_play_icon(p, cx, cy, size=14, color='#ffffff'):
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(color))
+        half = size / 2.0
+        path = QPainterPath()
+        path.moveTo(cx - half * 0.45, cy - half * 0.70)
+        path.lineTo(cx + half * 0.75, cy)
+        path.lineTo(cx - half * 0.45, cy + half * 0.70)
+        path.closeSubpath()
+        p.drawPath(path)
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
@@ -2151,7 +2217,7 @@ class CapsuleActionButton(QPushButton):
         if self._is_pressed:
             cy += 1.0
 
-        if self._action_type == 'installing':
+        if self._action_type in ('installing', 'downloading'):
             # Circular progress arc around the install/download icon
             track_r = badge_radius - 1.0
             track_rect = QRectF(cx - track_r, cy - track_r, track_r * 2.0, track_r * 2.0)
@@ -2187,9 +2253,12 @@ class CapsuleActionButton(QPushButton):
             badge_rect = QRectF(cx - badge_radius, cy - badge_radius, badge_diam, badge_diam)
             b_grad = QLinearGradient(badge_rect.topLeft(), badge_rect.bottomLeft())
 
-            if self._action_type == 'install':
+            if self._action_type in ('install', 'download'):
                 b_grad.setColorAt(0.0, QColor('#42be54'))
                 b_grad.setColorAt(1.0, QColor('#2ea043'))
+            elif self._action_type in ('open', 'launch'):
+                b_grad.setColorAt(0.0, QColor('#38bdf8'))
+                b_grad.setColorAt(1.0, QColor('#0284c7'))
             elif self._action_type in ('uninstall', 'uninstalling', 'delete', 'cancel'):
                 b_grad.setColorAt(0.0, QColor('#f87171'))
                 b_grad.setColorAt(1.0, QColor('#dc2626'))
@@ -2224,8 +2293,10 @@ class CapsuleActionButton(QPushButton):
 
             # Vector icon
             icon_col = '#ffffff'
-            if self._action_type == 'install':
+            if self._action_type in ('install', 'download'):
                 self._draw_download_icon(p, cx, cy, size=16, stroke=2.0, color=icon_col)
+            elif self._action_type in ('open', 'launch'):
+                self._draw_play_icon(p, cx, cy, size=14, color=icon_col)
             elif self._action_type in ('uninstall', 'uninstalling', 'delete'):
                 self._draw_trash_icon(p, cx, cy, size=15, stroke=1.8, color=icon_col)
             elif self._action_type == 'update':
@@ -3205,16 +3276,20 @@ class PillNotification(QWidget):
         seq.addAnimation(anim_expand)
 
         def on_expand_done():
+            self._active_anim = None
             self._hold_start_time = time.time()
             self._remaining_hold_time = 3000
-            if not self._is_hovered:
-                self._hold_timer.start(3000)
+            self._hold_timer.start(3000)
+            QTimer.singleShot(5000, lambda: self._start_collapse_and_exit() if self.isVisible() and not self._active_anim else None)
 
         seq.finished.connect(on_expand_done)
         self._active_anim = seq
         seq.start()
 
     def _start_collapse_and_exit(self):
+        if not self.isVisible():
+            return
+        self._hold_timer.stop()
         if self._active_anim:
             self._active_anim.stop()
             self._active_anim = None
@@ -3274,15 +3349,15 @@ class PillNotification(QWidget):
         self._is_hovered = True
         if self._hold_timer.isActive():
             elapsed = int((time.time() - self._hold_start_time) * 1000)
-            self._remaining_hold_time = max(500, self._remaining_hold_time - elapsed)
+            self._remaining_hold_time = max(1000, self._remaining_hold_time - elapsed)
             self._hold_timer.stop()
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
         self._is_hovered = False
-        if not self._active_anim and self.isVisible():
+        if self.isVisible() and not self._active_anim:
             self._hold_start_time = time.time()
-            self._hold_timer.start(self._remaining_hold_time)
+            self._hold_timer.start(getattr(self, '_remaining_hold_time', 2000))
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -3645,6 +3720,49 @@ class CloudSyncConflictDialog(QDialog):
         if not self.selected_paths:
             return [cb.property("rel_path") for cb in self.checkboxes if cb.isChecked()]
         return self.selected_paths
+
+
+def is_recently_updated(timestamp_or_str, hours=24):
+    """Check if a timestamp or date string was within the given hours (default 24h) or today."""
+    if not timestamp_or_str:
+        return False
+    try:
+        now_ts = time.time()
+        if isinstance(timestamp_or_str, (int, float)):
+            diff = now_ts - float(timestamp_or_str)
+            return 0 <= diff <= (hours * 3600)
+
+        val = str(timestamp_or_str).strip()
+        if not val:
+            return False
+
+        if val.lower() == 'today':
+            return True
+
+        try:
+            diff = now_ts - float(val)
+            return 0 <= diff <= (hours * 3600)
+        except ValueError:
+            pass
+
+        from datetime import datetime, date
+        if len(val) == 10 and val.count('-') == 2:
+            try:
+                d = date.fromisoformat(val)
+                if d == date.today():
+                    return True
+                val = f"{val}T00:00:00+00:00"
+            except Exception:
+                pass
+
+        if val.endswith('Z'):
+            val = val[:-1] + '+00:00'
+        dt = datetime.fromisoformat(val)
+        dt_ts = dt.timestamp()
+        diff = now_ts - dt_ts
+        return -3600 <= diff <= (hours * 3600)
+    except Exception:
+        return False
 
 
 

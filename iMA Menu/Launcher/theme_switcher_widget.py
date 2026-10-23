@@ -540,17 +540,25 @@ class FetchThemesWorker(QThread):
 
             # 4. Download only changed / new files
             downloaded_count = 0
-            for filename, local_path, raw_url, remote_sha in files_to_download:
+            from concurrent.futures import ThreadPoolExecutor
+
+            def _download_one(item_info):
+                fname, lpath, rurl, _ = item_info
                 try:
-                    res = cdn_get(raw_url, max_retries=2, timeout=15)
+                    res = cdn_get(rurl, max_retries=2, timeout=15)
                     if res.status_code == 200 and res.content:
-                        temp_dest = local_path + ".tmp"
+                        temp_dest = lpath + ".tmp"
                         with open(temp_dest, 'wb') as f:
                             f.write(res.content)
-                        os.replace(temp_dest, local_path)
-                        downloaded_count += 1
+                        os.replace(temp_dest, lpath)
+                        return True
                 except Exception as dl_err:
-                    print(f"[ThemeSync] Failed to download {filename}: {dl_err}")
+                    print(f"[ThemeSync] Failed to download {fname}: {dl_err}")
+                return False
+
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                results = executor.map(_download_one, files_to_download)
+                downloaded_count = sum(1 for success in results if success)
 
             if downloaded_count > 0:
                 self.themes_updated.emit(downloaded_count)
@@ -585,10 +593,14 @@ class ThemeSwitcherWidget(QWidget):
 
         self.theme_sync_worker = FetchThemesWorker(self.theme_dir)
         self.theme_sync_worker.themes_updated.connect(self._on_themes_synced)
+        if not self.theme_files:
+            self.start_background_theme_sync(force=True)
 
     def showEvent(self, event):
         super().showEvent(event)
-        self.start_background_theme_sync()
+        if not getattr(self, '_initial_theme_sync_done', False):
+            self._initial_theme_sync_done = True
+            self.start_background_theme_sync()
 
     def start_background_theme_sync(self, force=False):
         now = time.time()
@@ -607,6 +619,8 @@ class ThemeSwitcherWidget(QWidget):
         self.setUpdatesEnabled(False)
         try:
             self.theme_files = self._find_theme_files()
+            if not self.theme_files:
+                self.start_background_theme_sync(force=True)
             
             while self.grid_layout.count():
                 item = self.grid_layout.takeAt(0)
@@ -676,11 +690,16 @@ class ThemeSwitcherWidget(QWidget):
 
     def _find_theme_files(self):
         theme_files = []
-        if os.path.exists(self.theme_dir):
-            for filename in os.listdir(self.theme_dir):
-                if filename.endswith(".nss"):
+        target_dir = self.theme_dir
+        if not os.path.exists(target_dir):
+            alt_dir = os.path.join(os.path.dirname(target_dir), 'themes')
+            if os.path.exists(alt_dir):
+                target_dir = alt_dir
+        if os.path.exists(target_dir):
+            for filename in os.listdir(target_dir):
+                if filename.lower().endswith(".nss"):
                     theme_files.append(filename)
-        return theme_files
+        return sorted(theme_files)
 
     def paintEvent(self, event):
         painter = QPainter(self)

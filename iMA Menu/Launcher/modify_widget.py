@@ -1893,9 +1893,8 @@ class IDEntryWidget(QFrame):
             new_props = d.get_props()
             new_props['where.id'] = self.id_text
             clean_id_name = self.id_text.replace("id.", "").strip()
-            first_word = clean_id_name.split('_')[0].strip().lower()
-            if first_word:
-                new_props['find'] = f"'{first_word}'"
+            if clean_id_name:
+                new_props['find'] = f"'\"{get_friendly_id_name(self.id_text)}\"'"
             self.custom_props = new_props
             self.menu = new_props.get('menu')
             self.vis = new_props.get('vis')
@@ -5169,13 +5168,13 @@ class ModifyRuleEditorDialog(QDialog):
         m_ids = [i.lower() for i in self._bulk_sections.get('more', [])]
 
         if target_id in s_ids or clean_bare in s_ids or f"id.{target_id}" in s_ids:
-            bulk_rule = {'find': friendly_name, 'where.id': sel_id, 'vis': 'key.shift()'}
+            bulk_rule = {'find': f'"{friendly_name}"', 'where.id': sel_id, 'vis': 'key.shift()'}
             self.banner_label.setText(f"'{friendly_name}' is in Shift section \u2014 loaded existing settings to edit.")
         elif target_id in h_ids or clean_bare in h_ids or f"id.{target_id}" in h_ids:
-            bulk_rule = {'find': friendly_name, 'where.id': sel_id, 'vis': 'vis.remove'}
+            bulk_rule = {'find': f'"{friendly_name}"', 'where.id': sel_id, 'vis': 'vis.remove'}
             self.banner_label.setText(f"'{friendly_name}' is in Remove/Hide section \u2014 loaded existing settings to edit.")
         elif target_id in m_ids or clean_bare in m_ids or f"id.{target_id}" in m_ids:
-            bulk_rule = {'find': friendly_name, 'where.id': sel_id, 'menu': 'options'}
+            bulk_rule = {'find': f'"{friendly_name}"', 'where.id': sel_id, 'menu': 'options'}
             self.banner_label.setText(f"'{friendly_name}' is in Options section \u2014 loaded existing settings to edit.")
 
         if bulk_rule:
@@ -5187,6 +5186,7 @@ class ModifyRuleEditorDialog(QDialog):
             self._target_existing_rule = None
             self.banner_frame.hide()
             self.f_inp.set_id(sel_id)
+            self.match_mode_btn.set_mode("exact")
 
         self.live_update.emit(self.get_data())
 
@@ -5403,11 +5403,13 @@ class ModifyWidget(QWidget):
     def _switch_tab(self, idx):
         if idx == 0:
             self.edit_tab_btn.setChecked(True)
-            self.edit_pg.refresh()
+            if not getattr(self.edit_pg, '_is_loaded', False):
+                self.edit_pg.refresh()
         elif idx == 1:
             self.builder_tab_btn.setChecked(True)
             self._ensure_builder_initialized()
-            self.builder_pg.refresh()
+            if not getattr(self.builder_pg, '_is_loaded', False):
+                self.builder_pg.refresh()
         self.stacked_widget.slide_to_index(idx)
 
     def load_and_init_ui(self):

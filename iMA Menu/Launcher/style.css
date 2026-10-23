@@ -70,10 +70,8 @@ QPushButton:pressed {
 
 /* Side Panel */
 QWidget#sidePanel {
-    background-color: #121212;
+    background-color: transparent;
     border-right: none;
-    border-top-left-radius: 15px;
-    border-bottom-left-radius: 15px;
 }
 
 QPushButton#sideButton {

@@ -265,7 +265,14 @@ class PluginRegistry:
                 continue
             name = rp['name']
             entry = self.get_plugin_state(name)
+            prev_rem_v = entry.get('remote_version')
             rem_v = rp.get('version')
+
+            if prev_rem_v and rem_v and version_cmp(prev_rem_v, rem_v) < 0:
+                entry['remote_updated_at'] = _now_iso()
+            elif rp.get('updated_at') or rp.get('updated') or rp.get('last_updated') or rp.get('date'):
+                entry['remote_updated_at'] = rp.get('updated_at') or rp.get('updated') or rp.get('last_updated') or rp.get('date')
+
             entry['remote_version'] = rem_v
             inst_v = entry.get('installed_version')
 
@@ -425,10 +432,6 @@ class PluginRegistry:
                     pass
 
                 if not has_content:
-                    try:
-                        shutil.rmtree(dir_path)
-                    except OSError:
-                        pass
                     continue
 
                 rem_v = reg_entry.get('remote_version')
@@ -451,32 +454,15 @@ class PluginRegistry:
                         entry['installed_at'] = None
                         entry['file_count'] = 0
                         entry['file_hashes'] = {}
-        # Special handling for iMA Switcher (check standard %LOCALAPPDATA%\iMA Switcher)
-        switcher_appdata = os.path.join(os.getenv('LOCALAPPDATA', ''), 'iMA Switcher')
-        switcher_exe = os.path.join(switcher_appdata, 'iMA Switcher.exe')
-        if os.path.isfile(switcher_exe):
-            s_entry = self.get_plugin_state('iMA Switcher')
-            s_version = None
-            for vf in ('version.txt', 'version'):
-                v_file = os.path.join(switcher_appdata, vf)
-                if os.path.exists(v_file):
-                    try:
-                        with open(v_file, 'r', encoding='utf-8', errors='ignore') as vf:
-                            v = vf.read().strip()
-                        if v:
-                            s_version = v.lstrip('vV')
-                            break
-                    except Exception:
-                        pass
-            
-            rem_v = s_entry.get('remote_version')
-            s_entry['installed_version'] = s_version or rem_v or '1.0.0'
-            s_entry['install_path'] = switcher_appdata
-            if rem_v and version_cmp(s_entry['installed_version'], rem_v) < 0:
-                s_entry['status'] = 'update_available'
-            else:
-                s_entry['status'] = 'installed'
-            self._set_entry('iMA Switcher', s_entry)
+
+        # Remove iMA Switcher from plugin entries if present (migrated to Apps)
+        if 'iMA Switcher' in self._data.get('plugins', {}):
+            self._data['plugins'].pop('iMA Switcher', None)
+        if isinstance(self._data.get('remote_plugins'), list):
+            self._data['remote_plugins'] = [
+                p for p in self._data['remote_plugins']
+                if not (isinstance(p, dict) and p.get('name', '').lower() in ('ima switcher', 'ima-switcher', 'switcher'))
+            ]
 
         self.save()
 
@@ -521,6 +507,10 @@ class PluginRegistry:
             merged['_install_path'] = state.get('install_path') or os.path.join(self._plugins_dir, name)
             merged['_changed_files_count'] = state.get('_changed_files_count', 0)
             merged['_is_local'] = False
+            merged['_remote_updated_at'] = (
+                rp.get('updated_at') or rp.get('updated') or rp.get('last_updated') or rp.get('date') or
+                state.get('remote_updated_at')
+            )
             result.append(merged)
         return result
 

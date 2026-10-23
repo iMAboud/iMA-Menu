@@ -171,17 +171,8 @@ class FetchPluginsThread(QObject):
             except Exception:
                 pass
 
-            switcher_info = fetch_ima_switcher_release()
-            found_switcher = False
-            for p in plugins:
-                if isinstance(p, dict) and p.get('name', '').lower() in ('ima switcher', 'ima-switcher', 'switcher'):
-                    p['version'] = switcher_info['version']
-                    p['download_url'] = switcher_info['download_url']
-                    p['custom_repo'] = True
-                    found_switcher = True
-                    break
-            if not found_switcher:
-                plugins.append(switcher_info)
+            # Exclude iMA Switcher from Plugins list (now a standalone app under Apps tab)
+            plugins = [p for p in plugins if isinstance(p, dict) and p.get('name', '').lower() not in ('ima switcher', 'ima-switcher', 'switcher')]
 
             tree_data = None
             try:

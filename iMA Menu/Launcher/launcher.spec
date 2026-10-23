@@ -48,6 +48,7 @@ datas = [
     ('cursors.json', '.'),
     ('cursors_previews.json', '.'),
     ('cache/plugins.json', 'cache'),
+    ('cache/apps.json', 'cache'),
 ]
 
 a = Analysis(
@@ -56,16 +57,16 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
-        'encodings', 'glyphs_data', 'modify_widget',
+        'encodings', 'encodings.idna', 'unicodedata', 'glyphs_data', 'modify_widget',
         'theme_editor_widget', 'theme_switcher_widget', 'cursor_widget',
         'github_client', 'utils', 'cloud_sync', 'nss_error_monitor',
-        'plugin_registry', 'nss_parser', 'plugin_workers'
+        'plugin_registry', 'nss_parser', 'plugin_workers', 'apps_manager'
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'requests', 'urllib3', 'idna', 'certifi', 'charset_normalizer',
+        'requests', 'urllib3', 'certifi', 'charset_normalizer',
         'markdown', 'xml', 'pyexpat', '_elementtree', 'xmlrpc',
         'win32gui', 'win32api', 'win32con', 'win32', 'win32crypt', 'pywintypes', 'pywin32_system32', 'win32trace', 'win32ui',
         '_decimal', 'decimal', 'lzma', '_lzma', 'bz2', '_bz2', 'sqlite3', '_sqlite3',
@@ -83,7 +84,7 @@ a = Analysis(
         'PyQt5.QtDesigner', 'PyQt5.QtHelp', 'PyQt5.QtPrintSupport',
         'PyQt5.QtXmlPatterns', 'PyQt5.QtOpenGL', 'PyQt5.QtOpenGLWidgets',
         'tkinter', 'unittest', 'pydoc',
-        'unicodedata', 'multiprocessing', '_multiprocessing',
+        'multiprocessing', '_multiprocessing',
         'ssl', '_ssl', 'webbrowser', 'tarfile',
         'items_widget', 'items_manager'
     ],

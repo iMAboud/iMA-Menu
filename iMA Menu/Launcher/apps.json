@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Blink",
+    "description": "Fast and lightweight screenshot app for Windows",
+    "icon_url": "https://raw.githubusercontent.com/iMAboud/Blink/main/Blink.ico",
+    "repo": "iMAboud/Blink",
+    "github": "https://github.com/iMAboud/Blink",
+    "asset_name": "Blink.exe",
+    "executable": "Blink.exe",
+    "auto_run": true
+  },
+  {
+    "name": "iMA Switcher",
+    "description": "Modern Valorant & Riot Games Account Switcher",
+    "icon_url": "https://raw.githubusercontent.com/iMAboud/iMA-Switcher/main/Assets/ima.png",
+    "repo": "iMAboud/iMA-Switcher",
+    "github": "https://github.com/iMAboud/iMA-Switcher",
+    "asset_name": "iMA Switcher.exe",
+    "executable": "iMA Switcher.exe",
+    "auto_run": true
+  }
+]
