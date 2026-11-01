@@ -87,7 +87,7 @@ import gc
 from collections import deque, OrderedDict
 import ctypes
 from ctypes import wintypes
-from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
+from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout, QMenu,
                              QScrollArea, QGraphicsOpacityEffect, QStackedWidget, 
                              QDialog, QLineEdit, QScrollBar, 
                              QSizePolicy, QFrame, QFileDialog, QInputDialog, QShortcut, QButtonGroup)
@@ -366,7 +366,7 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.1.3'
+APP_VERSION = '2.1.4'
 
 def _resolve_app_version():
     ver = APP_VERSION
@@ -1761,6 +1761,45 @@ class AppGitHubButton(QPushButton):
         painter.end()
 
 
+class AppDeleteButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(30, 30)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Delete App")
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def enterEvent(self, e):
+        super().enterEvent(e)
+        self.update()
+
+    def leaveEvent(self, e):
+        super().leaveEvent(e)
+        self.update()
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        cpath = QPainterPath()
+        cpath.addRoundedRect(r, 6.0, 6.0)
+
+        is_hov = self.underMouse()
+        if is_hov:
+            painter.fillPath(cpath, QColor(234, 153, 156, 35))
+            painter.setPen(QPen(QColor(234, 153, 156, 85), 1.2))
+        else:
+            painter.fillPath(cpath, QColor(255, 255, 255, 12))
+            painter.setPen(QPen(QColor(255, 255, 255, 22), 1.0))
+        painter.drawPath(cpath)
+
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0
+        icon_col = "#ea999c" if is_hov else "#bac2de"
+        CapsuleActionButton._draw_trash_icon(painter, cx, cy, size=15, color=icon_col, stroke=1.6)
+        painter.end()
+
+
 class PluginManager(QWidget):
     _corner_radius = 28
 
@@ -1812,6 +1851,9 @@ class PluginManager(QWidget):
         self.all_apps_data = {}
         self.app_cards = {}
         self.app_buttons = {}
+        self.app_update_buttons = {}
+        self.app_delete_buttons = {}
+        self.app_action_layouts = {}
         self.app_folder_buttons = {}
         self.app_github_buttons = {}
         self.app_version_badges = {}
@@ -4039,6 +4081,9 @@ class PluginManager(QWidget):
                     card.hide()
                     card.deleteLater()
                     self.app_buttons.pop(a_name, None)
+                    self.app_update_buttons.pop(a_name, None)
+                    self.app_delete_buttons.pop(a_name, None)
+                    self.app_action_layouts.pop(a_name, None)
                     self.app_folder_buttons.pop(a_name, None)
                     self.app_github_buttons.pop(a_name, None)
                     self.app_version_badges.pop(a_name, None)
@@ -4296,14 +4341,29 @@ class PluginManager(QWidget):
         action_layout.addWidget(folder_btn)
         self.app_folder_buttons[app_name] = folder_btn
 
+        delete_btn = AppDeleteButton()
+        delete_btn.clicked.connect(lambda _, n=app_name: self.delete_app(n))
+        action_layout.addWidget(delete_btn)
+        self.app_delete_buttons[app_name] = delete_btn
+
+        btn_layout = QVBoxLayout()
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setSpacing(3)
+        btn_layout.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+
         action_button = CapsuleActionButton('download')
         action_button.clicked.connect(lambda _, n=app_name: self.handle_app_action(n))
-        action_layout.addWidget(action_button)
+        btn_layout.addWidget(action_button)
+        action_layout.addLayout(btn_layout)
 
         layout.addLayout(action_layout, 0)
 
+        card.setContextMenuPolicy(Qt.CustomContextMenu)
+        card.customContextMenuRequested.connect(lambda pos, n=app_name: self.show_app_context_menu(n, card.mapToGlobal(pos)))
+
         self.app_cards[app_name] = card
         self.app_buttons[app_name] = action_button
+        self.app_action_layouts[app_name] = btn_layout
 
         self.update_app_card_ui(app_name)
         self.apply_card_style(card)
@@ -4333,6 +4393,97 @@ class PluginManager(QWidget):
         except Exception:
             pass
 
+    def show_app_context_menu(self, app_name, global_pos):
+        app_data = self.all_apps_data.get(app_name, {})
+        installed = is_app_installed(app_data, APP_BASE_PATH)
+        is_dl = f"dl_{app_name}" in self.active_app_threads
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #1e1e24;
+                color: #cdd6f4;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                padding: 4px;
+                font-family: 'Google Sans';
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 6px 20px 6px 12px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: rgba(255, 255, 255, 0.08);
+                margin: 4px 6px;
+            }
+        """)
+
+        if installed and not is_dl:
+            act_open = menu.addAction("Open App")
+            act_open.triggered.connect(lambda: launch_app(app_data, APP_BASE_PATH))
+
+            act_redownload = menu.addAction("Update App")
+            act_redownload.triggered.connect(lambda: self.start_standalone_app_download(app_name))
+
+            menu.addSeparator()
+
+        act_folder = menu.addAction("Open App Folder")
+        act_folder.triggered.connect(lambda: self.open_app_folder(app_name))
+
+        gh_url = app_data.get('github') or app_data.get('github_url') or app_data.get('repo_url')
+        if gh_url:
+            act_gh = menu.addAction("View GitHub Repository")
+            act_gh.triggered.connect(lambda: self.open_app_github(gh_url))
+
+        if installed and not is_dl:
+            menu.addSeparator()
+            act_del = menu.addAction("Delete App")
+            act_del.triggered.connect(lambda: self.delete_app(app_name))
+
+        menu.exec_(global_pos)
+
+    def delete_app(self, app_name):
+        app_data = self.all_apps_data.get(app_name, {'name': app_name})
+        dlg = ModernDialog(self, title=f"Delete {app_name}", text=f"Are you sure you want to delete '{app_name}' and remove its downloaded files?\n\nYou can re-download it at any time.")
+        dlg.add_button("Cancel", "secondaryButton", dlg.reject)
+        dlg.add_button("Delete", "uninstallButton", dlg.accept)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        if f"dl_{app_name}" in self.active_app_threads:
+            self.cancel_standalone_app_download(app_name)
+
+        app_dir = get_app_install_dir(app_name, APP_BASE_PATH)
+        if os.path.exists(app_dir):
+            try:
+                terminate_plugin_processes(app_dir)
+            except Exception:
+                pass
+            time.sleep(0.05)
+            delete_to_recycle_bin(app_dir)
+            if os.path.exists(app_dir):
+                try:
+                    import shutil
+                    shutil.rmtree(app_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+        self.update_app_card_ui(app_name)
+        icon_pix = self.app_pixmap_cache.get(app_name)
+        if hasattr(self, 'notification') and self.notification:
+            self.notification.show_notification(
+                app_name,
+                f"{app_name} files removed",
+                icon_pix
+            )
+        self.show_sync_status(f"{app_name} Deleted")
+
     def handle_app_card_clicked(self, app_name):
         app_data = self.all_apps_data.get(app_name, {})
         if is_app_installed(app_data, APP_BASE_PATH):
@@ -4356,31 +4507,55 @@ class PluginManager(QWidget):
         if not btn:
             return
 
+        action_layout = self.app_action_layouts.get(app_name)
+        del_btn = self.app_delete_buttons.get(app_name)
+
+        old_update_btn = self.app_update_buttons.pop(app_name, None)
+        if old_update_btn:
+            old_update_btn.hide()
+            old_update_btn.deleteLater()
+
         is_dl = f"dl_{app_name}" in self.active_app_threads
         app_data = self.all_apps_data.get(app_name, {})
         installed = is_app_installed(app_data, APP_BASE_PATH)
 
+        installed_ver = get_installed_app_version(app_data, APP_BASE_PATH) if installed else None
+        remote_ver = app_data.get('version', '')
+
+        has_update = False
+        if installed and remote_ver:
+            if not installed_ver:
+                has_update = True
+            elif version_cmp(installed_ver, remote_ver) < 0:
+                has_update = True
+
         if is_dl:
             btn.set_state('downloading')
             btn.setEnabled(True)
+            if del_btn:
+                del_btn.setEnabled(False)
+                del_btn.show()
         elif installed:
             btn.set_state('open')
             btn.setEnabled(True)
+            if del_btn:
+                del_btn.setEnabled(True)
+                del_btn.show()
+
+            if has_update and action_layout:
+                update_btn = CapsuleActionButton('update', text="Update", height=34)
+                update_btn.clicked.connect(lambda _, n=app_name: self.start_standalone_app_download(n))
+                action_layout.addWidget(update_btn)
+                self.app_update_buttons[app_name] = update_btn
         else:
             btn.set_state('download')
             btn.setEnabled(True)
+            if del_btn:
+                del_btn.hide()
 
         # Update version badge & "new" flag
         ver_badge = self.app_version_badges.get(app_name)
         new_badge = self.app_new_badges.get(app_name)
-
-        has_update = False
-        installed_ver = get_installed_app_version(app_data, APP_BASE_PATH) if installed else None
-        remote_ver = app_data.get('version', '')
-
-        if installed and installed_ver and remote_ver:
-            if version_cmp(installed_ver, remote_ver) < 0:
-                has_update = True
 
         if ver_badge:
             raw_ver = remote_ver or (installed_ver or '')
@@ -4438,6 +4613,8 @@ class PluginManager(QWidget):
         worker.progress.connect(self.on_standalone_app_download_progress)
         worker.finished.connect(self.on_standalone_app_download_finished)
         worker.error.connect(self.on_standalone_app_download_error)
+
+        self.update_app_card_ui(app_name)
 
         btn = self.app_buttons.get(app_name)
         if btn:
@@ -5453,6 +5630,11 @@ if __name__ == '__main__':
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
+    try:
+        from telemetry import init_telemetry
+        init_telemetry()
+    except Exception:
+        pass
     try:
         from utils import init_app_fonts
         init_app_fonts()

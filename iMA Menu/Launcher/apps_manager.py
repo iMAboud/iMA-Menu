@@ -311,6 +311,14 @@ class AppDownloadWorker(QObject):
                 self.finished.emit(self.app_name, "cancelled", "")
                 return
 
+            # Terminate running process from target_dir if any before swapping
+            try:
+                from utils import terminate_plugin_processes
+                terminate_plugin_processes(target_dir)
+            except Exception:
+                pass
+            time.sleep(0.05)
+
             # Atomic swap to target_exe
             if os.path.exists(target_exe):
                 try:
@@ -318,6 +326,18 @@ class AppDownloadWorker(QObject):
                 except OSError:
                     pass
             os.replace(temp_path, target_exe)
+
+            # Purge any older .exe files in target_dir so only new executable remains
+            try:
+                target_exe_name = os.path.basename(target_exe).lower()
+                for f in os.listdir(target_dir):
+                    if f.lower().endswith('.exe') and f.lower() != target_exe_name:
+                        try:
+                            os.remove(os.path.join(target_dir, f))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
             # Record version.txt
             version_str = self.app_data.get('version', '')

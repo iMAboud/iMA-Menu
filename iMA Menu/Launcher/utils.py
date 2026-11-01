@@ -2257,8 +2257,8 @@ class CapsuleActionButton(QPushButton):
                 b_grad.setColorAt(0.0, QColor('#42be54'))
                 b_grad.setColorAt(1.0, QColor('#2ea043'))
             elif self._action_type in ('open', 'launch'):
-                b_grad.setColorAt(0.0, QColor('#38bdf8'))
-                b_grad.setColorAt(1.0, QColor('#0284c7'))
+                b_grad.setColorAt(0.0, QColor('#ca9ee6'))
+                b_grad.setColorAt(1.0, QColor('#a855f7'))
             elif self._action_type in ('uninstall', 'uninstalling', 'delete', 'cancel'):
                 b_grad.setColorAt(0.0, QColor('#f87171'))
                 b_grad.setColorAt(1.0, QColor('#dc2626'))

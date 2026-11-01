@@ -837,7 +837,8 @@ class ClickableWidget(QFrame):
         self.setMouseTracking(True)
 
     def mousePressEvent(self, event):
-        self.plugin_card_clicked.emit(self.plugin_name, self)
+        if event.button() == Qt.LeftButton:
+            self.plugin_card_clicked.emit(self.plugin_name, self)
         super().mousePressEvent(event)
 
 

@@ -163,6 +163,10 @@ def build():
         print(f"Build complete!")
         print(f"Standalone Executable: {exe_path} ({size_mb:.2f} MB)")
         print(f"=======================================================\n")
+        ver_mgr = os.path.abspath(os.path.join('..', 'imports', 'version_manager.pyw'))
+        if os.path.exists(ver_mgr):
+            import subprocess
+            subprocess.Popen(['pythonw.exe', ver_mgr, '--auto', os.path.abspath('.'), '--cooldown', '5'], creationflags=0x08000000)
 
 if __name__ == "__main__":
     build()
