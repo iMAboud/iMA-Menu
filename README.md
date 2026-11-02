@@ -5,7 +5,7 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v2.1.3-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.3/iMA.Menu.exe)
+[![Release](https://img.shields.io/badge/release-v2.1.5-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.5/iMA.Menu.exe)
 [![License](https://img.shields.io/badge/license-Custom%20%2F%20Split-blue)](LICENSE)
 
 --- 
@@ -24,7 +24,7 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## Installation 💻
 
-**Install the latest Release v2.1.3** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.3/iMA.Menu.exe).
+**Install the latest Release v2.1.5** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.5/iMA.Menu.exe).
 
 ---
 
