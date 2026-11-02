@@ -22,6 +22,11 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 ---
 </div>
 
+## ✨ What's New
+
+Direct Item Editing: Right-click any item to edit immediately, no need to launch iMA Menu first ⚡
+
+
 ## Installation 💻
 
 **Install the latest Release v2.1.5** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.5/iMA.Menu.exe).
