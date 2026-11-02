@@ -397,6 +397,17 @@ def format_nss_value(k, v):
     if is_svg_tag:
         return f"{k}='{v}'"
 
+    if k == 'find':
+        clean = v.strip()
+        if clean.startswith("'") and clean.endswith("'") and len(clean) >= 2:
+            inner = clean[1:-1].strip()
+            if inner.startswith('"') and inner.endswith('"') and len(inner) >= 2:
+                return f"find={clean}"
+            return f"find={clean}"
+        if clean.startswith('"') and clean.endswith('"') and len(clean) >= 2:
+            return f"find='{clean}'"
+        return f"find='{clean}'"
+
     # Already valid quoted string literal
     if is_enclosed_string(v):
         return f"{k}={v}"

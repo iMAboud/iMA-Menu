@@ -2807,6 +2807,29 @@ class ImportEditorDialog(QDialog):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.embed_mode:
+            try:
+                from PyQt5.QtWidgets import QDesktopWidget
+                avail_geo = QDesktopWidget().availableGeometry(self)
+                geo = self.frameGeometry()
+                margin = 15
+                new_x = geo.x()
+                new_y = geo.y()
+                if new_x + geo.width() > avail_geo.right() - margin:
+                    new_x = avail_geo.right() - geo.width() - margin
+                if new_x < avail_geo.left() + margin:
+                    new_x = avail_geo.left() + margin
+                if new_y + geo.height() > avail_geo.bottom() - margin:
+                    new_y = avail_geo.bottom() - geo.height() - margin
+                if new_y < avail_geo.top() + margin:
+                    new_y = avail_geo.top() + margin
+                if new_x != geo.x() or new_y != geo.y():
+                    self.move(new_x, new_y)
+            except Exception:
+                pass
+
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
@@ -4634,6 +4657,29 @@ class ModifyRuleEditorDialog(QDialog):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.embed_mode:
+            try:
+                from PyQt5.QtWidgets import QDesktopWidget
+                avail_geo = QDesktopWidget().availableGeometry(self)
+                geo = self.frameGeometry()
+                margin = 15
+                new_x = geo.x()
+                new_y = geo.y()
+                if new_x + geo.width() > avail_geo.right() - margin:
+                    new_x = avail_geo.right() - geo.width() - margin
+                if new_x < avail_geo.left() + margin:
+                    new_x = avail_geo.left() + margin
+                if new_y + geo.height() > avail_geo.bottom() - margin:
+                    new_y = avail_geo.bottom() - geo.height() - margin
+                if new_y < avail_geo.top() + margin:
+                    new_y = avail_geo.top() + margin
+                if new_x != geo.x() or new_y != geo.y():
+                    self.move(new_x, new_y)
+            except Exception:
+                pass
+
     def setup_ui(self):
         self.mf = QFrame(self); self.mf.setObjectName("mainFrame")
         self.mf.setStyleSheet("""
@@ -5218,11 +5264,15 @@ class ModifyRuleEditorDialog(QDialog):
 
             f = d.get('find') or act.get('find', '')
             if f:
-                mode = "contains"; clean_f = str(f)
-                if clean_f.startswith('"') and clean_f.endswith('"'): mode = "exact"; clean_f = clean_f[1:-1]
-                elif clean_f.startswith('*') and clean_f.endswith('*'): mode = "contains"; clean_f = clean_f[1:-1]
-                elif clean_f.startswith('*'): mode = "ends"; clean_f = clean_f[1:]
-                elif clean_f.endswith('*'): mode = "starts"; clean_f = clean_f[:-1]
+                mode = "contains"; clean_f = str(f).strip()
+                if (clean_f.startswith("'") and clean_f.endswith("'") and len(clean_f) >= 2) or (clean_f.startswith('"') and clean_f.endswith('"') and len(clean_f) >= 2):
+                    inner_f = clean_f[1:-1].strip()
+                    if inner_f.startswith('"') and inner_f.endswith('"') and len(inner_f) >= 2: mode = "exact"; clean_f = inner_f[1:-1].strip()
+                if mode != "exact":
+                    if clean_f.startswith('"') and clean_f.endswith('"'): mode = "exact"; clean_f = clean_f[1:-1]
+                    elif clean_f.startswith('*') and clean_f.endswith('*'): mode = "contains"; clean_f = clean_f[1:-1]
+                    elif clean_f.startswith('*'): mode = "ends"; clean_f = clean_f[1:]
+                    elif clean_f.endswith('*'): mode = "starts"; clean_f = clean_f[:-1]
                 self.f_inp.setText(clean_f.strip('\'"'))
                 self.match_mode_btn.set_mode(mode)
             elif sync_id and not self.f_inp.get_selected_id():
@@ -5262,7 +5312,7 @@ class ModifyRuleEditorDialog(QDialog):
         sel_id = self.f_inp.get_selected_id()
         if sel_id:
             res['where.id'] = sel_id
-            f = self.f_inp.text().strip()
+            f = self.f_inp.text().strip('\'" \t')
             if not f:
                 f = get_friendly_id_name(sel_id)
             mode = self.match_mode_btn.get_mode()
@@ -5272,7 +5322,7 @@ class ModifyRuleEditorDialog(QDialog):
             res['find'] = f
         else:
             res.pop('where.id', None)
-            f = self.f_inp.text().strip()
+            f = self.f_inp.text().strip('\'" \t')
             if f:
                 mode = self.match_mode_btn.get_mode()
                 if mode == "exact": f = f'"{f}"'
@@ -5287,9 +5337,7 @@ class ModifyRuleEditorDialog(QDialog):
         else: res.pop('in', None)
         
         clean_user_title = self.ti_inp.text().strip('\'" ')
-        orig_ref = (getattr(self, 'original_title', None) or '').strip('\'" ')
-        find_ref = self.f_inp.text().strip('\'" *')
-        if clean_user_title and (not orig_ref or clean_user_title.lower() != orig_ref.lower()) and (not find_ref or clean_user_title.lower() != find_ref.lower()):
+        if clean_user_title:
             res['title'] = f"'{clean_user_title}'" if ' ' in clean_user_title else clean_user_title
         else:
             res.pop('title', None)
@@ -5655,7 +5703,7 @@ def save_custom_rules_to_file(custom_rules, modify_nss_path):
         return False
 
 
-def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_type=None, icon=None, project_root=None, original_title=None, src_file=None, src_line=None, is_custom=False):
+def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_type=None, icon=None, project_root=None, original_title=None, src_file=None, src_line=None, is_custom=False, pos=None, menu=None):
     from utils import trigger_shell_reload
     from PyQt5.QtWidgets import QDialog, QDesktopWidget
     import os, re
@@ -5682,7 +5730,7 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
     if root and os.path.exists(os.path.join(root, 'shell.nss')):
         set_project_root(root)
 
-    # Check if target item is declared in a custom NSS file (e.g. items.nss, file-manage.nss)
+    # Check if target item is declared in a custom NSS file (e.g. items.nss, valo.nss, file-manage.nss)
     resolved_src_file = None
     if src_file:
         test_path = os.path.normpath(src_file)
@@ -5690,6 +5738,39 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
             resolved_src_file = test_path
         elif root and os.path.isfile(os.path.normpath(os.path.join(root, src_file))):
             resolved_src_file = os.path.normpath(os.path.join(root, src_file))
+
+    # Auto-discover custom items/menus across NSS files if src_file was not provided
+    if not resolved_src_file and (original_title or title):
+        clean_t = (original_title or title or '').strip('\'" ')
+        clean_t = re.sub(r'(?<!&)&(?!&)', '', clean_t).replace('&&', '&').strip().lower()
+        if clean_t:
+            candidate_files = []
+            imports_dir = os.path.join(root, 'imports')
+            if os.path.isdir(imports_dir):
+                for f in sorted(os.listdir(imports_dir)):
+                    if f.lower().endswith('.nss') and f.lower() != 'modify.nss':
+                        candidate_files.append(os.path.join(imports_dir, f))
+            shell_nss = os.path.join(root, 'shell.nss')
+            if os.path.isfile(shell_nss):
+                candidate_files.append(shell_nss)
+
+            for cf in candidate_files:
+                try:
+                    fc = read_file(cf)
+                    if fc and clean_t in fc.lower():
+                        from nss_parser import find_items_and_menus
+                        find_items_and_menus.current_file = cf
+                        parsed = find_items_and_menus(fc, types=('item', 'menu'))
+                        for it in parsed:
+                            it_t = str(it.get('props', {}).get('title', '')).strip('\'" ')
+                            it_t = re.sub(r'(?<!&)&(?!&)', '', it_t).replace('&&', '&').strip().lower()
+                            if it_t == clean_t:
+                                resolved_src_file = cf
+                                break
+                    if resolved_src_file:
+                        break
+                except Exception:
+                    pass
 
     if resolved_src_file and os.path.isfile(resolved_src_file) and os.path.basename(resolved_src_file).lower() != 'modify.nss':
         file_content = read_file(resolved_src_file)
@@ -5744,15 +5825,21 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
                         target_item = sorted_by_line[0]
 
             if target_item and target_item.get('type') in ('item', 'menu'):
+                target_item['file'] = resolved_src_file
                 dlg = ImportEditorDialog(target_item, None)
+                dlg.adjustSize()
                 cursor_pos = QDesktopWidget().cursor().pos()
-                screen_geo = QDesktopWidget().screenGeometry(cursor_pos)
-                dlg_w = max(dlg.width(), 600)
-                dlg_h = max(dlg.height(), 450)
+                avail_geo = QDesktopWidget().availableGeometry(cursor_pos)
+                dlg_w = max(dlg.width(), dlg.sizeHint().width(), 600)
+                dlg_h = max(dlg.height(), dlg.sizeHint().height())
+                if dlg_h > avail_geo.height() - 30:
+                    dlg_h = avail_geo.height() - 30
+                    dlg.resize(dlg_w, dlg_h)
                 x = cursor_pos.x() - dlg_w // 2
                 y = cursor_pos.y() - dlg_h // 2
-                x = max(screen_geo.left() + 20, min(x, screen_geo.right() - dlg_w - 20))
-                y = max(screen_geo.top() + 20, min(y, screen_geo.bottom() - dlg_h - 20))
+                margin = 15
+                x = max(avail_geo.left() + margin, min(x, avail_geo.right() - dlg_w - margin))
+                y = max(avail_geo.top() + margin, min(y, avail_geo.bottom() - dlg_h - margin))
                 dlg.move(x, y)
 
                 if dlg.exec_() == QDialog.Accepted:
@@ -5802,6 +5889,8 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
     clean_in = (in_menu or '').strip('\'" ')
     clean_type = (item_type or '').strip('\'" ').lower()
     clean_icon = (icon or '').strip('\'" ')
+    clean_pos = (str(pos) if pos is not None else '').strip('\'" ')
+    clean_menu = (str(menu) if menu is not None else '').strip('\'" ')
 
     target_existing_rule = None
     bulk_rule = None
@@ -5899,9 +5988,10 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
         target_name = clean_orig or clean_title
         if clean_id:
             initial_data['where.id'] = clean_id
-            initial_data['find'] = target_name or get_friendly_id_name(clean_id)
+            target_find = target_name or get_friendly_id_name(clean_id)
+            initial_data['find'] = f'"{target_find}"' if target_find else ''
         elif target_name:
-            initial_data['find'] = target_name
+            initial_data['find'] = f'"{target_name}"'
 
         if clean_orig and clean_title and clean_orig.lower() != clean_title.lower():
             initial_data['title'] = clean_title
@@ -5912,6 +6002,10 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
             initial_data['type'] = 'menu'
         if clean_icon:
             initial_data['icon'] = clean_icon
+        if clean_pos:
+            initial_data['pos'] = clean_pos
+        if clean_menu and clean_menu.lower() not in ('main', 'none', ''):
+            initial_data['menu'] = clean_menu
 
     dlg = ModifyRuleEditorDialog(
         data=initial_data,
@@ -5922,6 +6016,7 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
     )
 
     if target_existing_rule:
+        dlg._target_existing_rule = target_existing_rule
         p = target_existing_rule.get('props', {})
         target_disp = p.get('find') or clean_orig or clean_title or (get_friendly_id_name(clean_id) if clean_id else "item")
         target_disp = str(target_disp).strip('\'" *')
@@ -5932,14 +6027,19 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
         dlg.banner_frame.show()
         dlg.revert_btn.show()
 
+    dlg.adjustSize()
     cursor_pos = QDesktopWidget().cursor().pos()
-    screen_geo = QDesktopWidget().screenGeometry(cursor_pos)
-    dlg_w = max(dlg.width(), 740)
-    dlg_h = max(dlg.height(), 500)
+    avail_geo = QDesktopWidget().availableGeometry(cursor_pos)
+    dlg_w = max(dlg.width(), dlg.sizeHint().width(), 740)
+    dlg_h = max(dlg.height(), dlg.sizeHint().height())
+    if dlg_h > avail_geo.height() - 30:
+        dlg_h = avail_geo.height() - 30
+        dlg.resize(dlg_w, dlg_h)
     x = cursor_pos.x() - dlg_w // 2
     y = cursor_pos.y() - dlg_h // 2
-    x = max(screen_geo.left() + 20, min(x, screen_geo.right() - dlg_w - 20))
-    y = max(screen_geo.top() + 20, min(y, screen_geo.bottom() - dlg_h - 20))
+    margin = 15
+    x = max(avail_geo.left() + margin, min(x, avail_geo.right() - dlg_w - margin))
+    y = max(avail_geo.top() + margin, min(y, avail_geo.bottom() - dlg_h - margin))
     dlg.move(x, y)
 
     if dlg.exec_() == QDialog.Accepted:

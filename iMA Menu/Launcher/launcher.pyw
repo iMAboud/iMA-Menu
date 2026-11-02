@@ -366,7 +366,7 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.1.4'
+APP_VERSION = '2.1.5'
 
 def _resolve_app_version():
     ver = APP_VERSION
@@ -5559,6 +5559,8 @@ if __name__ == '__main__':
             parser.add_argument("--src-file", type=str, default="")
             parser.add_argument("--src-line", type=int, default=0)
             parser.add_argument("--is-custom", action="store_true")
+            parser.add_argument("--pos", type=str, default="")
+            parser.add_argument("--menu", dest="menu_name", type=str, default="")
             args, _ = parser.parse_known_args()
 
             QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
@@ -5586,7 +5588,9 @@ if __name__ == '__main__':
                 original_title=args.original_title,
                 src_file=args.src_file,
                 src_line=args.src_line,
-                is_custom=args.is_custom
+                is_custom=args.is_custom,
+                pos=args.pos,
+                menu=args.menu_name
             )
             sys.exit(0)
         except Exception as e:
