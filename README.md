@@ -6,7 +6,7 @@
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
 [![Release](https://img.shields.io/badge/release-v2.1.3-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.3/iMA.Menu.exe)
-[![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
+[![License](https://img.shields.io/badge/license-Custom%20%2F%20Split-blue)](LICENSE)
 
 --- 
 <img width="150" height="181" alt="screenshot_20260902_054803" src="https://github.com/user-attachments/assets/5ce0ea90-ae01-4bca-9484-8d25bb3ee969" /> <img width="142" height="173" alt="screenshot_20260902_054757" src="https://github.com/user-attachments/assets/11bb8bcf-bd6d-4245-a6c9-b1098ffb1373" />
@@ -88,11 +88,16 @@ For plugin contributions, please visit the [iMA Menu Plugins repository](https:/
 
 ## License 📄
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project uses a split licensing model:
+* **iMA Menu (original code & launcher):** Custom personal non-commercial license (see [LICENSE](LICENSE)).
+* **Nilesoft Shell (`shell.dll`, `shell.exe`):** Licensed under the [MIT License](https://github.com/moudey/Shell) by Nilesoft.
+* **croc:** Licensed under the [MIT License](https://github.com/schollz/croc) by Zack Guarino.
+
+See [LICENSE](LICENSE) for complete terms and third-party notices.
 
 ---
 
 ## Credits 🙏
 
 *   [Nilesoft Shell](https://github.com/moudey/Shell)
-*   [Shollz . croc](https://github.com/schollz/croc)
+*   [Schollz · croc](https://github.com/schollz/croc)
