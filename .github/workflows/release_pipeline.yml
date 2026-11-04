@@ -10,9 +10,6 @@ on:
       - 'iMA Menu/shell.*'
       - 'installer.iss'
       - '.github/workflows/**'
-    paths-ignore:
-      - 'README.md'
-      - '.gitignore'
   workflow_dispatch:
     inputs:
       custom_version:
