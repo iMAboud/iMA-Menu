@@ -229,3 +229,4 @@ _internal/*.dll
 _internal/*.pyd
 .cloud_token.dat
 _internal/
+launcher.exe

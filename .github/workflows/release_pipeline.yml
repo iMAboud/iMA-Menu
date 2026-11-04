@@ -200,6 +200,59 @@ jobs:
           files: iMA Menu/Launcher/launcher.exe
         continue-on-error: true
 
+      - name: Update version.json in iMA-Menu-Plugins
+        shell: pwsh
+        env:
+          PLUGINS_TOKEN: ${{ secrets.PLUGINS_REPO_TOKEN }}
+          TAG_NAME: ${{ steps.version_step.outputs.TAG_NAME }}
+        run: |
+          $pyScript = @"
+          import os, json, base64, urllib.request
+
+          token = os.environ.get('PLUGINS_TOKEN', '')
+          tag = os.environ.get('TAG_NAME', '')
+          if not token or not tag:
+              print("Skipping version.json update: missing token or tag")
+              exit(0)
+
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'User-Agent': 'GitHub-Action',
+              'Accept': 'application/vnd.github+json'
+          }
+
+          api_url = 'https://api.github.com/repos/iMAboud/iMA-Menu-Plugins/contents/version.json'
+          sha = ''
+          try:
+              req = urllib.request.Request(api_url, headers=headers)
+              with urllib.request.urlopen(req) as resp:
+                  data = json.loads(resp.read().decode('utf-8'))
+                  sha = data.get('sha', '')
+          except Exception as e:
+              print(f"Could not fetch current version.json: {e}")
+
+          new_content = json.dumps({
+              "version": tag,
+              "download_url": f"https://github.com/iMAboud/iMA-Menu-Plugins/releases/download/{tag}/launcher.exe"
+          }, indent=2) + "\n"
+
+          payload = {
+              'message': f'chore(release): update version.json to {tag}',
+              'content': base64.b64encode(new_content.encode('utf-8')).decode('utf-8'),
+              'branch': '${{ github.ref_name }}'
+          }
+          if sha:
+              payload['sha'] = sha
+
+          req = urllib.request.Request(api_url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='PUT')
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print(f"Updated version.json in iMA-Menu-Plugins to {tag}")
+          except Exception as e:
+              print(f"Failed to update version.json in iMA-Menu-Plugins: {e}")
+          "@
+          python -c $pyScript
+
       - name: Publish Release to iMA-Menu (iMA.Menu.exe)
         uses: softprops/action-gh-release@v2
         with:
