@@ -126,7 +126,8 @@ from utils import (resource_path, safe_file_write, UnsavedChangesDialog,
                    ModernDialog, ModernSwitch, PillProgressBar,
                    make_circular_pixmap, make_initial_avatar_pixmap, AccountProfileDialog,
                    CapsuleActionButton, PillTabButton, PillPushButton, fix_nss_mode_syntax_once, restore_open_with_once,
-                   PillNotification, AnimatedStackedWidget, CloudSyncConflictDialog, is_recently_updated)
+                   PillNotification, AnimatedStackedWidget, CloudSyncConflictDialog, is_recently_updated,
+                   CloudBackupConfirmDialog, CloudBackupHistoryDialog)
 from plugin_registry import PluginRegistry, atomic_json_write, safe_json_read, delete_to_recycle_bin, version_cmp
 from plugin_workers import (
     FetchPluginsThread, IconDownloadWorker, InstallationWorker,
@@ -649,7 +650,8 @@ class SettingsManager:
             "auto_check_updates": False,
             "auto_cloud_backup": True,
             "last_cloud_backup": 0,
-            "dismissed_update_version": ""
+            "dismissed_update_version": "",
+            "has_user_changes": False
         }
         self.settings = self.defaults.copy()
         self.load()
@@ -694,6 +696,8 @@ class SettingsManager:
         if key in self.DEPRECATED_KEYS:
             return
         self.settings[key] = value
+        if key not in ("has_user_changes", "last_cloud_backup", "last_update_check", "dismissed_update_version"):
+            self.settings["has_user_changes"] = True
         self.save()
 
 
@@ -2128,8 +2132,57 @@ class PluginManager(QWidget):
             return
         self.check_app_update(manual=False)
 
+    def has_user_changes(self):
+        if self.settings_manager.get('has_user_changes', False):
+            return True
+        baseline_file = os.path.join(CACHE_DIR, '.install_baseline.json')
+        if not os.path.exists(baseline_file):
+            if float(self.settings_manager.get('last_cloud_backup', 0) or 0) > 0:
+                self.settings_manager.set('has_user_changes', True)
+                return True
+            self._record_install_baseline(baseline_file)
+            return False
+        if self._check_baseline_modified(baseline_file):
+            self.settings_manager.set('has_user_changes', True)
+            return True
+        return False
+
+    def mark_user_changed(self):
+        self.settings_manager.set('has_user_changes', True)
+
+    def _get_tracked_files_hash(self):
+        import hashlib
+        h = hashlib.sha256()
+        for rel in ['shell.nss', 'imports/custom.nss', 'imports/modify.nss', 'imports/theme.nss']:
+            fp = os.path.join(PROJECT_ROOT, rel)
+            if os.path.exists(fp):
+                try:
+                    with open(fp, 'rb') as f:
+                        h.update(f.read())
+                except Exception:
+                    pass
+        return h.hexdigest()
+
+    def _record_install_baseline(self, baseline_file):
+        try:
+            os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
+            with open(baseline_file, 'w', encoding='utf-8') as f:
+                json.dump({"hash": self._get_tracked_files_hash()}, f)
+        except Exception:
+            pass
+
+    def _check_baseline_modified(self, baseline_file):
+        try:
+            with open(baseline_file, 'r', encoding='utf-8') as f:
+                saved = json.load(f).get('hash')
+            return saved != self._get_tracked_files_hash()
+        except Exception:
+            return False
+
     def _check_scheduled_cloud_backup(self):
         if not self.settings_manager.get('auto_cloud_backup'):
+            return
+        if not self.has_user_changes():
             return
         if self.sync_manager is None:
             self._init_sync_manager()
@@ -2327,6 +2380,7 @@ class PluginManager(QWidget):
 
         # 2. Trigger the actual reload (non-blocking)
         trigger_shell_reload(close_only=True)
+        self.mark_user_changed()
 
     def _on_manual_fix_required(self, filename, line, message):
         # User requested no popup. Logging the error instead.
@@ -5404,18 +5458,26 @@ class PluginManager(QWidget):
         
         self.sync_backup_btn = PillPushButton("Backup", "backup", height=34)
         self.sync_backup_btn.setFixedWidth(100)
-        self.sync_backup_btn.clicked.connect(lambda: self._init_sync_manager().backup())
+        self.sync_backup_btn.clicked.connect(self.on_backup_clicked)
         
         self.sync_restore_btn = PillPushButton("Restore", "restore", height=34)
         self.sync_restore_btn.setFixedWidth(100)
         self.sync_restore_btn.clicked.connect(lambda: self._init_sync_manager().restore())
+
+        self.sync_history_btn = QPushButton("\uE713")
+        self.sync_history_btn.setFixedSize(36, 36)
+        self.sync_history_btn.setCursor(Qt.PointingHandCursor)
+        self.sync_history_btn.setFont(QFont('Segoe MDL2 Assets', 14))
+        self.sync_history_btn.setToolTip("Previous Backup History")
+        self.sync_history_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #8caaee; } QPushButton:hover { background: rgba(140, 170, 238, 0.2); border: 1px solid #8caaee; color: white; }")
+        self.sync_history_btn.clicked.connect(self.show_backup_history_dialog)
         
         self.sync_logout_btn = QPushButton("\uE77B"); self.sync_logout_btn.setFixedSize(36, 36); self.sync_logout_btn.setCursor(Qt.PointingHandCursor)
         self.sync_logout_btn.setFont(QFont('Segoe MDL2 Assets', 14))
         self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #e78284; color: white; }")
         self.sync_logout_btn.clicked.connect(self.show_account_profile_popup)
         
-        rl.addWidget(self.sync_login_btn); rl.addWidget(self.sync_backup_btn); rl.addWidget(self.sync_restore_btn); rl.addWidget(self.sync_logout_btn)
+        rl.addWidget(self.sync_login_btn); rl.addWidget(self.sync_backup_btn); rl.addWidget(self.sync_restore_btn); rl.addWidget(self.sync_history_btn); rl.addWidget(self.sync_logout_btn)
         layout.addWidget(row)
         self._update_sync_ui_state()
 
@@ -5452,6 +5514,36 @@ class PluginManager(QWidget):
             self.sync_manager.logout()
         self._update_sync_ui_state()
 
+    def on_backup_clicked(self):
+        if not self.has_user_changes():
+            m = ModernDialog(self, "No Changes Detected", "Your settings are at default values.\n\nTo prevent overwriting your existing cloud backup, backups are disabled until you customize your settings.\n\nIf you want to restore your previous settings, click 'Restore'.")
+            m.add_button("OK", "installButton", m.accept)
+            m.exec_()
+            return
+
+        sync = self._init_sync_manager()
+        if not sync:
+            return
+        if not sync.access_token:
+            sync.backup()
+            return
+
+        info = sync.get_remote_backup_info()
+        if info.get('exists'):
+            dlg = CloudBackupConfirmDialog(info, self)
+            if dlg.exec_() != 1 or not dlg.confirmed:
+                return
+
+        sync.backup()
+
+    def show_backup_history_dialog(self):
+        sync = self._init_sync_manager()
+        if not sync or not sync.access_token:
+            return
+        dlg = CloudBackupHistoryDialog(sync, self)
+        if dlg.exec_() == 1 and dlg.selected_revision_id:
+            sync.restore(revision_id=dlg.selected_revision_id)
+
     def _update_sync_ui_state(self):
         if not hasattr(self, 'sync_login_btn') or self.sync_manager is None:
             return
@@ -5459,6 +5551,8 @@ class PluginManager(QWidget):
         self.sync_login_btn.setVisible(not logged_in)
         self.sync_backup_btn.setVisible(logged_in)
         self.sync_restore_btn.setVisible(logged_in)
+        if hasattr(self, 'sync_history_btn'):
+            self.sync_history_btn.setVisible(logged_in)
         self.sync_logout_btn.setVisible(logged_in)
         
         if logged_in:
@@ -5508,6 +5602,7 @@ class PluginManager(QWidget):
             ModernDialog(self, "Cloud Sync Error", f"Authentication failed: {message}").show()
 
     def on_sync_progress(self, percentage, status):
+        self._is_internal_change = True
         if not hasattr(self, 'sync_dl_msg') or not self.sync_dl_msg.isVisible():
             self.sync_dl_msg = ModernDialog(self, "Cloud Sync", status)
             self.sync_bar = PillProgressBar(height=20)
@@ -5521,9 +5616,11 @@ class PluginManager(QWidget):
         self.sync_perc.setText(f"{percentage}%")
 
     def on_sync_finished(self, success, message):
+        self._is_internal_change = False
         had_dl_msg = hasattr(self, 'sync_dl_msg') and self.sync_dl_msg.isVisible()
         if hasattr(self, 'sync_dl_msg'): self.sync_dl_msg.close()
         if success:
+            self.mark_user_changed()
             if "backup" in message.lower():
                 self.settings_manager.set('last_cloud_backup', time.time())
             self.full_ui_refresh()

@@ -5740,7 +5740,7 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
             resolved_src_file = os.path.normpath(os.path.join(root, src_file))
 
     # Auto-discover custom items/menus across NSS files if src_file was not provided
-    if not resolved_src_file and (original_title or title):
+    if not resolved_src_file and is_custom and (original_title or title):
         clean_t = (original_title or title or '').strip('\'" ')
         clean_t = re.sub(r'(?<!&)&(?!&)', '', clean_t).replace('&&', '&').strip().lower()
         if clean_t:
@@ -5762,7 +5762,11 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
                         find_items_and_menus.current_file = cf
                         parsed = find_items_and_menus(fc, types=('item', 'menu'))
                         for it in parsed:
-                            it_t = str(it.get('props', {}).get('title', '')).strip('\'" ')
+                            props = it.get('props', {})
+                            vis_val = str(props.get('vis', '')).strip('\'" ').lower()
+                            if vis_val in ('vis.remove', 'vis.hidden', 'remove', 'hidden'):
+                                continue
+                            it_t = str(props.get('title', '')).strip('\'" ')
                             it_t = re.sub(r'(?<!&)&(?!&)', '', it_t).replace('&&', '&').strip().lower()
                             if it_t == clean_t:
                                 resolved_src_file = cf
@@ -5935,7 +5939,7 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
             p = r.get('props', {})
             r_find = str(p.get('find', '')).lower().strip('\'" *')
             r_in = str(p.get('in', '')).lower().strip('\'" ')
-            if r_find == orig_lower:
+            if r_find and (r_find == orig_lower or r_find in orig_lower):
                 if in_lower:
                     if r_in == in_lower:
                         target_existing_rule = r
@@ -5952,7 +5956,7 @@ def open_standalone_rule_editor(title=None, target_id=None, in_menu=None, item_t
             p = r.get('props', {})
             r_find = str(p.get('find', '')).lower().strip('\'" *')
             r_in = str(p.get('in', '')).lower().strip('\'" ')
-            if r_find == title_lower:
+            if r_find and (r_find == title_lower or r_find in title_lower):
                 if in_lower:
                     if r_in == in_lower:
                         target_existing_rule = r

@@ -48,7 +48,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 ; 1. Launcher: Always replace (must be closed)
 Source: "iMA Menu\Launcher\launcher.exe"; DestDir: "{app}\Launcher"; Flags: ignoreversion
-Source: "iMA Menu\Launcher\*"; DestDir: "{app}\Launcher"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "launcher.exe"
+Source: "iMA Menu\Launcher\ima_updater.exe"; DestDir: "{app}\Launcher"; Flags: ignoreversion
 
 ; 2. Shell components: Replace ONLY if version is higher
 Source: "iMA Menu\shell.dll"; DestDir: "{app}"; Flags: restartreplace; Check: IsShellUpdateNeeded

@@ -3765,4 +3765,300 @@ def is_recently_updated(timestamp_or_str, hours=24):
         return False
 
 
+def _format_iso_datetime(iso_str):
+    if not iso_str:
+        return "Unknown"
+    try:
+        from datetime import datetime
+        val = iso_str.rstrip('Z') + '+00:00' if iso_str.endswith('Z') else iso_str
+        dt = datetime.fromisoformat(val).astimezone()
+        return dt.strftime("%b %d, %Y • %I:%M %p")
+    except Exception:
+        return str(iso_str)
+
+
+def _format_size_bytes(size_bytes):
+    if size_bytes is None:
+        return "Unknown"
+    try:
+        kb = int(size_bytes) / 1024.0
+        if kb >= 1024.0:
+            return f"{kb / 1024.0:.2f} MB"
+        return f"{kb:.1f} KB"
+    except Exception:
+        return str(size_bytes)
+
+
+class CloudBackupConfirmDialog(QDialog):
+    def __init__(self, cloud_info, parent=None):
+        super().__init__(parent)
+        self.cloud_info = cloud_info or {}
+        self.confirmed = False
+        self.setMinimumWidth(480)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.mf = QFrame(self)
+        self.mf.setObjectName("backupConfirmFrame")
+        self.mf.setStyleSheet("#backupConfirmFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mf)
+
+        cl = QVBoxLayout(self.mf)
+        cl.setContentsMargins(28, 26, 28, 26)
+        cl.setSpacing(16)
+
+        head = QLabel("Existing Cloud Backup Found")
+        head.setFont(QFont("Google Sans", 16, QFont.Bold))
+        head.setStyleSheet("font-size: 19px; font-weight: bold; color: white; border: none; background: transparent;")
+        cl.addWidget(head)
+
+        desc = QLabel("A backup is already saved in your Google Drive app data. Backing up now will overwrite it with your current local settings.")
+        desc.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
+        desc.setWordWrap(True)
+        cl.addWidget(desc)
+
+        card = QFrame()
+        card.setStyleSheet("QFrame { background: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); }")
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(16, 14, 16, 14)
+        card_lay.setSpacing(6)
+
+        time_display = _format_iso_datetime(self.cloud_info.get('modifiedTime'))
+        size_display = _format_size_bytes(self.cloud_info.get('size'))
+
+        t_lbl = QLabel(f"Cloud Backup Date: <b style='color: white;'>{time_display}</b>")
+        t_lbl.setStyleSheet("color: #8caaee; font-size: 12px; border: none; background: transparent;")
+        card_lay.addWidget(t_lbl)
+
+        s_lbl = QLabel(f"Archive Size: <b style='color: white;'>{size_display}</b>")
+        s_lbl.setStyleSheet("color: #8caaee; font-size: 12px; border: none; background: transparent;")
+        card_lay.addWidget(s_lbl)
+
+        cl.addWidget(card)
+
+        warn_lbl = QLabel("Are you sure you want to proceed and overwrite this cloud backup?")
+        warn_lbl.setStyleSheet("color: #ea999c; font-size: 12px; font-weight: bold; border: none; background: transparent;")
+        cl.addWidget(warn_lbl)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(12)
+        btns.addStretch()
+
+        cancel_btn = PillPushButton("Cancel", "secondary", height=34)
+        cancel_btn.setFixedWidth(100)
+        cancel_btn.clicked.connect(self.reject)
+        btns.addWidget(cancel_btn)
+
+        confirm_btn = PillPushButton("Overwrite Backup", "backup", height=34)
+        confirm_btn.setFixedWidth(150)
+        confirm_btn.clicked.connect(self._on_confirm)
+        btns.addWidget(confirm_btn)
+
+        cl.addLayout(btns)
+
+    def _on_confirm(self):
+        self.confirmed = True
+        self.accept()
+
+
+class CloudBackupHistoryDialog(QDialog):
+    revisions_loaded = pyqtSignal(dict)
+
+    def __init__(self, sync_manager, parent=None):
+        super().__init__(parent)
+        self.sync_manager = sync_manager
+        self.selected_revision_id = None
+        self.selected_is_latest = False
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(480)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.cards = []
+        self.revisions_loaded.connect(self._on_revisions_loaded)
+        self.setup_ui()
+        QTimer.singleShot(60, self.load_revisions)
+
+    def setup_ui(self):
+        self.mf = QFrame(self)
+        self.mf.setObjectName("historyMainFrame")
+        self.mf.setStyleSheet("#historyMainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mf)
+
+        self.cl = QVBoxLayout(self.mf)
+        self.cl.setContentsMargins(26, 24, 26, 24)
+        self.cl.setSpacing(14)
+
+        top_lay = QHBoxLayout()
+        head = QLabel("Cloud Backup History")
+        head.setFont(QFont("Google Sans", 16, QFont.Bold))
+        head.setStyleSheet("font-size: 19px; font-weight: bold; color: white; border: none; background: transparent;")
+        top_lay.addWidget(head)
+        top_lay.addStretch()
+
+        close_btn = QPushButton("\uE711")
+        close_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+        close_btn.setFixedSize(28, 28)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.06); border-radius: 14px; border: none; color: #a6adc8; } QPushButton:hover { background: rgba(234, 153, 156, 0.25); color: #ea999c; }")
+        close_btn.clicked.connect(self.reject)
+        top_lay.addWidget(close_btn)
+        self.cl.addLayout(top_lay)
+
+        desc = QLabel("Select any previous backup version from Google Drive to restore. Older versions are kept for up to 30 days.")
+        desc.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
+        desc.setWordWrap(True)
+        self.cl.addWidget(desc)
+
+        self.status_lbl = QLabel("Fetching backup revisions from Google Drive...")
+        self.status_lbl.setStyleSheet("color: #8caaee; font-size: 13px; font-weight: bold; border: none; background: transparent; padding: 30px;")
+        self.status_lbl.setAlignment(Qt.AlignCenter)
+        self.cl.addWidget(self.status_lbl)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.hide()
+
+        self.scroll_widget = QWidget()
+        self.scroll_widget.setStyleSheet("background: transparent;")
+        self.scroll_lay = QVBoxLayout(self.scroll_widget)
+        self.scroll_lay.setSpacing(8)
+        self.scroll_lay.setContentsMargins(0, 4, 0, 4)
+        self.scroll_lay.setAlignment(Qt.AlignTop)
+        self.scroll.setWidget(self.scroll_widget)
+        self.cl.addWidget(self.scroll, 1)
+
+        self.bottom_lay = QHBoxLayout()
+        self.bottom_lay.setSpacing(10)
+        self.bottom_lay.addStretch()
+
+        self.cancel_btn = PillPushButton("Cancel", "secondary", height=34)
+        self.cancel_btn.setFixedWidth(100)
+        self.cancel_btn.clicked.connect(self.reject)
+        self.bottom_lay.addWidget(self.cancel_btn)
+
+        self.restore_btn = PillPushButton("Restore Revision", "restore", height=34)
+        self.restore_btn.setFixedWidth(150)
+        self.restore_btn.setEnabled(False)
+        self.restore_btn.clicked.connect(self._on_restore_clicked)
+        self.bottom_lay.addWidget(self.restore_btn)
+
+        self.cl.addLayout(self.bottom_lay)
+
+    def load_revisions(self):
+        import threading
+        threading.Thread(target=self._worker_load, daemon=True).start()
+
+    def _worker_load(self):
+        try:
+            res = self.sync_manager.get_backup_revisions()
+        except Exception as e:
+            res = {"success": False, "error": str(e)}
+        self.revisions_loaded.emit(res)
+
+    def _on_revisions_loaded(self, res):
+        if not res.get("success"):
+            err = res.get("error", "No backups found.")
+            self.status_lbl.setText(f"Unable to load revisions: {err}")
+            self.status_lbl.setStyleSheet("color: #ea999c; font-size: 12px; padding: 20px;")
+            return
+
+        revisions = res.get("revisions", [])
+        if not revisions:
+            self.status_lbl.setText("No backup revisions found in Google Drive.")
+            return
+
+        self.status_lbl.hide()
+        self.scroll.show()
+
+        rev_list = list(reversed(revisions))
+        total = len(rev_list)
+
+        for i, rev in enumerate(rev_list):
+            rev_id = rev.get("id")
+            mtime_raw = rev.get("modifiedTime", "")
+            size_raw = rev.get("size")
+            is_latest = (i == 0)
+
+            time_display = _format_iso_datetime(mtime_raw)
+            size_display = _format_size_bytes(size_raw)
+
+            card = QFrame()
+            card.setCursor(Qt.PointingHandCursor)
+            card.setProperty("rev_id", rev_id)
+            card.setProperty("is_latest", is_latest)
+
+            c_lay = QHBoxLayout(card)
+            c_lay.setContentsMargins(14, 10, 14, 10)
+            c_lay.setSpacing(12)
+
+            badge = QLabel("LATEST" if is_latest else f"REV #{total - i}")
+            badge.setFont(QFont("Google Sans", 9, QFont.Bold))
+            if is_latest:
+                badge.setStyleSheet("color: #60F2A5; background: rgba(96, 242, 165, 0.15); border-radius: 6px; padding: 4px 8px; font-weight: bold;")
+            elif i == 1:
+                badge.setStyleSheet("color: #8caaee; background: rgba(140, 170, 238, 0.18); border-radius: 6px; padding: 4px 8px; font-weight: bold;")
+            else:
+                badge.setStyleSheet("color: #b0b0b0; background: rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 4px 8px; font-weight: bold;")
+            c_lay.addWidget(badge)
+
+            info_lay = QVBoxLayout()
+            info_lay.setSpacing(2)
+            time_lbl = QLabel(time_display)
+            time_lbl.setFont(QFont("Google Sans", 11, QFont.Bold))
+            time_lbl.setStyleSheet("color: white; font-weight: bold; border: none; background: transparent;")
+            info_lay.addWidget(time_lbl)
+
+            detail_text = f"Archive Size: {size_display}"
+            if is_latest:
+                detail_text += " • Current active backup"
+            elif i == 1:
+                detail_text += " • Previous backup"
+            detail_lbl = QLabel(detail_text)
+            detail_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; border: none; background: transparent;")
+            info_lay.addWidget(detail_lbl)
+            c_lay.addLayout(info_lay, 1)
+
+            check_mark = QLabel("")
+            check_mark.setFont(QFont("Segoe MDL2 Assets", 12))
+            check_mark.setStyleSheet("color: #60F2A5; border: none; background: transparent;")
+            c_lay.addWidget(check_mark)
+            card.check_mark = check_mark
+
+            def make_click_handler(c=card, rid=rev_id, lat=is_latest):
+                return lambda ev: self._select_card(c, rid, lat)
+            card.mousePressEvent = make_click_handler()
+
+            self.cards.append(card)
+            self.scroll_lay.addWidget(card)
+
+        if self.cards:
+            first = self.cards[0]
+            self._select_card(first, first.property("rev_id"), first.property("is_latest"))
+
+    def _select_card(self, selected_card, rev_id, is_latest):
+        self.selected_revision_id = rev_id
+        self.selected_is_latest = is_latest
+        self.restore_btn.setEnabled(True)
+
+        for card in self.cards:
+            if card is selected_card:
+                card.setStyleSheet("QFrame { background: rgba(93, 156, 235, 0.16); border-radius: 12px; border: 1.5px solid #5D9CEB; }")
+                card.check_mark.setText("\uE73E")
+            else:
+                card.setStyleSheet("QFrame { background: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.06); } QFrame:hover { background: rgba(255, 255, 255, 0.08); }")
+                card.check_mark.setText("")
+
+    def _on_restore_clicked(self):
+        if self.selected_revision_id:
+            self.accept()
+
+
 

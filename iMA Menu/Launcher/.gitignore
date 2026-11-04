@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# iMA Launcher external & static runtime bundles
+!launcher.spec
+Apps/
+_internal/PyQt5/
+_internal/pywin32_system32/
+_internal/win32/
+_internal/lib/
+_internal/base_library.zip
+_internal/*.dll
+_internal/*.pyd
+.cloud_token.dat
+_internal/
