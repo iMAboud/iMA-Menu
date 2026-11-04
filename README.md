@@ -5,7 +5,7 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v2.1.7-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.7/iMA.Menu.exe)
+[![Release](https://img.shields.io/badge/release-v2.1.6-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.6/iMA.Menu.exe)
 [![License](https://img.shields.io/badge/license-Custom%20%2F%20Split-blue)](LICENSE)
 
 --- 
@@ -29,7 +29,7 @@ Direct Item Editing: Right-click any item to edit immediately, no need to launch
 
 ## Installation 💻
 
-**Install the latest Release v2.1.7** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.7/iMA.Menu.exe).
+**Install the latest Release v2.1.6** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.6/iMA.Menu.exe).
 
 ---
 
