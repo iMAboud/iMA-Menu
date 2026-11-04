@@ -780,7 +780,7 @@
 
 ## Known Issues
 
-- (None currently tracked — add issues as they are discovered)
+- Resolved: Settings page failed to launch due to undefined `CACHE_DIR` in `cloud_sync.py`. Fixed and verified.
 
 ---
 
