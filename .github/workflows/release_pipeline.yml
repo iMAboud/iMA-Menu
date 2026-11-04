@@ -1,0 +1,222 @@
+name: Build and Release Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+    paths:
+      - 'iMA Menu/Launcher/**'
+      - 'iMA Menu/shell.*'
+      - 'installer.iss'
+      - '.github/workflows/**'
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      custom_version:
+        description: 'Custom version override (e.g. 2.1.7). Leave blank for auto.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve Version and Update Files
+        id: version_step
+        shell: pwsh
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          CUSTOM_VER: ${{ github.event.inputs.custom_version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $pyScript = @"
+          import os, re, json, urllib.request
+
+          branch = os.environ.get('BRANCH_NAME', 'main')
+          custom_ver = os.environ.get('CUSTOM_VER', '').strip()
+          token = os.environ.get('GITHUB_TOKEN', '')
+
+          launcher_path = os.path.join('iMA Menu', 'Launcher', 'launcher.pyw')
+          readme_path = 'README.md'
+
+          # 1. Read current APP_VERSION in launcher.pyw
+          current_ver = '2.1.6'
+          if os.path.exists(launcher_path):
+              with open(launcher_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              m = re.search(r"APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]", content)
+              if m:
+                  current_ver = m.group(1).strip()
+
+          print(f"Current version in launcher.pyw: {current_ver}")
+
+          # 2. Query latest release tag from iMA-Menu-Plugins
+          latest_tag = ''
+          try:
+              req = urllib.request.Request('https://api.github.com/repos/iMAboud/iMA-Menu-Plugins/releases/latest',
+                                           headers={'User-Agent': 'GitHub-Action'})
+              with urllib.request.urlopen(req) as resp:
+                  rel_data = json.loads(resp.read().decode('utf-8'))
+                  latest_tag = rel_data.get('tag_name', '').lstrip('vV').strip()
+          except Exception as e:
+              print(f"Could not fetch latest release tag: {e}")
+
+          print(f"Latest release tag in Plugins repo: {latest_tag}")
+
+          # 3. Determine target version
+          def parse_v(v):
+              clean = v.split('-')[0].split('+')[0]
+              return [int(x) if x.isdigit() else 0 for x in clean.split('.')]
+
+          def bump_patch(v):
+              parts = parse_v(v)
+              while len(parts) < 3:
+                  parts.append(0)
+              parts[-1] += 1
+              return '.'.join(map(str, parts))
+
+          if custom_ver:
+              target_ver = custom_ver.lstrip('vV').strip()
+          elif latest_tag and parse_v(current_ver) <= parse_v(latest_tag):
+              target_ver = bump_patch(latest_tag)
+          else:
+              target_ver = current_ver
+
+          is_prerelease = (branch == 'beta')
+          tag_name = f"{target_ver}-beta" if is_prerelease else target_ver
+
+          print(f"Resolved Target Version: {target_ver}")
+          print(f"Resolved Tag Name: {tag_name}")
+
+          # 4. Update launcher.pyw if version changed
+          if os.path.exists(launcher_path):
+              with open(launcher_path, 'r', encoding='utf-8') as f:
+                  code = f.read()
+              new_code = re.sub(r"APP_VERSION\s*=\s*['\"][^'\"]+['\"]", f"APP_VERSION = '{target_ver}'", code)
+              if new_code != code:
+                  with open(launcher_path, 'w', encoding='utf-8') as f:
+                      f.write(new_code)
+                  print(f"Updated APP_VERSION in {launcher_path} to {target_ver}")
+
+          # 5. Update README.md badge and download link
+          if os.path.exists(readme_path):
+              with open(readme_path, 'r', encoding='utf-8') as f:
+                  readme = f.read()
+              readme = re.sub(
+                  r"badge/release-v[0-9\.\w\-]+-blue",
+                  f"badge/release-v{target_ver}-blue",
+                  readme
+              )
+              readme = re.sub(
+                  r"releases/download/[0-9\.\w\-]+/iMA\.Menu\.exe",
+                  f"releases/download/{tag_name}/iMA.Menu.exe",
+                  readme
+              )
+              readme = re.sub(
+                  r"latest Release v[0-9\.\w\-]+",
+                  f"latest Release v{target_ver}",
+                  readme
+              )
+              with open(readme_path, 'w', encoding='utf-8') as f:
+                  f.write(readme)
+              print(f"Updated version references in {readme_path}")
+
+          # Output to GitHub Actions environment
+          gh_out = os.environ.get('GITHUB_OUTPUT', '')
+          if gh_out and os.path.exists(gh_out):
+              with open(gh_out, 'a', encoding='utf-8') as out:
+                  out.write(f"VERSION={target_ver}\n")
+                  out.write(f"TAG_NAME={tag_name}\n")
+                  out.write(f"IS_PRERELEASE={'true' if is_prerelease else 'false'}\n")
+          "@
+          python -c $pyScript
+
+      - name: Install Python Build Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pyqt5
+
+      - name: Compile Launcher Executable
+        working-directory: iMA Menu/Launcher
+        run: |
+          # Ensure cache directory and dummy plugins.json/apps.json exist if needed by spec
+          if (-not (Test-Path "cache")) { New-Item -ItemType Directory -Path "cache" }
+          if (-not (Test-Path "cache/plugins.json")) { "[]" | Out-File -FilePath "cache/plugins.json" -Encoding utf8 }
+          if (-not (Test-Path "cache/apps.json")) { "[]" | Out-File -FilePath "cache/apps.json" -Encoding utf8 }
+
+          python build_launcher.py
+          if (-not (Test-Path "dist/launcher.exe")) {
+              Write-Error "Launcher compilation failed! dist/launcher.exe not found."
+              exit 1
+          }
+          Copy-Item "dist/launcher.exe" "launcher.exe" -Force
+
+      - name: Setup Inno Setup
+        run: |
+          choco install innosetup --no-progress
+
+      - name: Compile iMA Menu Installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+              $iscc = (Get-Command iscc.exe).Source
+          }
+          Write-Host "Using Inno Compiler: $iscc"
+          & $iscc "/DAppVersion=${{ steps.version_step.outputs.VERSION }}" installer.iss
+          if (-not (Test-Path "iMA Menu.exe")) {
+              Write-Error "Installer compilation failed! iMA Menu.exe not found."
+              exit 1
+          }
+          Move-Item "iMA Menu.exe" "iMA.Menu.exe" -Force
+
+      - name: Publish Release to iMA-Menu-Plugins (launcher.exe)
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLUGINS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          repository: iMAboud/iMA-Menu-Plugins
+          tag_name: ${{ steps.version_step.outputs.TAG_NAME }}
+          name: ${{ steps.version_step.outputs.TAG_NAME }}
+          prerelease: ${{ steps.version_step.outputs.IS_PRERELEASE == 'true' }}
+          files: iMA Menu/Launcher/dist/launcher.exe
+        continue-on-error: true
+
+      - name: Publish Release to iMA-Menu (iMA.Menu.exe)
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version_step.outputs.TAG_NAME }}
+          name: ${{ steps.version_step.outputs.TAG_NAME }}
+          prerelease: ${{ steps.version_step.outputs.IS_PRERELEASE == 'true' }}
+          files: iMA.Menu.exe
+
+      - name: Commit & Push Version Bumps
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "iMA Menu/Launcher/launcher.pyw" README.md
+          if (-not (git diff --cached --quiet)) {
+              git commit -m "chore(release): bump version to ${{ steps.version_step.outputs.VERSION }} [skip ci]"
+              git pull --rebase origin ${{ github.ref_name }}
+              git push origin HEAD:${{ github.ref_name }}
+          }
