@@ -649,6 +649,7 @@ class TypePill(QPushButton):
 
 class TypeWidget(QWidget):
     valueChanged = pyqtSignal(str)
+    findChanged = pyqtSignal(str)
 
     PRESETS = [
         ('all', 'All', None),
@@ -768,6 +769,18 @@ class TypeWidget(QWidget):
                 self.pills['all'].setChecked(True)
 
         self._updating = False
+
+    def set_format_vis_expr(self, vis_str):
+        return False
+
+    def get_format_vis_expr(self):
+        return ""
+
+    def set_find_value(self, val):
+        pass
+
+    def get_find_value(self):
+        return ""
 
 def _fuzzy_match(query, text):
     if not query: return True
@@ -5397,7 +5410,7 @@ class ModifyWidget(QWidget):
         _init_nilesoft_font()
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setObjectName("modifyWidgetRoot")
-        self.setStyleSheet("QWidget#modifyWidgetRoot { background-color: #121212; }")
+        self.setStyleSheet("QWidget#modifyWidgetRoot { background-color: transparent; }")
         self.filepath = modify_nss_path
         self.shell_nss_path = shell_nss_path
         self.project_root = project_root

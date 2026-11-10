@@ -8,10 +8,53 @@ from PyQt5.QtWidgets import (
     QScrollArea, QFrame, QButtonGroup, QPushButton, QMessageBox, QFileDialog, QDialog, QLineEdit, QCheckBox
 )
 from PyQt5.QtGui import QPixmap, QCursor, QColor, QFont, QPainter, QPainterPath, QImage
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
-from utils import safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir, FlowLayout, PillTabButton
+from PyQt5.QtCore import Qt, pyqtSignal, QThread, QEasingCurve, QVariantAnimation
+from utils import safe_file_write, get_shell_dll_version, get_default_image_dir, save_last_image_dir, FlowLayout, PillTabButton, ImagePipeline, IdleScheduler
 from github_client import github_api_get, cdn_get, get_latest_tree_sha
 from plugin_registry import safe_json_read, atomic_json_write, file_matches_git_sha
+
+class FadeThumbnailLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignCenter)
+        self._pixmap = None
+        self._opacity = 1.0
+        self._anim = None
+
+    def set_fade_pixmap(self, pix, fade=True):
+        if not pix or pix.isNull():
+            return
+        self._pixmap = pix
+        if fade and self.isVisible():
+            self._opacity = 0.0
+            if self._anim is not None:
+                self._anim.stop()
+            self._anim = QVariantAnimation(self)
+            self._anim.setDuration(160)
+            self._anim.setStartValue(0.0)
+            self._anim.setEndValue(1.0)
+            self._anim.setEasingCurve(QEasingCurve.OutCubic)
+            def _step(v):
+                self._opacity = v
+                self.update()
+            self._anim.valueChanged.connect(_step)
+            self._anim.start()
+        else:
+            self._opacity = 1.0
+            self.update()
+
+    def paintEvent(self, e):
+        if self._pixmap and not self._pixmap.isNull():
+            p = QPainter(self)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            if self._opacity < 1.0:
+                p.setOpacity(self._opacity)
+            x = (self.width() - self._pixmap.width()) // 2
+            y = (self.height() - self._pixmap.height()) // 2
+            p.drawPixmap(x, y, self._pixmap)
+        else:
+            super().paintEvent(e)
 
 class ClickableLabel(QLabel):
     clicked = pyqtSignal()
@@ -369,16 +412,9 @@ class ThemeOptionFrame(QFrame):
         self.setProperty("selected", False)
         self.setCursor(QCursor(Qt.PointingHandCursor))
         self.setFixedSize(146, 196)
-        self.image_label = QLabel()
-        if self.image_path:
-            self.image_label.setPixmap(get_cached_theme_pixmap(self.image_path, 130, 152))
-        elif self.original_pixmap and not self.original_pixmap.isNull():
-            self.image_label.setPixmap(self.original_pixmap.scaled(130, 152, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        else:
-            empty = QPixmap(130, 152)
-            empty.fill(Qt.transparent)
-            self.image_label.setPixmap(empty)
-        self.image_label.setAlignment(Qt.AlignCenter)
+        self._pixmap_loaded = False
+        self.image_label = FadeThumbnailLabel(self)
+        self.image_label.setFixedSize(130, 152)
         
         self.edit_button = QPushButton("\uE70F", self)
         self.edit_button.setObjectName("editThemeBtn")
@@ -401,40 +437,38 @@ class ThemeOptionFrame(QFrame):
         self.edit_button.clicked.connect(self.show_edit_menu)
         self.edit_button.hide()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._pixmap_loaded:
+            self._pixmap_loaded = True
+            if self.image_path:
+                norm_key = os.path.normpath(self.image_path).lower()
+                pix = ImagePipeline.instance().request(
+                    f"theme_{norm_key}", self.image_path, 130, 152, radius=12,
+                    callback=lambda p: self.image_label.set_fade_pixmap(p, fade=True)
+                )
+                if pix and not pix.isNull():
+                    self.image_label.set_fade_pixmap(pix, fade=False)
+            elif self.original_pixmap and not self.original_pixmap.isNull():
+                self.image_label.set_fade_pixmap(
+                    self.original_pixmap.scaled(130, 152, Qt.KeepAspectRatio, Qt.SmoothTransformation),
+                    fade=False
+                )
+
     def enterEvent(self, event):
-        if not self.property("selected"):
-            self.setStyleSheet("QFrame#themeOptionFrame { background-color: #18181c; border-radius: 20px; border: 2px solid #e78284; }")
-        if self.image_path:
-            self.image_label.setPixmap(get_cached_theme_pixmap(self.image_path, 136, 158))
-        elif self.original_pixmap and not self.original_pixmap.isNull():
-            self.image_label.setPixmap(self.original_pixmap.scaled(136, 158, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         if self.theme_name.startswith("theme_"):
             self.edit_button.show()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        if not self.property("selected"):
-            self.setStyleSheet("QFrame#themeOptionFrame { background-color: #121214; border-radius: 20px; border: 2px solid #24242a; }")
-        if self.image_path:
-            self.image_label.setPixmap(get_cached_theme_pixmap(self.image_path, 130, 152))
-        elif self.original_pixmap and not self.original_pixmap.isNull():
-            self.image_label.setPixmap(self.original_pixmap.scaled(130, 152, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         self.edit_button.hide()
         super().leaveEvent(event)
 
     def update_style(self):
-        is_selected = self.property("selected")
-        if is_selected:
-            self.setStyleSheet("QFrame#themeOptionFrame { background-color: #261115; border-radius: 20px; border: 2px solid #e78284; }")
-        else:
-            self.setStyleSheet("QFrame#themeOptionFrame { background-color: #121214; border-radius: 20px; border: 2px solid #24242a; }")
-        
-        btn = self.findChild(QPushButton, "themeOptionButton")
-        if btn:
-            if is_selected:
-                btn.setStyleSheet("QPushButton#themeOptionButton { background-color: transparent; color: #e78284; border: none; font-weight: bold; font-size: 12px; padding: 2px 4px; }")
-            else:
-                btn.setStyleSheet("QPushButton#themeOptionButton { background-color: transparent; color: #b0b0b0; border: none; font-weight: bold; font-size: 12px; padding: 2px 4px; } QPushButton#themeOptionButton:hover { color: white; }")
+        is_selected = bool(self.property("selected"))
+        self.setProperty("selected", is_selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def show_edit_menu(self):
         if hasattr(self, 'edit_cb') and self.edit_cb:
@@ -634,6 +668,11 @@ class ThemeSwitcherWidget(QWidget):
                 theme_name = os.path.splitext(theme_file)[0]
                 self._add_theme_option(self.grid_layout, theme_name, i)
                 
+            non_custom = [os.path.splitext(f)[0] for f in self.theme_files if not os.path.splitext(f)[0].startswith("theme_")]
+            if non_custom:
+                from new_badge import SeenTracker
+                SeenTracker.instance().report('themes', non_custom)
+
             self._highlight_current_theme()
             
             # Re-apply current filter
@@ -702,8 +741,7 @@ class ThemeSwitcherWidget(QWidget):
         return sorted(theme_files)
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#121212"))
+        pass
 
     def _setup_ui(self):
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -740,6 +778,11 @@ class ThemeSwitcherWidget(QWidget):
         
         tab_layout.addWidget(self.explore_tab)
         tab_layout.addWidget(self.my_themes_tab)
+
+        from new_badge import SeenTracker
+        self._update_explore_dot = lambda: self.explore_tab.set_dot(SeenTracker.instance().tab_has_dot('themes.explore'))
+        SeenTracker.instance().changed.connect(self._update_explore_dot)
+        self._update_explore_dot()
 
         # Header for My Themes tab containing Add Theme button
         self.my_themes_header = QFrame()
@@ -786,17 +829,50 @@ class ThemeSwitcherWidget(QWidget):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; } QWidget#themeSwitcherGrid { background: transparent; }")
 
+        THEME_GRID_CSS = """
+            QFrame#themeOptionFrame {
+                background-color: #121214;
+                border-radius: 20px;
+                border: 2px solid #24242a;
+            }
+            QFrame#themeOptionFrame:hover {
+                background-color: #18181c;
+                border: 2px solid #e78284;
+            }
+            QFrame#themeOptionFrame[selected="true"] {
+                background-color: #261115;
+                border-radius: 20px;
+                border: 2px solid #e78284;
+            }
+            QFrame#themeOptionFrame QPushButton#themeOptionButton {
+                background-color: transparent;
+                color: #b0b0b0;
+                border: none;
+                font-weight: bold;
+                font-size: 12px;
+                padding: 2px 4px;
+            }
+            QFrame#themeOptionFrame QPushButton#themeOptionButton:hover {
+                color: white;
+            }
+            QFrame#themeOptionFrame[selected="true"] QPushButton#themeOptionButton {
+                color: #e78284;
+            }
+        """
         self.grid_widget = QWidget()
         self.grid_widget.setObjectName("themeSwitcherGrid")
+        self.grid_widget.setStyleSheet(THEME_GRID_CSS)
         self.grid_layout = FlowLayout(self.grid_widget, spacing=10)
         self.button_group = QButtonGroup()
         self.button_group.setExclusive(True)
 
         self.frames = {}
 
+        self.grid_layout.begin_batch()
         for i, theme_file in enumerate(self.theme_files):
             theme_name = os.path.splitext(theme_file)[0]
             self._add_theme_option(self.grid_layout, theme_name, i)
+        self.grid_layout.end_batch()
 
         scroll_area.setWidget(self.grid_widget)
         main_layout.addWidget(scroll_area)
@@ -820,6 +896,8 @@ class ThemeSwitcherWidget(QWidget):
             self.my_themes_header.show()
         else:
             self.my_themes_header.hide()
+            from new_badge import SeenTracker
+            SeenTracker.instance().visit_tab('themes.explore')
         
         # Force FlowLayout to recalculate
         self.grid_widget.updateGeometry()
@@ -916,7 +994,10 @@ class ThemeSwitcherWidget(QWidget):
         layout.addWidget(frame)
         self.frames[theme_name] = frame
         frame.edit_button.raise_()
-        self.update_frame_style(frame)
+
+        if not theme_name.startswith("theme_"):
+            from new_badge import NewDot
+            NewDot(frame, 'themes', theme_name, anchor='top_right')
 
     def _edit_theme(self, theme_name):
         png_path = os.path.join(self.theme_dir, f"{theme_name}.png")
@@ -960,15 +1041,10 @@ class ThemeSwitcherWidget(QWidget):
             self._theme_selected(self.selected_theme, self.frames[self.selected_theme], emit_signal=False, preview=False)
 
     def update_frame_style(self, frame):
-        is_selected = frame.property("selected")
-        if is_selected:
-            frame.setStyleSheet("QFrame#themeOptionFrame { background-color: #261115; border-radius: 20px; border: 2px solid #e78284; }")
-        else:
-            frame.setStyleSheet("QFrame#themeOptionFrame { background-color: #121214; border-radius: 20px; border: 2px solid #24242a; }")
-        
-        btn = frame.findChild(QPushButton)
-        if btn:
-            btn.setStyleSheet(f"color: {'#e78284' if is_selected else '#ffffff'}; background: transparent; font-weight: bold; font-size: 12px; border: none;")
+        is_selected = bool(frame.property("selected"))
+        frame.setProperty("selected", is_selected)
+        frame.style().unpolish(frame)
+        frame.style().polish(frame)
 
     def _theme_selected(self, theme_name, frame, emit_signal=True, preview=True):
         if self.selected_button is not None:

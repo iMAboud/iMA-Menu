@@ -1007,8 +1007,7 @@ class ThemeEditorWidget(QWidget):
                 self.theme_data[key] = "#ffffff"
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#121212"))
+        pass
 
     def _setup_ui(self):
         self.setAttribute(Qt.WA_StyledBackground, True)

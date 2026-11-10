@@ -1,6 +1,8 @@
 import PyInstaller.__main__
 import os
 import shutil
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 SPEC_TEMPLATE = '''# -*- mode: python ; coding: utf-8 -*-
 import os
 
@@ -133,6 +135,12 @@ exe = EXE(
 '''
 
 def build():
+    os.makedirs('cache', exist_ok=True)
+    for cache_f in ['cache/plugins.json', 'cache/apps.json']:
+        if not os.path.exists(cache_f):
+            with open(cache_f, 'w', encoding='utf-8') as f:
+                f.write('[]\n')
+
     try:
         from utils import generate_glyphs_data
         generate_glyphs_data()

@@ -1144,7 +1144,6 @@ class ItemConfigDialog(QDialog):
 
             # Visibility
             self.vis_widget = VisibilityWidget()
-            self.vis_widget.set_value(str(self.props.get('vis', '')))
             al.addWidget(QLabel("Visibility:"), row_idx, 0, Qt.AlignLeft | Qt.AlignVCenter)
             al.addWidget(self.vis_widget, row_idx, 1)
             row_idx += 1
@@ -1152,7 +1151,15 @@ class ItemConfigDialog(QDialog):
             # Show in (Type)
             self.type_widget = TypeWidget()
             self.type_widget.set_value(self.props.get('type', ''))
-            al.addWidget(QLabel("Show in:"), row_idx, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            vis_raw = str(self.props.get('vis', ''))
+            if self.type_widget.set_format_vis_expr(vis_raw):
+                self.vis_widget.set_value("")
+            else:
+                self.vis_widget.set_value(vis_raw)
+                self.type_widget.set_find_value(self.props.get('find', ''))
+            self.type_widget.valueChanged.connect(self._sync_live_code)
+            self.type_widget.findChanged.connect(self._sync_live_code)
+            al.addWidget(QLabel("Show in:"), row_idx, 0, Qt.AlignLeft | Qt.AlignTop)
             al.addWidget(self.type_widget, row_idx, 1)
             row_idx += 1
 
@@ -1836,11 +1843,23 @@ class ItemConfigDialog(QDialog):
                 p.pop('vis', None)
 
         if hasattr(self, 'type_widget') and self.type_widget:
+            fmt_vis = self.type_widget.get_format_vis_expr()
+            if fmt_vis:
+                p['vis'] = fmt_vis
             tp = self.type_widget.get_value()
             if tp:
                 p['type'] = tp
             else:
                 p.pop('type', None)
+
+            if not fmt_vis:
+                f_val = self.type_widget.get_find_value()
+                if f_val:
+                    p['find'] = f_val
+                else:
+                    p.pop('find', None)
+            else:
+                p.pop('find', None)
 
         if getattr(self, 'p_box', None) is not None:
             pos = self.p_box.currentText().strip()

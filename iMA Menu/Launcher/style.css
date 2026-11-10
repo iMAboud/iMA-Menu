@@ -31,35 +31,35 @@ QMessageBox {
 }
 
 QToolTip {
-    background-color: #18181c;
+    background-color: #1a1b20;
     color: #ffffff;
-    border: 1.5px solid rgba(231, 130, 132, 0.7);
-    border-radius: 14px;
-    padding: 5px 15px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
+    padding: 5px 14px;
     font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
     font-size: 11.5px;
     font-weight: bold;
 }
 
 QPushButton {
-    border: 1px solid #414559;
-    background-color: #24242a;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background-color: #212229;
     color: #c6d0f5;
     outline: none;
-    border-radius: 12px;
+    border-radius: 14px;
     font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
     font-size: 13px;
     font-weight: bold;
 }
 
 QPushButton:hover {
-    background-color: #121212;
-    border: 1px solid #e78284;
+    background-color: #2a2c35;
+    border: 1px solid rgba(255, 255, 255, 0.18);
     color: #ffffff;
 }
 
 QPushButton:pressed {
-    background-color: #18181a;
+    background-color: #1a1b22;
 }
 
 #customMessageBox {
@@ -129,15 +129,15 @@ QFrame#pillTabContainer QPushButton:checked {
 /* Plugin Card */
 QWidget#plugin_card,
 QFrame#plugin_card {
-    background-color: #171920;
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.038);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
 }
 
 QWidget#plugin_card:hover,
 QFrame#plugin_card:hover {
-    background-color: #1d212b;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 /* Icon Container */
@@ -447,21 +447,21 @@ QLabel#resetStatusLabel {
 
 #themeOptionFrame,
 #cursorOptionFrame {
-    background-color: #18181a;
-    border-radius: 20px;
-    border: 1px solid #2a2a30;
+    background-color: rgba(255, 255, 255, 0.035);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 #themeOptionFrame:hover,
 #cursorOptionFrame:hover {
-    background-color: #1f1f22;
-    border: 1px solid #e78284;
+    background-color: rgba(255, 255, 255, 0.065);
+    border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 #themeOptionFrameSelected,
 #cursorOptionFrame[selected="true"] {
-    background-color: rgba(231, 130, 132, 0.15);
-    border-radius: 20px;
+    background-color: rgba(231, 130, 132, 0.14);
+    border-radius: 18px;
     border: 1px solid #e78284;
 }
 
@@ -601,17 +601,17 @@ QSlider::handle:horizontal {
 
 /* Inputs and Selects */
 QLineEdit {
-    border: 1px solid #363a4f;
-    border-radius: 10px;
-    padding: 6px 12px;
-    background: #18181a;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.04);
     color: #c6d0f5;
     selection-background-color: #e78284;
 }
 
 QLineEdit:focus {
     border: 1px solid #e78284;
-    background: #202024;
+    background: rgba(255, 255, 255, 0.07);
 }
 
 QComboBoxPrivateContainer {

@@ -89,12 +89,13 @@ import ctypes
 from ctypes import wintypes
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout, QMenu,
                              QScrollArea, QGraphicsOpacityEffect, QStackedWidget, 
-                             QDialog, QLineEdit, QScrollBar, 
+                             QDialog, QLineEdit, QScrollBar, QAbstractScrollArea, 
                              QSizePolicy, QFrame, QFileDialog, QInputDialog, QShortcut, QButtonGroup)
 from PyQt5.QtGui import QColor, QPixmap, QImage, QFont, QPainter, QPainterPath, QPen, QIcon, QCursor, QKeySequence, QLinearGradient, QRegion
 from PyQt5.QtCore import (Qt, pyqtSignal, QObject, QThread, QTimer, QPropertyAnimation, QEasingCurve, 
-                             QSize, QEvent, QPoint, QRect, QRectF, QFileSystemWatcher, QParallelAnimationGroup,
-                             QAbstractNativeEventFilter)
+                             QSize, QEvent, QPoint, QPointF, QRect, QRectF, QFileSystemWatcher, QParallelAnimationGroup,
+                             QAbstractNativeEventFilter, QVariantAnimation)
+from new_badge import SeenTracker, NewDot, paint_dot, collect_known_cursors
 try: from PyQt5 import QtSvg
 except ImportError: QtSvg = None
 
@@ -126,7 +127,8 @@ from utils import (resource_path, safe_file_write, UnsavedChangesDialog,
                    ModernDialog, ModernSwitch, PillProgressBar,
                    make_circular_pixmap, make_initial_avatar_pixmap, AccountProfileDialog,
                    CapsuleActionButton, PillTabButton, PillPushButton, fix_nss_mode_syntax_once, restore_open_with_once,
-                   PillNotification, AnimatedStackedWidget, CloudSyncConflictDialog, is_recently_updated)
+                   ensure_start_menu_shortcut, PillNotification, AnimatedStackedWidget, CloudSyncConflictDialog, is_recently_updated,
+                   CloudBackupConfirmDialog, CloudBackupHistoryDialog, IdleScheduler, ImagePipeline)
 from plugin_registry import PluginRegistry, atomic_json_write, safe_json_read, delete_to_recycle_bin, version_cmp
 from plugin_workers import (
     FetchPluginsThread, IconDownloadWorker, InstallationWorker,
@@ -333,6 +335,10 @@ def get_app_base_path():
                 if key.startswith('_MEI'):
                     clean_environment.pop(key, None)
             subprocess.Popen([exe, '-reload'], env=clean_environment, creationflags=0x08000000)
+        try:
+            ensure_start_menu_shortcut(root, APP_BASE_PATH)
+        except Exception:
+            pass
         os._exit(0)
 
     return APP_BASE_PATH
@@ -366,7 +372,7 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.1.7'
+APP_VERSION = '2.1.10'
 
 def _resolve_app_version():
     ver = APP_VERSION
@@ -649,7 +655,8 @@ class SettingsManager:
             "auto_check_updates": False,
             "auto_cloud_backup": True,
             "last_cloud_backup": 0,
-            "dismissed_update_version": ""
+            "dismissed_update_version": "",
+            "has_user_changes": False
         }
         self.settings = self.defaults.copy()
         self.load()
@@ -694,6 +701,8 @@ class SettingsManager:
         if key in self.DEPRECATED_KEYS:
             return
         self.settings[key] = value
+        if key not in ("has_user_changes", "last_cloud_backup", "last_update_check", "dismissed_update_version"):
+            self.settings["has_user_changes"] = True
         self.save()
 
 
@@ -1152,7 +1161,7 @@ class PluginLogic(QObject):
 
         self.registry = PluginRegistry(PLUGIN_REGISTRY_FILE, PLUGINS_DIR)
         self.registry.load()
-        QTimer.singleShot(800, self._deferred_reconcile)
+        QTimer.singleShot(800, lambda: threading.Thread(target=self._deferred_reconcile, daemon=True).start())
 
     def _deferred_reconcile(self):
         try:
@@ -1261,10 +1270,10 @@ class PluginLogic(QObject):
             ]
             for c in candidates:
                 if os.path.exists(c):
-                    pix = load_crisp_pixmap(c, 128)
-                    if not pix.isNull():
+                    pix = ImagePipeline.instance().request(f"plugin_{plugin_name}", c, 128, 128, radius=0, callback=lambda p, pn=plugin_name: self.icon_loaded.emit(pn, p) if p and not p.isNull() else None)
+                    if pix and not pix.isNull():
                         self.icon_loaded.emit(plugin_name, pix)
-                        return
+                    return
 
         # Resolve icon_url if missing from local plugin data
         if not plugin.get('icon_url') and hasattr(self.registry, 'get_remote_plugin'):
@@ -1282,17 +1291,17 @@ class PluginLogic(QObject):
                 for fname in os.listdir(install_path):
                     if fname.lower().endswith(('.png', '.ico', '.jpg', '.svg')):
                         icon_path = os.path.join(install_path, fname)
-                        pix = load_crisp_pixmap(icon_path, 128)
-                        if not pix.isNull():
-                            # Auto-cache locally so icon survives uninstallation
-                            cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
-                            if not os.path.exists(cached_icon_path):
-                                try:
-                                    pix.save(cached_icon_path, "PNG")
-                                except Exception:
-                                    pass
-                            self.icon_loaded.emit(plugin_name, pix)
-                            return
+                        cached_icon_path = os.path.join(ICONS_CACHE_DIR, f"{plugin_name}.png")
+                        def _on_local_done(p, pn=plugin_name, cp=cached_icon_path):
+                            if p and not p.isNull():
+                                if not os.path.exists(cp):
+                                    try: p.save(cp, "PNG")
+                                    except Exception: pass
+                                self.icon_loaded.emit(pn, p)
+                        pix = ImagePipeline.instance().request(f"plugin_{plugin_name}", icon_path, 128, 128, radius=0, callback=_on_local_done)
+                        if pix and not pix.isNull():
+                            _on_local_done(pix)
+                        return
             except Exception:
                 pass
 
@@ -1314,24 +1323,19 @@ class PluginLogic(QObject):
                 cached_icon_path,
                 os.path.join(ICONS_CACHE_DIR, f"{plugin_name.lower()}.png")
             ]
-            if os.path.isdir(ICONS_CACHE_DIR):
-                try:
-                    for fname in os.listdir(ICONS_CACHE_DIR):
-                        if fname.lower() == f"{plugin_name.lower()}.png":
-                            cache_candidates.append(os.path.join(ICONS_CACHE_DIR, fname))
-                except Exception:
-                    pass
-
             for cpath in cache_candidates:
                 if os.path.exists(cpath):
-                    pix = load_crisp_pixmap(cpath, 128)
-                    if not pix.isNull():
-                        if icon_url and prev_url != icon_url:
-                            self._cached_icon_urls[plugin_name] = icon_url
-                            try: atomic_json_write(icon_urls_file, self._cached_icon_urls)
-                            except Exception: pass
-                        self.icon_loaded.emit(plugin_name, pix)
-                        return
+                    def _on_cache_done(p, pn=plugin_name, iu=icon_url, pu=prev_url, cp=cpath):
+                        if p and not p.isNull():
+                            if iu and pu != iu:
+                                self._cached_icon_urls[pn] = iu
+                                try: atomic_json_write(icon_urls_file, self._cached_icon_urls)
+                                except Exception: pass
+                            self.icon_loaded.emit(pn, p)
+                    pix = ImagePipeline.instance().request(f"plugin_{plugin_name}", cpath, 128, 128, radius=0, callback=_on_cache_done)
+                    if pix and not pix.isNull():
+                        _on_cache_done(pix)
+                    return
 
         def handle_icon_error(e):
             self._downloading_icons.discard(plugin_name)
@@ -1533,6 +1537,25 @@ class PluginLogic(QObject):
             except RuntimeError:
                 pass
 
+class _ScrollBarEventFilter(QObject):
+    def __init__(self, effect, timer, anim, scrollbar):
+        super().__init__(scrollbar)
+        self.effect = effect
+        self.timer = timer
+        self.anim = anim
+        self.scrollbar = scrollbar
+
+    def eventFilter(self, obj, event):
+        etype = event.type()
+        if etype in (QEvent.Enter, QEvent.MouseMove, QEvent.MouseButtonPress):
+            self.anim.stop()
+            self.effect.setOpacity(1.0)
+            self.timer.stop()
+        elif etype in (QEvent.Leave, QEvent.MouseButtonRelease):
+            self.timer.start(500)
+        return False
+
+
 class AutoHideScrollManager(QObject):
     """Universal auto-hiding scrollbar manager.
     Keeps scrollbars hidden (0.0 opacity) until user scrolls, displays them for 500ms (0.5s),
@@ -1576,14 +1599,15 @@ class AutoHideScrollManager(QObject):
             
         scrollbar.valueChanged.connect(show_scrollbar)
         scrollbar.sliderMoved.connect(show_scrollbar)
-        scrollbar.installEventFilter(self)
         
-        self._scrollbars[scrollbar] = (effect, timer, anim)
+        sb_filter = _ScrollBarEventFilter(effect, timer, anim, scrollbar)
+        scrollbar.installEventFilter(sb_filter)
+        
+        self._scrollbars[scrollbar] = (effect, timer, anim, sb_filter)
 
     def attach_all(self, widget: QWidget):
         if not widget:
             return
-        from PyQt5.QtWidgets import QAbstractScrollArea
         if isinstance(widget, QAbstractScrollArea):
             self.attach(widget.verticalScrollBar())
             self.attach(widget.horizontalScrollBar())
@@ -1595,40 +1619,16 @@ class AutoHideScrollManager(QObject):
                 self.attach(sb)
 
     def eventFilter(self, obj, event):
-        if isinstance(obj, QScrollBar) and obj in self._scrollbars:
-            effect, timer, anim = self._scrollbars[obj]
-            if event.type() in (QEvent.Enter, QEvent.MouseMove, QEvent.MouseButtonPress):
-                anim.stop()
-                effect.setOpacity(1.0)
-                timer.stop()
-            elif event.type() in (QEvent.Leave, QEvent.MouseButtonRelease):
-                timer.start(500)
-        elif event.type() == QEvent.Show:
-            if isinstance(obj, QScrollBar):
-                self.attach(obj)
-            elif type(obj).__name__ == 'QLabel' and (obj.windowFlags() & Qt.ToolTip):
-                obj.setAttribute(Qt.WA_TranslucentBackground, True)
-            elif hasattr(obj, 'findChildren'):
-                for sb in obj.findChildren(QScrollBar):
-                    self.attach(sb)
-        elif event.type() == QEvent.Wheel:
-            if hasattr(obj, 'verticalScrollBar'):
-                self.attach(obj.verticalScrollBar())
-                if obj.verticalScrollBar() in self._scrollbars:
-                    effect, timer, anim = self._scrollbars[obj.verticalScrollBar()]
-                    if obj.verticalScrollBar().maximum() > obj.verticalScrollBar().minimum():
-                        anim.stop()
-                        effect.setOpacity(1.0)
-                        timer.start(500)
-            if hasattr(obj, 'horizontalScrollBar'):
-                self.attach(obj.horizontalScrollBar())
-                if obj.horizontalScrollBar() in self._scrollbars:
-                    effect, timer, anim = self._scrollbars[obj.horizontalScrollBar()]
-                    if obj.horizontalScrollBar().maximum() > obj.horizontalScrollBar().minimum():
-                        anim.stop()
-                        effect.setOpacity(1.0)
-                        timer.start(500)
-        return super().eventFilter(obj, event)
+        if event.type() != QEvent.Show:
+            return False
+        if isinstance(obj, QScrollBar):
+            self.attach(obj)
+        elif isinstance(obj, QAbstractScrollArea):
+            self.attach(obj.verticalScrollBar())
+            self.attach(obj.horizontalScrollBar())
+        elif type(obj).__name__ == 'QLabel' and (obj.windowFlags() & Qt.ToolTip):
+            obj.setAttribute(Qt.WA_TranslucentBackground, True)
+        return False
 
 
 class NavTabButton(QPushButton):
@@ -1642,6 +1642,27 @@ class NavTabButton(QPushButton):
         self.setObjectName("navTabButton")
         self._text_font = QFont('Google Sans', 11, QFont.Bold)
         self._text_font.setBold(True)
+        self._dot_t = 0.0
+        self._has_dot = False
+        self._dot_anim = None
+
+    def set_dot(self, on: bool):
+        if self._has_dot == on:
+            return
+        self._has_dot = on
+        if self._dot_anim:
+            self._dot_anim.stop()
+        self._dot_anim = QVariantAnimation(self)
+        self._dot_anim.setDuration(200)
+        self._dot_anim.setStartValue(self._dot_t)
+        self._dot_anim.setEndValue(1.0 if on else 0.0)
+        self._dot_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._dot_anim.valueChanged.connect(self._on_dot_anim)
+        self._dot_anim.start()
+
+    def _on_dot_anim(self, val):
+        self._dot_t = float(val)
+        self.update()
 
     def enterEvent(self, event):
         super().enterEvent(event)
@@ -1680,6 +1701,22 @@ class NavTabButton(QPushButton):
             ix = (r.width() - 26) // 2
             p.drawPixmap(ix, 10, 26, 26, self.icon_pix)
             p.setOpacity(1.0)
+        elif self.label_text == 'Mouse':
+            p.save()
+            p.setOpacity(1.0 if is_checked else (0.85 if is_hovered else 0.55))
+            ix = (r.width() - 16) // 2
+            pen = QPen(QColor(255, 255, 255), 2.0)
+            pen.setCapStyle(Qt.RoundCap)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(QRectF(ix, 11, 16, 24), 8, 8)
+            p.drawLine(QPointF(ix + 8, 15.5), QPointF(ix + 8, 20.5))
+            p.restore()
+
+        # Draw dot
+        if self._dot_t > 0.001:
+            ix = (r.width() - 26) // 2
+            paint_dot(p, QPointF(ix + 25, 11), self._dot_t)
 
         # Draw text
         p.setFont(self._text_font)
@@ -1953,6 +1990,18 @@ class PluginManager(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setObjectName("scrollArea")
         self.scroll_content = QWidget()
+        CARD_CSS = """
+            QFrame#plugin_card {
+                background-color: rgba(255, 255, 255, 0.038);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 18px;
+            }
+            QFrame#plugin_card:hover {
+                background-color: rgba(255, 255, 255, 0.07);
+                border: 1px solid rgba(255, 255, 255, 0.16);
+            }
+        """
+        self.scroll_content.setStyleSheet(CARD_CSS)
         self.grid_layout = QGridLayout(self.scroll_content)
         self.grid_layout.setAlignment(Qt.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
@@ -1969,6 +2018,7 @@ class PluginManager(QWidget):
         self.apps_scroll_area.setWidgetResizable(True)
         self.apps_scroll_area.setObjectName("appsScrollArea")
         self.apps_scroll_content = QWidget()
+        self.apps_scroll_content.setStyleSheet(CARD_CSS)
         self.apps_grid_layout = QGridLayout(self.apps_scroll_content)
         self.apps_grid_layout.setAlignment(Qt.AlignTop)
         self.apps_scroll_area.setWidget(self.apps_scroll_content)
@@ -1989,6 +2039,9 @@ class PluginManager(QWidget):
 
         self._modify_page_widget = None
         self._theme_page_widget = None
+        self._mouse_page_widget = None
+        self.cursor_page = None
+        self._cursor_page_initialized = False
         self._settings_page_widget = None
 
         self.tint_backups = {}
@@ -2020,6 +2073,7 @@ class PluginManager(QWidget):
 
         # 2. Schedule non-blocking background synchronization tasks in idle intervals
         QTimer.singleShot(400, self._async_sync_tools_menu)
+        QTimer.singleShot(1500, lambda: IdleScheduler.instance().submit(self._warmup_generator(), priority=2, key="app_warmup"))
         
         QTimer.singleShot(800, self._setup_file_watcher)
         QTimer.singleShot(1200, self.fetch_plugins_list)
@@ -2028,18 +2082,138 @@ class PluginManager(QWidget):
         QTimer.singleShot(2500, self._take_global_nss_snapshot)
         QTimer.singleShot(3000, self._check_scheduled_cloud_backup)
 
-        # 3. Non-blocking idle pre-warming for instant, lag-free tab transitions
-        QTimer.singleShot(1500, self._prewarm_modify_page)
-        QTimer.singleShot(2500, self._prewarm_theme_page)
-        QTimer.singleShot(3500, self._prewarm_settings_page)
-        QTimer.singleShot(4500, self._prewarm_theme_subtabs)
-
-        # 4. Deferred background startup maintenance
+        # 3. Deferred background startup maintenance
+        QTimer.singleShot(1000, lambda: threading.Thread(target=ensure_start_menu_shortcut, args=(PROJECT_ROOT, APP_BASE_PATH), daemon=True).start())
         QTimer.singleShot(2000, lambda: threading.Thread(target=fix_nss_mode_syntax_once, args=(PROJECT_ROOT, CACHE_DIR), daemon=True).start())
         QTimer.singleShot(2200, lambda: threading.Thread(target=restore_open_with_once, args=(PROJECT_ROOT, CACHE_DIR), daemon=True).start())
         QTimer.singleShot(5000, lambda: threading.Thread(target=_cleanup_old_executables, daemon=True).start())
         QTimer.singleShot(8000, _ensure_folder_ownership_async)
+        self._init_seen_tracker()
         self._setup_native_window()
+
+    def _init_seen_tracker(self):
+        st = SeenTracker.instance()
+        # Seed local themes
+        theme_dir = os.path.join(PROJECT_ROOT, 'theme')
+        if os.path.isdir(theme_dir):
+            try:
+                local_themes = [os.path.splitext(f)[0] for f in os.listdir(theme_dir) if f.lower().endswith('.nss') and not f.startswith('theme_')]
+                if local_themes:
+                    st.report('themes', local_themes)
+            except Exception:
+                pass
+        # Seed local cursors (catalog + bundled + local cursor directory)
+        cursor_dir = os.path.join(PROJECT_ROOT, 'cursor')
+        cursor_catalog_file = os.path.join(CACHE_DIR, 'cursors', 'catalog.json')
+        bundled_cursors_file = os.path.join(APP_BASE_PATH, 'cursors.json')
+        valid_c = collect_known_cursors(cursor_dir, bundled_cursors_file, cursor_catalog_file)
+        if valid_c:
+            st.report('cursors', valid_c)
+        # Seed local apps
+        apps_cache_file = os.path.join(CACHE_DIR, 'apps.json')
+        root_apps_file = os.path.join(APP_BASE_PATH, 'apps.json')
+        meta_cache_file = os.path.join(CACHE_DIR, 'apps_meta_cache.json')
+        meta_cache = {}
+        if os.path.isfile(meta_cache_file):
+            try:
+                with open(meta_cache_file, 'r', encoding='utf-8') as f:
+                    meta_cache = json.load(f)
+            except Exception:
+                meta_cache = {}
+        adict = {}
+        for apath in (root_apps_file, apps_cache_file):
+            if os.path.isfile(apath):
+                try:
+                    with open(apath, 'r', encoding='utf-8') as f:
+                        adata = json.load(f)
+                    if isinstance(adata, list):
+                        for a in adata:
+                            if isinstance(a, dict) and 'name' in a:
+                                name = a['name']
+                                nl = name.lower()
+                                if nl not in adict:
+                                    ver = meta_cache.get(name, {}).get('version', a.get('version', '')) if isinstance(meta_cache, dict) else a.get('version', '')
+                                    adict[nl] = str(ver or '')
+                except Exception:
+                    pass
+        if adict:
+            st.report('apps', adict)
+
+        st.changed.connect(self._update_tab_dots)
+        self._sync_active_tabs()
+        self._update_tab_dots()
+        QTimer.singleShot(3500, self._start_idle_content_sync)
+
+    def _update_tab_dots(self):
+        st = SeenTracker.instance()
+        if hasattr(self, 'side_plugins_btn'):
+            self.side_plugins_btn.set_dot(st.tab_has_dot('nav.plugins'))
+        if hasattr(self, 'side_theme_btn'):
+            self.side_theme_btn.set_dot(st.tab_has_dot('nav.theme'))
+        if hasattr(self, 'side_mouse_btn'):
+            self.side_mouse_btn.set_dot(st.tab_has_dot('nav.mouse'))
+        if hasattr(self, 'store_tab_btn'):
+            self.store_tab_btn.set_dot(st.tab_has_dot('plugins.store'))
+        if hasattr(self, 'apps_tab_btn'):
+            self.apps_tab_btn.set_dot(st.tab_has_dot('plugins.apps'))
+        if hasattr(self, 'themes_tab_btn'):
+            self.themes_tab_btn.set_dot(st.tab_has_dot('theme.themes'))
+
+    def _sync_active_tabs(self):
+        active = set()
+        curr_page = self.stacked_widget.currentWidget() if getattr(self, 'stacked_widget', None) else None
+        if curr_page == getattr(self, 'plugins_page', None):
+            active.add('nav.plugins')
+            curr_sub = getattr(self, 'current_plugins_tab', 'store')
+            if curr_sub == 'store':
+                active.add('plugins.store')
+            elif curr_sub == 'apps':
+                active.add('plugins.apps')
+        elif hasattr(self, '_theme_page_widget') and curr_page == self._theme_page_widget and self._theme_page_widget is not None:
+            active.add('nav.theme')
+            if hasattr(self, 'theme_stacked_widget'):
+                th_idx = self.theme_stacked_widget.currentIndex()
+                if th_idx == 0:
+                    active.add('theme.themes')
+                    if hasattr(self, 'theme_switcher_page') and self.theme_switcher_page and hasattr(self.theme_switcher_page, 'explore_tab'):
+                        if self.theme_switcher_page.explore_tab.isChecked():
+                            active.add('themes.explore')
+        elif hasattr(self, '_mouse_page_widget') and curr_page == self._mouse_page_widget and self._mouse_page_widget is not None:
+            active.add('nav.mouse')
+            active.add('theme.mouse')
+            if hasattr(self, 'cursor_page') and self.cursor_page and hasattr(self.cursor_page, 'explore_tab'):
+                if self.cursor_page.explore_tab.isChecked():
+                    active.add('cursors.explore')
+        SeenTracker.instance().set_active_tabs(active)
+
+    def _start_idle_content_sync(self):
+        # 1. Headless themes sync if theme page not yet initialized
+        if not getattr(self, '_theme_page_widget', None):
+            from theme_switcher_widget import FetchThemesWorker
+            theme_dir = os.path.join(PROJECT_ROOT, 'theme')
+            self._idle_theme_worker = FetchThemesWorker(theme_dir)
+            def _on_idle_themes_updated(count):
+                if count > 0:
+                    try:
+                        th_files = [os.path.splitext(f)[0] for f in os.listdir(theme_dir) if f.lower().endswith('.nss') and not f.startswith('theme_')]
+                        SeenTracker.instance().report('themes', th_files)
+                    except Exception:
+                        pass
+            self._idle_theme_worker.themes_updated.connect(_on_idle_themes_updated)
+            self._idle_theme_worker.start()
+
+        # 2. Headless cursor catalog sync if cursor page not yet initialized
+        if not getattr(self, '_cursor_page_initialized', False):
+            from cursor_widget import FetchCatalogWorker
+            self._idle_catalog_worker = FetchCatalogWorker()
+            def _on_idle_catalog_fetched(catalog):
+                if isinstance(catalog, dict):
+                    cursor_dir = os.path.join(PROJECT_ROOT, 'cursor')
+                    valid_c = collect_known_cursors(cursor_dir, catalog)
+                    if valid_c:
+                        SeenTracker.instance().report('cursors', valid_c)
+            self._idle_catalog_worker.catalog_fetched.connect(_on_idle_catalog_fetched)
+            self._idle_catalog_worker.start()
 
     def _setup_native_window(self):
         """Enable native Windows Aero Snap, resize borders, animations and Snap Layouts via Win32 API."""
@@ -2066,9 +2240,9 @@ class PluginManager(QWidget):
             m = _Win32Margins(1, 1, 1, 1)
             dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(m))
 
-            # Disable DWM 8px frame rounding to eliminate ghost layer behind custom 28px rounded corners
+            # Enable native DWM rounded corners (prevents black unpainted corners during minimize/restore)
             DWMWA_WINDOW_CORNER_PREFERENCE = 33
-            val = ctypes.c_int(1)  # DWMWCP_DONOTROUND
+            val = ctypes.c_int(2)  # DWMWCP_ROUND
             try:
                 dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(val), ctypes.sizeof(val))
             except Exception:
@@ -2078,41 +2252,32 @@ class PluginManager(QWidget):
         except Exception as e:
             print(f"Warning: native window setup failed: {e}")
 
-    def _prewarm_modify_page(self):
-        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
-            QTimer.singleShot(300, self._prewarm_modify_page)
-            return
-        if self._modify_page_widget is None:
-            self.get_modify_page()
-
-    def _prewarm_theme_page(self):
-        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
-            QTimer.singleShot(300, self._prewarm_theme_page)
-            return
+    def _warmup_generator(self):
         if self._theme_page_widget is None:
             self.get_theme_page()
-
-    def _prewarm_settings_page(self):
-        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
-            QTimer.singleShot(300, self._prewarm_settings_page)
-            return
+            yield
+        
         if self._settings_page_widget is None:
             self.get_settings_page()
-
-    def _prewarm_theme_subtabs(self):
-        if hasattr(self, 'stacked_widget') and self.stacked_widget.is_animating():
-            QTimer.singleShot(300, self._prewarm_theme_subtabs)
-            return
-        if hasattr(self, '_ensure_theme_editor_initialized'):
+            yield
+        
+        if hasattr(self, '_ensure_theme_editor_initialized') and not getattr(self, '_theme_editor_initialized', False):
             try:
                 self._ensure_theme_editor_initialized()
             except Exception:
                 pass
-        if hasattr(self, '_ensure_cursor_page_initialized'):
+            yield
+
+        if self._modify_page_widget is None:
+            self.get_modify_page()
+            yield
+
+        if self._mouse_page_widget is None:
             try:
-                self._ensure_cursor_page_initialized()
+                self.get_mouse_page()
             except Exception:
                 pass
+            yield
 
     def _auto_check_app_update(self):
         # Auto-heal missing themes if theme directory is empty
@@ -2128,8 +2293,57 @@ class PluginManager(QWidget):
             return
         self.check_app_update(manual=False)
 
+    def has_user_changes(self):
+        if self.settings_manager.get('has_user_changes', False):
+            return True
+        baseline_file = os.path.join(CACHE_DIR, '.install_baseline.json')
+        if not os.path.exists(baseline_file):
+            if float(self.settings_manager.get('last_cloud_backup', 0) or 0) > 0:
+                self.settings_manager.set('has_user_changes', True)
+                return True
+            self._record_install_baseline(baseline_file)
+            return False
+        if self._check_baseline_modified(baseline_file):
+            self.settings_manager.set('has_user_changes', True)
+            return True
+        return False
+
+    def mark_user_changed(self):
+        self.settings_manager.set('has_user_changes', True)
+
+    def _get_tracked_files_hash(self):
+        import hashlib
+        h = hashlib.sha256()
+        for rel in ['shell.nss', 'imports/custom.nss', 'imports/modify.nss', 'imports/theme.nss']:
+            fp = os.path.join(PROJECT_ROOT, rel)
+            if os.path.exists(fp):
+                try:
+                    with open(fp, 'rb') as f:
+                        h.update(f.read())
+                except Exception:
+                    pass
+        return h.hexdigest()
+
+    def _record_install_baseline(self, baseline_file):
+        try:
+            os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
+            with open(baseline_file, 'w', encoding='utf-8') as f:
+                json.dump({"hash": self._get_tracked_files_hash()}, f)
+        except Exception:
+            pass
+
+    def _check_baseline_modified(self, baseline_file):
+        try:
+            with open(baseline_file, 'r', encoding='utf-8') as f:
+                saved = json.load(f).get('hash')
+            return saved != self._get_tracked_files_hash()
+        except Exception:
+            return False
+
     def _check_scheduled_cloud_backup(self):
         if not self.settings_manager.get('auto_cloud_backup'):
+            return
+        if not self.has_user_changes():
             return
         if self.sync_manager is None:
             self._init_sync_manager()
@@ -2208,11 +2422,23 @@ class PluginManager(QWidget):
             os.path.abspath(os.path.join(PROJECT_ROOT, 'shell.log'))
         ]
         # Directories to watch for additions/removals/plugin edits
+        cursor_dir_abs = os.path.abspath(os.path.join(PROJECT_ROOT, 'cursor'))
         self.watch_dirs = [
             os.path.abspath(os.path.join(PROJECT_ROOT, 'imports')),
             os.path.abspath(os.path.join(PROJECT_ROOT, 'theme')),
+            cursor_dir_abs,
             os.path.abspath(PLUGINS_DIR)
         ]
+        if os.path.exists(cursor_dir_abs):
+            try:
+                self._known_cursor_folders = {
+                    e for e in os.listdir(cursor_dir_abs)
+                    if os.path.isdir(os.path.join(cursor_dir_abs, e)) and not e.startswith('.')
+                }
+            except Exception:
+                self._known_cursor_folders = set()
+        else:
+            self._known_cursor_folders = set()
         # Also watch all installed plugin directories
         if os.path.exists(PLUGINS_DIR):
             self._known_plugin_folders = set(os.listdir(PLUGINS_DIR))
@@ -2327,6 +2553,7 @@ class PluginManager(QWidget):
 
         # 2. Trigger the actual reload (non-blocking)
         trigger_shell_reload(close_only=True)
+        self.mark_user_changed()
 
     def _on_manual_fix_required(self, filename, line, message):
         # User requested no popup. Logging the error instead.
@@ -2503,9 +2730,41 @@ class PluginManager(QWidget):
                             except Exception: pass
                 if not changed:
                     continue
+                theme_dir = os.path.join(PROJECT_ROOT, 'theme')
+                if os.path.isdir(theme_dir):
+                    try:
+                        non_custom = [os.path.splitext(f)[0] for f in os.listdir(theme_dir) if f.lower().endswith('.nss') and not f.startswith('theme_')]
+                        if non_custom:
+                            SeenTracker.instance().report('themes', non_custom)
+                    except Exception:
+                        pass
                 if getattr(self, 'theme_switcher_page', None):
                     self.theme_switcher_page.refresh_list()
                 self.show_sync_status("Synced Themes")
+
+            # Cursor directory (New/Removed cursor packs)
+            elif '/cursor/' in clean_path or clean_path.endswith('/cursor'):
+                cursor_dir = os.path.join(PROJECT_ROOT, 'cursor')
+                if os.path.isdir(cursor_dir):
+                    try:
+                        current_cursors = {
+                            e for e in os.listdir(cursor_dir)
+                            if os.path.isdir(os.path.join(cursor_dir, e)) and not e.startswith('.')
+                        }
+                    except Exception:
+                        current_cursors = set()
+                    last_cursors = getattr(self, '_known_cursor_folders', None)
+                    if last_cursors is not None and current_cursors == last_cursors:
+                        continue
+                    self._known_cursor_folders = current_cursors
+                    cursor_catalog_file = os.path.join(CACHE_DIR, 'cursors', 'catalog.json')
+                    bundled_cursors_file = os.path.join(APP_BASE_PATH, 'cursors.json')
+                    valid_c = collect_known_cursors(cursor_dir, bundled_cursors_file, cursor_catalog_file)
+                    if valid_c:
+                        SeenTracker.instance().report('cursors', valid_c)
+                    if getattr(self, 'cursor_page', None):
+                        self.cursor_page.refresh_list()
+                    self.show_sync_status("Synced Cursors")
 
             # Plugin directory
             elif '/plugins/' in clean_path or clean_path.endswith('/plugins'):
@@ -2575,6 +2834,8 @@ class PluginManager(QWidget):
                 self.theme_switcher_page.refresh_list()
                 self.theme_switcher_page.selected_theme = self.theme_switcher_page._get_current_theme_from_file()
                 self.theme_switcher_page._highlight_current_theme()
+            if getattr(self, 'cursor_page', None):
+                self.cursor_page.refresh_list()
                 
             # 3. Reload Shell
             self.reload_shell()
@@ -2664,7 +2925,7 @@ class PluginManager(QWidget):
             QPushButton {
                 background: transparent;
                 border: none;
-                border-radius: 6px;
+                border-radius: 15px;
                 padding: 3px;
             }
             QPushButton:hover {
@@ -2798,6 +3059,8 @@ class PluginManager(QWidget):
                 self.side_modify_btn.setChecked(True)
             elif hasattr(self, '_theme_page_widget') and cur_w == self._theme_page_widget and self._theme_page_widget is not None:
                 self.side_theme_btn.setChecked(True)
+            elif hasattr(self, '_mouse_page_widget') and cur_w == self._mouse_page_widget and self._mouse_page_widget is not None:
+                self.side_mouse_btn.setChecked(True)
             elif hasattr(self, '_settings_page_widget') and cur_w == self._settings_page_widget and self._settings_page_widget is not None:
                 self.side_settings_btn.setChecked(True)
 
@@ -2823,9 +3086,11 @@ class PluginManager(QWidget):
                     self.theme_switcher_page.refresh_list()
                 elif active_idx == 1 and getattr(self, 'theme_editor_page', None):
                     self.theme_editor_page.reload_theme()
-                elif active_idx == 2 and getattr(self, 'cursor_page', None):
-                    self.cursor_page.refresh_list()
             self.show_sync_status("Theme Refreshed")
+        elif hasattr(self, '_mouse_page_widget') and cur_w == self._mouse_page_widget and self._mouse_page_widget is not None:
+            if getattr(self, 'cursor_page', None):
+                self.cursor_page.refresh_list()
+            self.show_sync_status("Cursors Refreshed")
         elif hasattr(self, '_settings_page_widget') and cur_w == self._settings_page_widget and self._settings_page_widget is not None:
             self.setup_settings_page()
             self.show_sync_status("Settings Refreshed")
@@ -2953,7 +3218,6 @@ class PluginManager(QWidget):
     def get_theme_page(self):
         if self._theme_page_widget is None:
             from theme_switcher_widget import ThemeSwitcherWidget
-            from cursor_widget import CursorGalleryWidget
             from theme_editor_widget import ThemeEditorWidget
 
             self.theme_page = QWidget()
@@ -2962,7 +3226,7 @@ class PluginManager(QWidget):
             self.theme_layout.setContentsMargins(0, 0, 0, 0)
             self.theme_layout.setSpacing(0)
 
-            # 1. Pill-shaped Segmented Main Tabs Container (Themes / Editor / Mouse)
+            # 1. Pill-shaped Segmented Main Tabs Container (Themes / Editor)
             self.theme_main_tab_container = QFrame()
             self.theme_main_tab_container.setObjectName("pillTabContainer")
             self.theme_main_tab_container.setStyleSheet("background-color: transparent; border: none; padding: 0px;")
@@ -2979,29 +3243,21 @@ class PluginManager(QWidget):
             self.editor_tab_btn = PillTabButton(" Editor", 0xE104, height=30)
             self.editor_tab_btn.clicked.connect(lambda: switch_theme_page_tab(1))
 
-            self.mouse_tab_btn = PillTabButton(" Mouse", 0xE962, height=30)
-            self.mouse_tab_btn.clicked.connect(lambda: switch_theme_page_tab(2))
-
             self.theme_main_tab_group = QButtonGroup(self)
             self.theme_main_tab_group.setExclusive(True)
             self.theme_main_tab_group.addButton(self.themes_tab_btn)
             self.theme_main_tab_group.addButton(self.editor_tab_btn)
-            self.theme_main_tab_group.addButton(self.mouse_tab_btn)
 
             theme_main_tab_lay.addWidget(self.themes_tab_btn)
             theme_main_tab_lay.addWidget(self.editor_tab_btn)
-            theme_main_tab_lay.addWidget(self.mouse_tab_btn)
 
             self.theme_switcher_page = ThemeSwitcherWidget(
                 theme_dir=os.path.join(PROJECT_ROOT, 'theme'),
                 theme_nss_path=os.path.join(PROJECT_ROOT, 'imports', 'theme.nss')
             )
-            self.cursor_page = None
             self.theme_editor_page = None
             self._theme_editor_initialized = False
-            self._cursor_page_initialized = False
             self.editor_placeholder = QWidget()
-            self.mouse_placeholder = QWidget()
 
             self.theme_save_button = PillPushButton("Save", "primary", height=30)
             self.theme_save_button.setFixedWidth(74)
@@ -3048,10 +3304,9 @@ class PluginManager(QWidget):
 
             self.theme_stacked_widget = AnimatedStackedWidget(self, duration=240, offset=70)
             self.theme_stacked_widget.setObjectName("themeStackedWidget")
-            self.theme_stacked_widget.setStyleSheet("QStackedWidget#themeStackedWidget { background-color: #121212; border: none; }")
+            self.theme_stacked_widget.setStyleSheet("QStackedWidget#themeStackedWidget { background-color: transparent; border: none; }")
             self.theme_stacked_widget.addWidget(self.theme_switcher_page)
             self.theme_stacked_widget.addWidget(self.editor_placeholder)
-            self.theme_stacked_widget.addWidget(self.mouse_placeholder)
             self.theme_layout.addWidget(self.theme_stacked_widget)
 
             self.theme_switcher_page.status_message_requested.connect(self.show_sync_status)
@@ -3061,8 +3316,6 @@ class PluginManager(QWidget):
                     self.theme_switcher_page.save_selection()
                 if getattr(self, '_theme_editor_initialized', False) and self.theme_editor_page:
                     self.theme_editor_page.save_theme()
-                if getattr(self, '_cursor_page_initialized', False) and self.cursor_page:
-                    self.cursor_page.save_selection()
                 self.commit_tinted_icons()
                 self.update_snapshot(os.path.join(PROJECT_ROOT, 'imports', 'theme.nss'))
                 self.show_sync_status("Changes Saved")
@@ -3072,8 +3325,6 @@ class PluginManager(QWidget):
                     self.theme_switcher_page.revert_selection()
                 if getattr(self, '_theme_editor_initialized', False) and self.theme_editor_page:
                     self.theme_editor_page.revert_theme()
-                if getattr(self, '_cursor_page_initialized', False) and self.cursor_page:
-                    self.cursor_page.revert_selection()
                 self.revert_tinted_icons()
                 self.show_sync_status("Changes Reverted")
 
@@ -3097,22 +3348,7 @@ class PluginManager(QWidget):
                     self.theme_editor_page.reload_requested.connect(self.reload_shell)
                     self._update_widgets_autosave()
 
-            def _ensure_cursor_page_initialized():
-                if not self._cursor_page_initialized:
-                    self._cursor_page_initialized = True
-                    self.cursor_page = CursorGalleryWidget(
-                        cursor_dir=os.path.join(PROJECT_ROOT, 'cursor')
-                    )
-                    self.theme_stacked_widget.removeWidget(self.mouse_placeholder)
-                    self.mouse_placeholder.deleteLater()
-                    self.theme_stacked_widget.insertWidget(2, self.cursor_page)
-                    right_controls.insertWidget(1, self.cursor_page.tab_container, 0, Qt.AlignVCenter)
-                    self.cursor_page.status_message_requested.connect(self.show_sync_status)
-                    self.cursor_page.cursor_selected.connect(self._on_cursor_changed)
-                    self.cursor_page.tab_container.setVisible(self.theme_stacked_widget.currentIndex() == 2)
-
             self._ensure_theme_editor_initialized = _ensure_theme_editor_initialized
-            self._ensure_cursor_page_initialized = _ensure_cursor_page_initialized
 
             def switch_theme_page_tab(idx):
                 if idx == 0:
@@ -3120,25 +3356,54 @@ class PluginManager(QWidget):
                 elif idx == 1:
                     self.editor_tab_btn.setChecked(True)
                     _ensure_theme_editor_initialized()
-                elif idx == 2:
-                    self.mouse_tab_btn.setChecked(True)
-                    _ensure_cursor_page_initialized()
 
                 self.theme_stacked_widget.slide_to_index(idx)
                 self.theme_switcher_page.tab_container.setVisible(idx == 0)
                 self.sync_container.setVisible(idx in (0, 1))
-                if self._cursor_page_initialized and self.cursor_page:
-                    self.cursor_page.tab_container.setVisible(idx == 2)
-                self.theme_save_button.setVisible(idx != 2)
-                self.theme_reset_button.setVisible(idx != 2)
+                self.theme_save_button.setVisible(True)
+                self.theme_reset_button.setVisible(True)
                 if self.theme_stacked_widget.currentWidget():
                     self.theme_stacked_widget.currentWidget().update()
+                self._sync_active_tabs()
 
             switch_theme_page_tab(0)
 
             self.stacked_widget.addWidget(self._theme_page_widget)
+            self._update_tab_dots()
             self._update_widgets_autosave()
         return self._theme_page_widget
+
+    def get_mouse_page(self):
+        if self._mouse_page_widget is None:
+            from cursor_widget import CursorGalleryWidget
+
+            self.mouse_page = QWidget()
+            self._mouse_page_widget = self.mouse_page
+            self._cursor_page_initialized = True
+
+            self.mouse_layout = QVBoxLayout(self.mouse_page)
+            self.mouse_layout.setContentsMargins(0, 0, 0, 0)
+            self.mouse_layout.setSpacing(0)
+
+            self.cursor_page = CursorGalleryWidget(
+                cursor_dir=os.path.join(PROJECT_ROOT, 'cursor')
+            )
+            self.cursor_page.status_message_requested.connect(self.show_sync_status)
+            self.cursor_page.cursor_selected.connect(self._on_cursor_changed)
+
+            self.mouse_top_header_bar = QWidget()
+            self.mouse_top_header_bar.setFixedHeight(58)
+            mouse_header_layout = QHBoxLayout(self.mouse_top_header_bar)
+            mouse_header_layout.setContentsMargins(15, 10, 15, 8)
+            mouse_header_layout.addWidget(self.cursor_page.tab_container, 0, Qt.AlignVCenter)
+            mouse_header_layout.addStretch(1)
+
+            self.mouse_layout.addWidget(self.mouse_top_header_bar)
+            self.mouse_layout.addWidget(self.cursor_page, 1)
+
+            self.stacked_widget.addWidget(self._mouse_page_widget)
+            self._update_tab_dots()
+        return self._mouse_page_widget
 
     def _on_theme_picked(self, theme_name):
         self._last_action_time = time.time()
@@ -3189,32 +3454,39 @@ class PluginManager(QWidget):
         self.side_btn_group = QButtonGroup(self)
         self.side_btn_group.setExclusive(True)
 
-        def _switch_to_page(page_getter, btn):
+        def _switch_to_page(page_getter, btn, page_key=None):
             while QApplication.overrideCursor():
                 QApplication.restoreOverrideCursor()
             self.unsetCursor()
             btn.setChecked(True)
+            if page_key:
+                IdleScheduler.instance().boost(page_key)
             w = page_getter()
             if self.stacked_widget.currentWidget() == w and not self.stacked_widget.is_animating():
+                self._sync_active_tabs()
                 return
             self.stacked_widget.setCurrentWidgetAnimated(w)
+            self._sync_active_tabs()
 
-        def create_nav_item(icon_name, label_text, page_getter):
+        def create_nav_item(icon_name, label_text, page_getter, page_key=None):
             btn = NavTabButton(icon_name, label_text)
             self.side_btn_group.addButton(btn)
-            btn.clicked.connect(lambda: _switch_to_page(page_getter, btn))
+            btn.clicked.connect(lambda: _switch_to_page(page_getter, btn, page_key))
             return btn
 
-        self.side_plugins_btn = create_nav_item('plugins.png', 'Plugins', lambda: self.plugins_page)
-        self.side_modify_btn = create_nav_item('modify.png', 'Modify', lambda: self.get_modify_page())
-        self.side_theme_btn = create_nav_item('theme.png', 'Theme', lambda: self.get_theme_page())
-        self.side_settings_btn = create_nav_item('Settings.png', 'Settings', lambda: self.get_settings_page())
+        self.side_plugins_btn = create_nav_item('plugins.png', 'Plugins', lambda: self.plugins_page, 'plugins')
+        self.side_modify_btn = create_nav_item('modify.png', 'Modify', lambda: self.get_modify_page(), 'modify')
+        self.side_theme_btn = create_nav_item('theme.png', 'Theme', lambda: self.get_theme_page(), 'theme')
+        self.side_mouse_btn = create_nav_item('mouse.png', 'Mouse', lambda: self.get_mouse_page(), 'mouse')
+        self.mouse_tab_btn = self.side_mouse_btn
+        self.side_settings_btn = create_nav_item('Settings.png', 'Settings', lambda: self.get_settings_page(), 'settings')
 
         self.side_plugins_btn.setChecked(True)
 
         side_panel_layout.addWidget(self.side_plugins_btn)
         side_panel_layout.addWidget(self.side_modify_btn)
         side_panel_layout.addWidget(self.side_theme_btn)
+        side_panel_layout.addWidget(self.side_mouse_btn)
 
         side_panel_layout.addStretch()
 
@@ -3270,6 +3542,7 @@ class PluginManager(QWidget):
             self.apps_tab_btn.setChecked(True)
             self.plugins_inner_stack.setCurrentIndex(2)
             self.load_apps()
+        self._sync_active_tabs()
 
     def render_current_plugins_tab(self):
         if self.current_plugins_tab == "local":
@@ -3314,6 +3587,10 @@ class PluginManager(QWidget):
             active_plugins = self.plugin_logic.registry.get_store_plugins_for_ui()
 
         self.all_plugins_data = {p['name']: p for p in active_plugins}
+
+        store_plugins = {p['name']: p.get('version', '') for p in plugins if isinstance(p, dict) and not p.get('_is_local') and p.get('status') != 'local'}
+        if store_plugins:
+            SeenTracker.instance().report('plugins', store_plugins)
 
         # Smart diff: check if the card layout set actually changed
         current_names = set(self.plugin_cards.keys())
@@ -3447,8 +3724,8 @@ class PluginManager(QWidget):
                 color: #ea999c;
                 background-color: rgba(234, 153, 156, 0.15);
                 border: 1px solid rgba(234, 153, 156, 0.35);
-                border-radius: 6px;
-                padding: 1px 6px;
+                border-radius: 9px;
+                padding: 1px 7px;
                 font-weight: bold;
                 font-size: 10px;
             }
@@ -3466,8 +3743,8 @@ class PluginManager(QWidget):
                 color: #ca9ee6;
                 background-color: rgba(202, 158, 230, 0.15);
                 border: 1px solid rgba(202, 158, 230, 0.35);
-                border-radius: 6px;
-                padding: 1px 6px;
+                border-radius: 9px;
+                padding: 1px 7px;
                 font-weight: bold;
                 font-size: 10px;
             }
@@ -3508,6 +3785,8 @@ class PluginManager(QWidget):
 
         self.update_card_ui(plugin_name)
         self.apply_card_style(card)
+        if not plugin.get('_is_local') and plugin.get('status') != 'local':
+            NewDot(card, 'plugins', plugin_name, anchor='top_right')
         return card
 
     def show_details_popup(self, plugin_name, card=None):
@@ -3816,8 +4095,8 @@ class PluginManager(QWidget):
                             color: #8caaee;
                             background-color: rgba(140, 170, 238, 0.15);
                             border: 1px solid rgba(140, 170, 238, 0.35);
-                            border-radius: 6px;
-                            padding: 1px 6px;
+                            border-radius: 9px;
+                            padding: 1px 7px;
                             font-weight: bold;
                             font-size: 10px;
                         }
@@ -3828,8 +4107,8 @@ class PluginManager(QWidget):
                             color: #ea999c;
                             background-color: rgba(234, 153, 156, 0.15);
                             border: 1px solid rgba(234, 153, 156, 0.35);
-                            border-radius: 6px;
-                            padding: 1px 6px;
+                            border-radius: 9px;
+                            padding: 1px 7px;
                             font-weight: bold;
                             font-size: 10px;
                         }
@@ -3838,17 +4117,9 @@ class PluginManager(QWidget):
             else:
                 ver_badge.hide()
 
-        # Update "new" purple badge if updated within 24h
+        # Hide legacy purple badge in favor of modern dot indicator
         if new_badge:
-            updated_info = (
-                plugin_info.get('_remote_updated_at') or plugin_info.get('updated_at') or
-                plugin_info.get('updated') or plugin_info.get('last_updated') or
-                plugin_info.get('date') or state.get('remote_updated_at')
-            )
-            if is_recently_updated(updated_info, hours=24):
-                new_badge.show()
-            else:
-                new_badge.hide()
+            new_badge.hide()
 
     def on_icon_loaded(self, plugin_name, pixmap):
         is_default = bool(self._default_icon_pixmap and pixmap and pixmap.cacheKey() == self._default_icon_pixmap.cacheKey())
@@ -3961,17 +4232,7 @@ class PluginManager(QWidget):
             self.update_popup_button(plugin_name)
 
     def apply_card_style(self, card):
-        card.setStyleSheet("""
-            QFrame#plugin_card {
-                background-color: rgba(255, 255, 255, 0.035);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 16px;
-            }
-            QFrame#plugin_card:hover {
-                background-color: rgba(255, 255, 255, 0.065);
-                border: 1px solid rgba(255, 255, 255, 0.18);
-            }
-        """)
+        pass
 
     # ==========================================
     # APPS TAB LOGIC & MANAGEMENT
@@ -4054,6 +4315,9 @@ class PluginManager(QWidget):
 
     def on_apps_fetched(self, apps):
         self.all_apps_data = {a['name']: a for a in apps}
+        apps_dict = {a['name'].lower(): a.get('version', '') for a in apps if isinstance(a, dict) and 'name' in a}
+        if apps_dict:
+            SeenTracker.instance().report('apps', apps_dict)
         current_names = set(self.app_cards.keys())
         valid_names = set(self.all_apps_data.keys())
         cards_changed = (current_names != valid_names)
@@ -4258,8 +4522,8 @@ class PluginManager(QWidget):
                 color: #ea999c;
                 background-color: rgba(234, 153, 156, 0.15);
                 border: 1px solid rgba(234, 153, 156, 0.35);
-                border-radius: 6px;
-                padding: 1px 6px;
+                border-radius: 9px;
+                padding: 1px 7px;
                 font-weight: bold;
                 font-size: 10px;
             }
@@ -4277,8 +4541,8 @@ class PluginManager(QWidget):
                 color: #ca9ee6;
                 background-color: rgba(202, 158, 230, 0.15);
                 border: 1px solid rgba(202, 158, 230, 0.35);
-                border-radius: 6px;
-                padding: 1px 6px;
+                border-radius: 9px;
+                padding: 1px 7px;
                 font-weight: bold;
                 font-size: 10px;
             }
@@ -4326,7 +4590,7 @@ class PluginManager(QWidget):
             QPushButton {
                 background: transparent;
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 6px;
+                border-radius: 15px;
                 padding: 2px;
             }
             QPushButton:hover {
@@ -4362,6 +4626,7 @@ class PluginManager(QWidget):
         card.customContextMenuRequested.connect(lambda pos, n=app_name: self.show_app_context_menu(n, card.mapToGlobal(pos)))
 
         self.app_cards[app_name] = card
+        NewDot(card, 'apps', app_name.lower(), anchor='top_right')
         self.app_buttons[app_name] = action_button
         self.app_action_layouts[app_name] = btn_layout
 
@@ -4568,8 +4833,8 @@ class PluginManager(QWidget):
                             color: #8caaee;
                             background-color: rgba(140, 170, 238, 0.15);
                             border: 1px solid rgba(140, 170, 238, 0.35);
-                            border-radius: 6px;
-                            padding: 1px 6px;
+                            border-radius: 9px;
+                            padding: 1px 7px;
                             font-weight: bold;
                             font-size: 10px;
                         }
@@ -4580,8 +4845,8 @@ class PluginManager(QWidget):
                             color: #ea999c;
                             background-color: rgba(234, 153, 156, 0.15);
                             border: 1px solid rgba(234, 153, 156, 0.35);
-                            border-radius: 6px;
-                            padding: 1px 6px;
+                            border-radius: 9px;
+                            padding: 1px 7px;
                             font-weight: bold;
                             font-size: 10px;
                         }
@@ -4698,6 +4963,10 @@ class PluginManager(QWidget):
                     lx, ly = pos.x(), pos.y()
                 w, h = self.width(), self.height()
 
+                # Fast path: Interior client area (not in titlebar, not near borders)
+                if ly >= 45 and 20 <= lx <= w - 20 and ly <= h - 8:
+                    return True, HTCLIENT
+
                 # 1. Interactive controls always get HTCLIENT (buttons, tabs, edits, pill)
                 child = self.childAt(lx, ly)
                 curr = child
@@ -4796,37 +5065,24 @@ class PluginManager(QWidget):
             self.update()
 
     def _apply_rounded_mask(self):
-        """Apply Win32 rounded region to HWND when normal; remove region when maximized."""
+        """Ensure HWND uses native DWM window rounding without GDI region clipping."""
         if os.name != 'nt':
             return
         wid = self.winId()
         if not wid:
             return
-        hwnd = int(wid)
-        user32 = ctypes.windll.user32
-        is_max = self.isMaximized() or bool(user32.IsZoomed(hwnd))
-        if is_max:
-            user32.SetWindowRgn(hwnd, 0, True)
-        else:
-            rect = wintypes.RECT()
-            user32.GetClientRect(hwnd, ctypes.byref(rect))
-            pw = rect.right - rect.left
-            ph = rect.bottom - rect.top
-            dpr = self.devicePixelRatioF() if hasattr(self, 'devicePixelRatioF') else 1.0
-            if not dpr:
-                dpr = 1.0
-            if pw <= 0 or ph <= 0:
-                pw = int(round(self.width() * dpr))
-                ph = int(round(self.height() * dpr))
-            radius = getattr(self, '_corner_radius', 28)
-            pr = int(round(radius * 2 * dpr))
-            hrgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, pw + 1, ph + 1, pr, pr)
-            user32.SetWindowRgn(hwnd, hrgn, True)
+        try:
+            ctypes.windll.user32.SetWindowRgn(int(wid), 0, True)
+        except Exception:
+            pass
 
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#121212"))
+        grad = QLinearGradient(0, 0, 0, self.height())
+        grad.setColorAt(0.0, QColor("#18191e"))
+        grad.setColorAt(1.0, QColor("#121316"))
+        painter.fillRect(self.rect(), grad)
 
     def closeEvent(self, event):
         self._is_shutting_down = True
@@ -4902,6 +5158,7 @@ class PluginManager(QWidget):
                 pass
         # Stop threads and trigger final reload via IPC (instant)
         self.plugin_logic.stop_all_threads()
+        SeenTracker.instance().flush()
         from utils import send_ipc_command
         send_ipc_command('CMD_RELOAD')
         event.accept()
@@ -5404,18 +5661,26 @@ class PluginManager(QWidget):
         
         self.sync_backup_btn = PillPushButton("Backup", "backup", height=34)
         self.sync_backup_btn.setFixedWidth(100)
-        self.sync_backup_btn.clicked.connect(lambda: self._init_sync_manager().backup())
+        self.sync_backup_btn.clicked.connect(self.on_backup_clicked)
         
         self.sync_restore_btn = PillPushButton("Restore", "restore", height=34)
         self.sync_restore_btn.setFixedWidth(100)
         self.sync_restore_btn.clicked.connect(lambda: self._init_sync_manager().restore())
+
+        self.sync_history_btn = QPushButton("\uE713")
+        self.sync_history_btn.setFixedSize(36, 36)
+        self.sync_history_btn.setCursor(Qt.PointingHandCursor)
+        self.sync_history_btn.setFont(QFont('Segoe MDL2 Assets', 14))
+        self.sync_history_btn.setToolTip("Previous Backup History")
+        self.sync_history_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #8caaee; } QPushButton:hover { background: rgba(140, 170, 238, 0.2); border: 1px solid #8caaee; color: white; }")
+        self.sync_history_btn.clicked.connect(self.show_backup_history_dialog)
         
         self.sync_logout_btn = QPushButton("\uE77B"); self.sync_logout_btn.setFixedSize(36, 36); self.sync_logout_btn.setCursor(Qt.PointingHandCursor)
         self.sync_logout_btn.setFont(QFont('Segoe MDL2 Assets', 14))
         self.sync_logout_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.05); border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); color: #b0b0b0; } QPushButton:hover { background: rgba(234, 153, 156, 0.2); border: 1px solid #e78284; color: white; }")
         self.sync_logout_btn.clicked.connect(self.show_account_profile_popup)
         
-        rl.addWidget(self.sync_login_btn); rl.addWidget(self.sync_backup_btn); rl.addWidget(self.sync_restore_btn); rl.addWidget(self.sync_logout_btn)
+        rl.addWidget(self.sync_login_btn); rl.addWidget(self.sync_backup_btn); rl.addWidget(self.sync_restore_btn); rl.addWidget(self.sync_history_btn); rl.addWidget(self.sync_logout_btn)
         layout.addWidget(row)
         self._update_sync_ui_state()
 
@@ -5452,6 +5717,36 @@ class PluginManager(QWidget):
             self.sync_manager.logout()
         self._update_sync_ui_state()
 
+    def on_backup_clicked(self):
+        if not self.has_user_changes():
+            m = ModernDialog(self, "No Changes Detected", "Your settings are at default values.\n\nTo prevent overwriting your existing cloud backup, backups are disabled until you customize your settings.\n\nIf you want to restore your previous settings, click 'Restore'.")
+            m.add_button("OK", "installButton", m.accept)
+            m.exec_()
+            return
+
+        sync = self._init_sync_manager()
+        if not sync:
+            return
+        if not sync.access_token:
+            sync.backup()
+            return
+
+        info = sync.get_remote_backup_info()
+        if info.get('exists'):
+            dlg = CloudBackupConfirmDialog(info, self)
+            if dlg.exec_() != 1 or not dlg.confirmed:
+                return
+
+        sync.backup()
+
+    def show_backup_history_dialog(self):
+        sync = self._init_sync_manager()
+        if not sync or not sync.access_token:
+            return
+        dlg = CloudBackupHistoryDialog(sync, self)
+        if dlg.exec_() == 1 and dlg.selected_revision_id:
+            sync.restore(revision_id=dlg.selected_revision_id)
+
     def _update_sync_ui_state(self):
         if not hasattr(self, 'sync_login_btn') or self.sync_manager is None:
             return
@@ -5459,6 +5754,8 @@ class PluginManager(QWidget):
         self.sync_login_btn.setVisible(not logged_in)
         self.sync_backup_btn.setVisible(logged_in)
         self.sync_restore_btn.setVisible(logged_in)
+        if hasattr(self, 'sync_history_btn'):
+            self.sync_history_btn.setVisible(logged_in)
         self.sync_logout_btn.setVisible(logged_in)
         
         if logged_in:
@@ -5508,6 +5805,7 @@ class PluginManager(QWidget):
             ModernDialog(self, "Cloud Sync Error", f"Authentication failed: {message}").show()
 
     def on_sync_progress(self, percentage, status):
+        self._is_internal_change = True
         if not hasattr(self, 'sync_dl_msg') or not self.sync_dl_msg.isVisible():
             self.sync_dl_msg = ModernDialog(self, "Cloud Sync", status)
             self.sync_bar = PillProgressBar(height=20)
@@ -5521,9 +5819,11 @@ class PluginManager(QWidget):
         self.sync_perc.setText(f"{percentage}%")
 
     def on_sync_finished(self, success, message):
+        self._is_internal_change = False
         had_dl_msg = hasattr(self, 'sync_dl_msg') and self.sync_dl_msg.isVisible()
         if hasattr(self, 'sync_dl_msg'): self.sync_dl_msg.close()
         if success:
+            self.mark_user_changed()
             if "backup" in message.lower():
                 self.settings_manager.set('last_cloud_backup', time.time())
             self.full_ui_refresh()
@@ -5654,6 +5954,7 @@ if __name__ == '__main__':
     except FileNotFoundError:
         print("Warning: style.css not found.")
     manager = PluginManager()
+    app.aboutToQuit.connect(SeenTracker.instance().flush)
 
     if os.name == 'nt':
         try:

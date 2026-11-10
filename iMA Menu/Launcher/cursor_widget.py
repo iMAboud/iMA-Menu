@@ -22,7 +22,7 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal, QRect, QPoint, QThread, QObject,
 
 from github_client import github_api_get, cdn_get, get_latest_tree_sha
 from plugin_registry import file_matches_git_sha, atomic_json_write
-from utils import FlowLayout, PillTabButton
+from utils import FlowLayout, PillTabButton, ImagePipeline, IdleScheduler
 
 
 CURSOR_ROLES = [
@@ -1423,36 +1423,16 @@ class CursorOptionFrame(QFrame):
             self.favorite_btn.setIcon(get_star_icon(filled=True, color="#FFB800", size=16))
             self.favorite_btn.setText("")
             self.favorite_btn.setToolTip("Favorited")
-            self.favorite_btn.setStyleSheet("""
-                QPushButton#favoriteBtn {
-                    background-color: rgba(255, 184, 0, 0.22);
-                    border-radius: 13px;
-                    border: 1px solid rgba(255, 184, 0, 0.55);
-                    padding: 0px;
-                }
-                QPushButton#favoriteBtn:hover {
-                    background-color: rgba(255, 184, 0, 0.38);
-                    border: 1px solid #FFB800;
-                }
-            """)
+            self.favorite_btn.setProperty("favorite", "true")
             self.favorite_btn.show()
         else:
             self.favorite_btn.setIcon(get_star_icon(filled=False, outline_color="#ffffff", size=16))
             self.favorite_btn.setText("")
             self.favorite_btn.setToolTip("Add to Favorites")
-            self.favorite_btn.setStyleSheet("""
-                QPushButton#favoriteBtn {
-                    background-color: rgba(255, 255, 255, 0.12);
-                    border-radius: 13px;
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    padding: 0px;
-                }
-                QPushButton#favoriteBtn:hover {
-                    background-color: rgba(255, 184, 0, 0.25);
-                    border: 1px solid #FFB800;
-                }
-            """)
+            self.favorite_btn.setProperty("favorite", "false")
             self.favorite_btn.hide()
+        self.favorite_btn.style().unpolish(self.favorite_btn)
+        self.favorite_btn.style().polish(self.favorite_btn)
 
     def _on_favorite_clicked(self):
         self.is_favorite = not self.is_favorite
@@ -1504,8 +1484,6 @@ class CursorOptionFrame(QFrame):
         self.uninstall_requested.emit(self.theme_name)
 
     def enterEvent(self, event):
-        if not self.is_active:
-            self.setStyleSheet("QFrame#cursorOptionFrame { background-color: #18181c; border-radius: 20px; border: 2px solid #e78284; }")
         if self.favorite_btn and not self.is_favorite:
             self.favorite_btn.show()
         if self.uninstall_btn and self.is_installed and not self.is_default:
@@ -1513,7 +1491,6 @@ class CursorOptionFrame(QFrame):
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.update_style()
         if self.favorite_btn and not self.is_favorite:
             self.favorite_btn.hide()
         if self.uninstall_btn:
@@ -1606,10 +1583,9 @@ class CursorOptionFrame(QFrame):
         self.update_style()
 
     def update_style(self):
-        if self.is_active:
-            self.setStyleSheet("QFrame#cursorOptionFrame { background-color: #261115; border-radius: 20px; border: 2px solid #e78284; }")
-        else:
-            self.setStyleSheet("QFrame#cursorOptionFrame { background-color: #121214; border-radius: 20px; border: 2px solid #24242a; }")
+        self.setProperty("active", "true" if self.is_active else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def get_resolved_roles(self):
         if self.resolved_roles is None:
@@ -1779,11 +1755,8 @@ class CursorGalleryWidget(QWidget):
                 (sb.maximum() > 0 and sb.value() >= sb.maximum() - 600)
             )
             if need_more and self._rendered_count < len(self._all_theme_items):
-                self._render_next_chunk(36)
-                if self._rendered_count < len(self._all_theme_items):
-                    new_h = self.grid_layout.heightForWidth(vp_w)
-                    if new_h < vp_h + 300 or sb.maximum() <= 0:
-                        QTimer.singleShot(60, self._check_and_load_more_chunks)
+                self._render_chunk(count=36)
+                IdleScheduler.instance().boost("cursor_gallery")
         finally:
             self._is_checking_chunks = False
 
@@ -1824,13 +1797,12 @@ class CursorGalleryWidget(QWidget):
                 self.preview_worker.start()
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#121212"))
+        pass
 
     def _setup_ui(self):
         self.setObjectName("cursorGalleryWidget")
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet("QWidget#cursorGalleryWidget { background-color: #121212; } QScrollArea { border: none; background: transparent; } QWidget#cursorGridWidget { background: transparent; }")
+        self.setStyleSheet("QWidget#cursorGalleryWidget { background-color: transparent; } QScrollArea { border: none; background: transparent; } QWidget#cursorGridWidget { background: transparent; }")
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
@@ -1876,6 +1848,11 @@ class CursorGalleryWidget(QWidget):
         tab_layout.addWidget(self.installed_tab)
         tab_layout.addWidget(self.fav_tab)
 
+        from new_badge import SeenTracker
+        self._update_explore_dot = lambda: self.explore_tab.set_dot(SeenTracker.instance().tab_has_dot('cursors.explore'))
+        SeenTracker.instance().changed.connect(self._update_explore_dot)
+        self._update_explore_dot()
+
         tab_layout.addSpacing(6)
 
         # Download All button
@@ -1898,16 +1875,78 @@ class CursorGalleryWidget(QWidget):
 
         self.grid_widget = QWidget()
         self.grid_widget.setObjectName("cursorGridWidget")
+        self.grid_widget.setStyleSheet("""
+            QFrame#cursorOptionFrame {
+                background-color: #121214;
+                border-radius: 20px;
+                border: 2px solid #24242a;
+            }
+            QFrame#cursorOptionFrame:hover {
+                background-color: #18181c;
+                border: 2px solid #e78284;
+            }
+            QFrame#cursorOptionFrame[active="true"] {
+                background-color: #261115;
+                border-radius: 20px;
+                border: 2px solid #e78284;
+            }
+            QFrame#cursorOptionFrame QLabel {
+                background: transparent;
+            }
+            QFrame#cursorOptionFrame QPushButton#favoriteBtn {
+                border-radius: 13px;
+                padding: 0px;
+            }
+            QFrame#cursorOptionFrame QPushButton#favoriteBtn[favorite="true"] {
+                background-color: rgba(255, 184, 0, 0.22);
+                border: 1px solid rgba(255, 184, 0, 0.55);
+            }
+            QFrame#cursorOptionFrame QPushButton#favoriteBtn[favorite="true"]:hover {
+                background-color: rgba(255, 184, 0, 0.38);
+                border: 1px solid #FFB800;
+            }
+            QFrame#cursorOptionFrame QPushButton#favoriteBtn[favorite="false"] {
+                background-color: rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            QFrame#cursorOptionFrame QPushButton#favoriteBtn[favorite="false"]:hover {
+                background-color: rgba(255, 184, 0, 0.25);
+                border: 1px solid #FFB800;
+            }
+            QFrame#cursorOptionFrame QPushButton#uninstallBtn {
+                background-color: rgba(255, 255, 255, 0.12);
+                color: #ffffff;
+                border-radius: 13px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            QFrame#cursorOptionFrame QPushButton#uninstallBtn:hover {
+                background-color: #e78284;
+                border: 1px solid #e78284;
+            }
+            QFrame#cursorOptionFrame QPushButton#downloadBtn {
+                background-color: rgba(231, 130, 132, 0.2);
+                color: #ff6b81;
+                border: 1px solid rgba(231, 130, 132, 0.4);
+                border-radius: 13px;
+            }
+            QFrame#cursorOptionFrame QPushButton#downloadBtn:hover {
+                background-color: #e78284;
+                color: white;
+                border: 1px solid #e78284;
+            }
+        """)
         self.grid_layout = FlowLayout(self.grid_widget, spacing=14)
 
         self.scroll_area.setWidget(self.grid_widget)
         main_layout.addWidget(self.scroll_area, 1)
 
     def _set_category_tab(self, category: str):
+        if category == "explore":
+            from new_badge import SeenTracker
+            SeenTracker.instance().visit_tab('cursors.explore')
         if self.current_tab != category:
             self.current_tab = category
-            if hasattr(self, '_idle_render_timer'):
-                self._idle_render_timer.stop()
+            IdleScheduler.instance().cancel("cursor_gallery")
             self.scroll_area.verticalScrollBar().setValue(0)
             self.refresh_list(reset_scroll=True)
 
@@ -1927,11 +1966,19 @@ class CursorGalleryWidget(QWidget):
                         break
                 except Exception:
                     pass
+        from new_badge import SeenTracker, collect_known_cursors
+        valid_cursors = collect_known_cursors(self.cursor_dir, self.catalog or {})
+        if valid_cursors:
+            SeenTracker.instance().report('cursors', valid_cursors)
 
     def _on_catalog_fetched(self, catalog: dict):
         if self.catalog and self.catalog == catalog:
             return
         self.catalog = catalog
+        from new_badge import SeenTracker, collect_known_cursors
+        valid_cursors = collect_known_cursors(self.cursor_dir, catalog)
+        if valid_cursors:
+            SeenTracker.instance().report('cursors', valid_cursors)
         self.refresh_list()
 
     def _detect_current_active_theme(self) -> str:
@@ -1984,14 +2031,9 @@ class CursorGalleryWidget(QWidget):
         if self.preview_worker and self.preview_worker.isRunning():
             self.preview_worker.stop()
 
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-
-        self.cards_map.clear()
-        self._empty_container = None
+        if getattr(self, '_empty_container', None):
+            self._empty_container.deleteLater()
+            self._empty_container = None
 
         # 1. Local themes (with case-insensitive index, cached by mtime)
         curr_mtime = 0
@@ -2027,6 +2069,17 @@ class CursorGalleryWidget(QWidget):
                 all_theme_names.add(matching_cat)
             else:
                 all_theme_names.add(loc_name)
+
+        # Report all known cursor themes (catalog + local folders, preferring local casing)
+        report_names = []
+        for th_name in all_theme_names:
+            if th_name == "Windows Default":
+                continue
+            loc_entry = local_themes_lower.get(th_name.lower())
+            report_names.append(loc_entry[0] if loc_entry else th_name)
+        if report_names:
+            from new_badge import SeenTracker
+            SeenTracker.instance().report('cursors', report_names)
 
         # Sort all themes alphabetically A-Z
         sorted_theme_names = sorted(all_theme_names, key=lambda s: s.lower())
@@ -2079,6 +2132,10 @@ class CursorGalleryWidget(QWidget):
         self._all_theme_items = items
         self._pending_preview_tasks = []
 
+        allowed_names = {item['theme_name'] for item in items}
+        for th_name, card in self.cards_map.items():
+            card.setVisible(th_name in allowed_names)
+
         if not items and self.current_tab == "fav":
             self._empty_container = QWidget(self.grid_widget)
             vp_w = max(450, self.scroll_area.viewport().width() - 30)
@@ -2112,83 +2169,85 @@ class CursorGalleryWidget(QWidget):
             self._rendered_count = 0
             return
 
-        if hasattr(self, '_idle_render_timer'):
-            self._idle_render_timer.stop()
+        IdleScheduler.instance().cancel("cursor_gallery")
 
+        # Initial render: first screen (~48 cards)
         self._rendered_count = 0
-        self._render_next_chunk(36)
+        self._render_chunk(count=48)
+
+        if self._rendered_count < len(self._all_theme_items):
+            IdleScheduler.instance().submit(self._render_generator(), priority=0, key="cursor_gallery")
 
         if scroll_pos > 0:
             QTimer.singleShot(0, lambda pos=scroll_pos: self.scroll_area.verticalScrollBar().setValue(pos))
         else:
             self.scroll_area.verticalScrollBar().setValue(0)
 
-        self._check_and_load_more_chunks()
-        QTimer.singleShot(80, self._check_and_load_more_chunks)
-        self._schedule_idle_render()
+        self._schedule_viewport_check()
 
-    def _schedule_idle_render(self):
-        if self._rendered_count < len(self._all_theme_items):
-            if not hasattr(self, '_idle_render_timer'):
-                self._idle_render_timer = QTimer(self)
-                self._idle_render_timer.setSingleShot(True)
-                self._idle_render_timer.timeout.connect(self._on_idle_render)
-            self._idle_render_timer.start(45)
+    def _create_card(self, item_data):
+        th_name = item_data['theme_name']
+        th_dir = item_data['theme_dir']
+        is_installed = item_data['is_installed']
+        is_act = (self.selected_theme == th_name)
+        is_fav = (th_name in self.favorites)
 
-    def _on_idle_render(self):
-        if not self.isVisible() or self._rendered_count >= len(self._all_theme_items):
+        card = CursorOptionFrame(
+            th_name, th_dir,
+            is_installed=is_installed,
+            is_active=is_act,
+            is_favorite=is_fav,
+            info=item_data.get('info')
+        )
+        card.favorite_toggled.connect(self._on_favorite_toggled)
+        card.card_selected.connect(self._on_card_selected)
+
+        if is_installed:
+            if th_name != "Windows Default":
+                card.uninstall_requested.connect(self._on_uninstall_theme)
+        else:
+            card.download_requested.connect(self._on_download_theme)
+
+        if th_name != "Windows Default":
+            from new_badge import NewDot
+            NewDot(card, 'cursors', th_name, anchor='top_center')
+
+        return card
+
+    def _render_chunk(self, count=36):
+        if self._rendered_count >= len(self._all_theme_items):
             return
-        self._render_next_chunk(36)
-        if self._rendered_count < len(self._all_theme_items):
-            self._schedule_idle_render()
+        self.grid_layout.begin_batch()
+        batch_end = min(self._rendered_count + count, len(self._all_theme_items))
+        for idx in range(self._rendered_count, batch_end):
+            item_data = self._all_theme_items[idx]
+            th_name = item_data['theme_name']
+            if th_name in self.cards_map:
+                self.cards_map[th_name].setVisible(True)
+            else:
+                card = self._create_card(item_data)
+                self.cards_map[th_name] = card
+                self.grid_layout.addWidget(card)
+        self._rendered_count = batch_end
+        self.grid_layout.end_batch()
+        self.grid_widget.updateGeometry()
+        self._schedule_viewport_check()
+
+    def _render_generator(self):
+        while self._rendered_count < len(self._all_theme_items):
+            self._render_chunk(count=36)
+            yield
+        self.grid_layout.invalidate()
+        self.grid_widget.updateGeometry()
+        self._schedule_viewport_check()
 
     def _on_scroll_changed(self, val):
         self._schedule_viewport_check()
         sb = self.scroll_area.verticalScrollBar()
         if sb.maximum() > 0 and val >= sb.maximum() - 600:
             if self._rendered_count < len(self._all_theme_items):
-                self._render_next_chunk(36)
-
-    def _render_next_chunk(self, chunk_size=36):
-        if self._rendered_count >= len(self._all_theme_items):
-            return
-        end_idx = min(self._rendered_count + chunk_size, len(self._all_theme_items))
-        batch = self._all_theme_items[self._rendered_count:end_idx]
-        self._rendered_count = end_idx
-
-        self.grid_widget.setUpdatesEnabled(False)
-        try:
-            for item_data in batch:
-                th_name = item_data['theme_name']
-                th_dir = item_data['theme_dir']
-                is_installed = item_data['is_installed']
-                is_act = (self.selected_theme == th_name)
-                is_fav = (th_name in self.favorites)
-
-                card = CursorOptionFrame(
-                    th_name, th_dir,
-                    is_installed=is_installed,
-                    is_active=is_act,
-                    is_favorite=is_fav,
-                    info=item_data.get('info')
-                )
-                card.favorite_toggled.connect(self._on_favorite_toggled)
-                card.card_selected.connect(self._on_card_selected)
-
-                if is_installed:
-                    if th_name != "Windows Default":
-                        card.uninstall_requested.connect(self._on_uninstall_theme)
-                else:
-                    card.download_requested.connect(self._on_download_theme)
-
-                self.cards_map[th_name] = card
-                self.grid_layout.addWidget(card)
-        finally:
-            self.grid_widget.setUpdatesEnabled(True)
-
-        self.grid_widget.updateGeometry()
-        self.grid_layout.invalidate()
-        self._schedule_viewport_check()
+                self._render_chunk(count=36)
+            IdleScheduler.instance().boost("cursor_gallery")
 
     def _on_favorite_toggled(self, theme_name: str, is_fav: bool):
         if is_fav:

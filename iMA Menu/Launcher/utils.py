@@ -19,11 +19,13 @@ for env_key in list(os.environ.keys()):
     if env_key.startswith('_MEI'):
         os.environ.pop(env_key, None)
 import functools
+from collections import OrderedDict
+import hashlib
 from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-                             QUndoStack, QUndoCommand, QScrollArea, 
+                             QUndoStack, QUndoCommand, QScrollArea, QAbstractScrollArea,
                              QWidget, QFrame, QLayout, QComboBox, QListView, QStyledItemDelegate, QStyle, QLineEdit,
                              QGraphicsOpacityEffect, QStackedWidget, QCheckBox)
-from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QLinearGradient
+from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QLinearGradient, QImage
 from PyQt5.QtCore import (Qt, QRunnable, pyqtSignal, QObject, QThreadPool, 
                           QSize, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, QTimer, QVariantAnimation,
                           QSequentialAnimationGroup, QParallelAnimationGroup, QEvent)
@@ -47,6 +49,235 @@ else:
 PROJECT_ROOT = _base_path
 if os.path.basename(PROJECT_ROOT).lower() == 'launcher':
     PROJECT_ROOT = os.path.dirname(PROJECT_ROOT)
+
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+def _ms_since_last_input():
+    try:
+        lii = LASTINPUTINFO()
+        lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+        if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+            millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+            return max(0, millis)
+    except Exception:
+        pass
+    return 999999
+
+class IdleTask:
+    def __init__(self, gen, priority=2, key=None):
+        self.gen = gen
+        self.priority = priority
+        self.key = key
+
+class IdleScheduler(QObject):
+    BUDGET_MS = 10
+    _instance = None
+
+    @classmethod
+    def instance(cls):
+        if cls._instance is None:
+            cls._instance = IdleScheduler()
+        return cls._instance
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tasks = []
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._tick)
+
+    def submit(self, gen, priority=2, key=None):
+        task = IdleTask(gen, priority=priority, key=key)
+        self._tasks.append(task)
+        self._tasks.sort(key=lambda t: t.priority)
+        if not self._timer.isActive():
+            self._timer.start(0)
+        return task
+
+    def boost(self, key):
+        if not key:
+            return
+        boosted = False
+        for t in self._tasks:
+            if t.key == key:
+                t.priority = 0
+                boosted = True
+        if boosted:
+            self._tasks.sort(key=lambda t: t.priority)
+            if not self._timer.isActive():
+                self._timer.start(0)
+
+    def cancel(self, key):
+        if not key:
+            return
+        self._tasks = [t for t in self._tasks if t.key != key]
+        if not self._tasks and self._timer.isActive():
+            self._timer.stop()
+
+    def has_work(self):
+        return bool(self._tasks)
+
+    def _should_yield(self):
+        if AnimatedStackedWidget.active_count > 0:
+            return True
+        if QApplication.mouseButtons() != Qt.NoButton:
+            return True
+        top_prio = self._tasks[0].priority if self._tasks else 2
+        if top_prio >= 2 and _ms_since_last_input() < 120:
+            return True
+        return False
+
+    def _tick(self):
+        if not self._tasks:
+            return
+        if self._should_yield():
+            self._timer.start(35)
+            return
+
+        t0 = time.perf_counter()
+        while self._tasks:
+            if (time.perf_counter() - t0) * 1000.0 >= self.BUDGET_MS:
+                break
+            task = self._tasks[0]
+            try:
+                next(task.gen)
+                self._tasks.pop(0)
+                idx = len(self._tasks)
+                for i, other in enumerate(self._tasks):
+                    if other.priority > task.priority:
+                        idx = i
+                        break
+                self._tasks.insert(idx, task)
+            except StopIteration:
+                self._tasks.pop(0)
+            except Exception:
+                self._tasks.pop(0)
+
+        if self._tasks:
+            delay = 0 if (self._tasks and self._tasks[0].priority == 0) else 4
+            self._timer.start(delay)
+
+class _ImageJob(QRunnable):
+    def __init__(self, key, path, w, h, radius, disk_cache_path, callback):
+        super().__init__()
+        self.key = key
+        self.path = path
+        self.w = w
+        self.h = h
+        self.radius = radius
+        self.disk_cache_path = disk_cache_path
+        self.callback = callback
+        self.setAutoDelete(True)
+
+    def run(self):
+        try:
+            if self.disk_cache_path and os.path.exists(self.disk_cache_path):
+                img = QImage(self.disk_cache_path)
+                if not img.isNull():
+                    self.callback(self.key, img)
+                    return
+
+            if not os.path.exists(self.path):
+                self.callback(self.key, QImage())
+                return
+
+            src = QImage(self.path)
+            if src.isNull():
+                self.callback(self.key, QImage())
+                return
+
+            scaled = src.scaled(self.w, self.h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            out_img = QImage(scaled.size(), QImage.Format_ARGB32_Premultiplied)
+            out_img.fill(Qt.transparent)
+            p = QPainter(out_img)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            path = QPainterPath()
+            path.addRoundedRect(0, 0, scaled.width(), scaled.height(), self.radius, self.radius)
+            p.setClipPath(path)
+            p.drawImage(0, 0, scaled)
+            p.end()
+
+            if self.disk_cache_path:
+                try:
+                    os.makedirs(os.path.dirname(self.disk_cache_path), exist_ok=True)
+                    out_img.save(self.disk_cache_path, "PNG")
+                except Exception:
+                    pass
+
+            self.callback(self.key, out_img)
+        except Exception:
+            self.callback(self.key, QImage())
+
+class _ImagePipelineBridge(QObject):
+    image_ready = pyqtSignal(str, QImage)
+
+class ImagePipeline(QObject):
+    _instance = None
+
+    @classmethod
+    def instance(cls):
+        if cls._instance is None:
+            cls._instance = ImagePipeline()
+        return cls._instance
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pool = QThreadPool()
+        self.pool.setMaxThreadCount(2)
+        self._bridge = _ImagePipelineBridge()
+        self._bridge.image_ready.connect(self._on_image_ready)
+        self._mem_cache = OrderedDict()
+        self._callbacks = {}
+        self._pending = set()
+        self._cache_dir = os.path.join(PROJECT_ROOT, 'cache', 'thumbs')
+
+    def request(self, key, path, w, h, radius=12, callback=None):
+        norm_key = f"{key}_{w}x{h}_r{radius}"
+        if norm_key in self._mem_cache:
+            self._mem_cache.move_to_end(norm_key)
+            if callback:
+                callback(self._mem_cache[norm_key])
+            return self._mem_cache[norm_key]
+
+        if callback:
+            if norm_key not in self._callbacks:
+                self._callbacks[norm_key] = []
+            self._callbacks[norm_key].append(callback)
+
+        if norm_key in self._pending:
+            return None
+        self._pending.add(norm_key)
+
+        mtime = 0
+        try:
+            if path and os.path.exists(path):
+                mtime = os.path.getmtime(path)
+        except Exception:
+            pass
+
+        hsh = hashlib.sha1(f"{path}:{mtime}:{w}:{h}:{radius}".encode('utf-8')).hexdigest()
+        disk_cache_path = os.path.join(self._cache_dir, f"{hsh}.png")
+
+        job = _ImageJob(norm_key, path, w, h, radius, disk_cache_path, self._bridge.image_ready.emit)
+        self.pool.start(job)
+        return None
+
+    def _on_image_ready(self, norm_key, qimage):
+        self._pending.discard(norm_key)
+        pix = QPixmap.fromImage(qimage) if not qimage.isNull() else QPixmap()
+        if not pix.isNull():
+            if len(self._mem_cache) >= 128:
+                self._mem_cache.popitem(last=False)
+            self._mem_cache[norm_key] = pix
+
+        callbacks = self._callbacks.pop(norm_key, [])
+        for cb in callbacks:
+            try:
+                cb(pix)
+            except Exception:
+                pass
 
 @functools.lru_cache(maxsize=512)
 def resource_path(relative_path):
@@ -1321,6 +1552,290 @@ def restore_open_with_once(project_root, cache_dir):
         return False
 
 
+class _COMGUID(ctypes.Structure):
+    _fields_ = [
+        ('Data1', wintypes.DWORD),
+        ('Data2', wintypes.WORD),
+        ('Data3', wintypes.WORD),
+        ('Data4', ctypes.c_ubyte * 8),
+    ]
+
+    def __init__(self, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8):
+        super().__init__(l, w1, w2, (ctypes.c_ubyte * 8)(b1, b2, b3, b4, b5, b6, b7, b8))
+
+
+_CLSID_ShellLink = _COMGUID(0x00021401, 0x0000, 0x0000, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+_IID_IShellLinkW = _COMGUID(0x000214F9, 0x0000, 0x0000, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+_IID_IPersistFile = _COMGUID(0x0000010B, 0x0000, 0x0000, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+
+
+def _get_shortcut_info(lnk_path):
+    """Returns (target_path, work_dir) of an existing .lnk file via COM IShellLinkW."""
+    if os.name != 'nt' or not os.path.isfile(lnk_path):
+        return '', ''
+    ole32 = ctypes.windll.ole32
+    co_hr = -1
+    psl = ctypes.c_void_p()
+    ppf = ctypes.c_void_p()
+    ReleaseSL = None
+    ReleasePF = None
+    try:
+        co_hr = ole32.CoInitialize(None)
+        hr = ole32.CoCreateInstance(
+            ctypes.byref(_CLSID_ShellLink), None, 1,
+            ctypes.byref(_IID_IShellLinkW), ctypes.byref(psl)
+        )
+        if hr < 0 or not psl.value:
+            return '', ''
+        vtbl_sl = ctypes.cast(ctypes.cast(psl, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        QI = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(_COMGUID), ctypes.POINTER(ctypes.c_void_p))(vtbl_sl[0])
+        ReleaseSL = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl_sl[2])
+        GetPath = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPWSTR, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD)(vtbl_sl[3])
+        GetWorkDir = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPWSTR, ctypes.c_int)(vtbl_sl[8])
+
+        hr2 = QI(psl, ctypes.byref(_IID_IPersistFile), ctypes.byref(ppf))
+        if hr2 < 0 or not ppf.value:
+            return '', ''
+        vtbl_pf = ctypes.cast(ctypes.cast(ppf, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        ReleasePF = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl_pf[2])
+        Load = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, wintypes.DWORD)(vtbl_pf[5])
+
+        if Load(ppf, os.path.abspath(lnk_path), 0) < 0:
+            return '', ''
+
+        target_buf = ctypes.create_unicode_buffer(1024)
+        work_buf = ctypes.create_unicode_buffer(1024)
+        GetPath(psl, target_buf, 1024, None, 0)
+        GetWorkDir(psl, work_buf, 1024)
+        return target_buf.value.strip(), work_buf.value.strip()
+    except Exception:
+        return '', ''
+    finally:
+        if ppf.value and ReleasePF:
+            try: ReleasePF(ppf)
+            except Exception: pass
+        if psl.value and ReleaseSL:
+            try: ReleaseSL(psl)
+            except Exception: pass
+        if co_hr in (0, 1):
+            try: ole32.CoUninitialize()
+            except Exception: pass
+
+
+def _save_shortcut(lnk_path, target_path, work_dir, icon_path, description='iMA Menu'):
+    """Creates or overwrites a .lnk shortcut via COM IShellLinkW + IPersistFile."""
+    if os.name != 'nt':
+        return False
+    ole32 = ctypes.windll.ole32
+    co_hr = -1
+    psl = ctypes.c_void_p()
+    ppf = ctypes.c_void_p()
+    ReleaseSL = None
+    ReleasePF = None
+    try:
+        co_hr = ole32.CoInitialize(None)
+        parent_dir = os.path.dirname(os.path.abspath(lnk_path))
+        if not os.path.isdir(parent_dir):
+            os.makedirs(parent_dir, exist_ok=True)
+
+        hr = ole32.CoCreateInstance(
+            ctypes.byref(_CLSID_ShellLink), None, 1,
+            ctypes.byref(_IID_IShellLinkW), ctypes.byref(psl)
+        )
+        if hr < 0 or not psl.value:
+            return False
+        vtbl_sl = ctypes.cast(ctypes.cast(psl, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        QI = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(_COMGUID), ctypes.POINTER(ctypes.c_void_p))(vtbl_sl[0])
+        ReleaseSL = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl_sl[2])
+        SetDesc = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl_sl[7])
+        SetWorkDir = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl_sl[9])
+        SetArgs = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl_sl[11])
+        SetShowCmd = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int)(vtbl_sl[15])
+        SetIcon = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.c_int)(vtbl_sl[17])
+        SetPath = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl_sl[20])
+
+        hr2 = QI(psl, ctypes.byref(_IID_IPersistFile), ctypes.byref(ppf))
+        if hr2 < 0 or not ppf.value:
+            return False
+        vtbl_pf = ctypes.cast(ctypes.cast(ppf, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        ReleasePF = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl_pf[2])
+        Save = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.LPCWSTR, wintypes.BOOL)(vtbl_pf[6])
+
+        SetPath(psl, target_path)
+        SetWorkDir(psl, work_dir)
+        SetArgs(psl, '')
+        SetDesc(psl, description)
+        SetShowCmd(psl, 1)
+        if icon_path and os.path.isfile(icon_path):
+            SetIcon(psl, icon_path, 0)
+
+        save_hr = Save(ppf, os.path.abspath(lnk_path), True)
+        return save_hr >= 0 and os.path.isfile(lnk_path)
+    except Exception:
+        return False
+    finally:
+        if ppf.value and ReleasePF:
+            try: ReleasePF(ppf)
+            except Exception: pass
+        if psl.value and ReleaseSL:
+            try: ReleaseSL(psl)
+            except Exception: pass
+        if co_hr in (0, 1):
+            try: ole32.CoUninitialize()
+            except Exception: pass
+
+
+def ensure_start_menu_shortcut(project_root, app_base_path=None):
+    """Silently ensures the Start Menu 'iMA Menu' shortcut exists and points to launcher.exe,
+    replacing any legacy Start Menu shortcut pointing to shell.exe without touching shell.exe or renaming launcher.exe.
+    """
+    if os.name != 'nt':
+        return False
+    ole32 = ctypes.windll.ole32
+    co_init_hr = -1
+    try:
+        co_init_hr = ole32.CoInitialize(None)
+        if not app_base_path:
+            app_base_path = os.path.join(project_root, 'Launcher')
+
+        launcher_exe = os.path.join(app_base_path, 'launcher.exe')
+        if not os.path.isfile(launcher_exe):
+            launcher_exe = os.path.join(project_root, 'Launcher', 'launcher.exe')
+        if not os.path.isfile(launcher_exe) and getattr(sys, 'frozen', False):
+            if os.path.basename(sys.executable).lower() == 'launcher.exe':
+                launcher_exe = os.path.abspath(sys.executable)
+        if not os.path.isfile(launcher_exe):
+            return False
+
+        launcher_exe = os.path.abspath(launcher_exe)
+        work_dir = os.path.dirname(launcher_exe)
+        norm_launcher = os.path.normcase(os.path.normpath(launcher_exe))
+        norm_workdir = os.path.normcase(os.path.normpath(work_dir))
+
+        common_programs = os.path.join(
+            os.environ.get('ProgramData', r'C:\ProgramData'),
+            r'Microsoft\Windows\Start Menu\Programs'
+        )
+        user_programs = os.path.join(
+            os.environ.get('APPDATA', ''),
+            r'Microsoft\Windows\Start Menu\Programs'
+        )
+
+        def _is_valid_launcher_lnk(path):
+            if not os.path.isfile(path):
+                return False
+            tgt, wd = _get_shortcut_info(path)
+            if not tgt:
+                return False
+            return (
+                os.path.normcase(os.path.normpath(tgt)) == norm_launcher
+                and os.path.normcase(os.path.normpath(wd)) == norm_workdir
+            )
+
+        def _is_shell_or_stale_ima_lnk(path):
+            if not os.path.isfile(path):
+                return False
+            name_low = os.path.basename(path).lower()
+            if 'uninstall' in name_low:
+                return False
+            tgt, _ = _get_shortcut_info(path)
+            tgt_low = os.path.basename(tgt).lower() if tgt else ''
+            return name_low == 'ima menu.lnk' or tgt_low == 'shell.exe'
+
+        modified = False
+        common_ensured = False
+
+        # 1. Inspect and update/replace Common Start Menu shortcuts (ProgramData)
+        if os.path.isdir(common_programs):
+            common_dir = os.path.join(common_programs, 'iMA Menu')
+            common_candidates = [
+                os.path.join(common_dir, 'iMA Menu.lnk'),
+                os.path.join(common_programs, 'iMA Menu.lnk'),
+            ]
+            if os.path.isdir(common_dir):
+                try:
+                    for fname in os.listdir(common_dir):
+                        if fname.lower().endswith('.lnk'):
+                            fpath = os.path.join(common_dir, fname)
+                            if fpath not in common_candidates and _is_shell_or_stale_ima_lnk(fpath):
+                                common_candidates.append(fpath)
+                except Exception:
+                    pass
+
+            primary_common_lnk = os.path.join(common_dir, 'iMA Menu.lnk')
+            for c_lnk in common_candidates:
+                if not os.path.isfile(c_lnk):
+                    continue
+                if c_lnk == primary_common_lnk and _is_valid_launcher_lnk(c_lnk):
+                    common_ensured = True
+                    continue
+                if _is_shell_or_stale_ima_lnk(c_lnk):
+                    if c_lnk == primary_common_lnk:
+                        if _save_shortcut(primary_common_lnk, launcher_exe, work_dir, launcher_exe, 'iMA Menu'):
+                            common_ensured = True
+                            modified = True
+                        else:
+                            try:
+                                os.remove(c_lnk)
+                                modified = True
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            os.remove(c_lnk)
+                            modified = True
+                        except Exception:
+                            if not common_ensured and _save_shortcut(c_lnk, launcher_exe, work_dir, launcher_exe, 'iMA Menu'):
+                                common_ensured = True
+                                modified = True
+
+            if not common_ensured and os.path.isdir(common_dir) and not os.path.isfile(primary_common_lnk):
+                if _save_shortcut(primary_common_lnk, launcher_exe, work_dir, launcher_exe, 'iMA Menu'):
+                    common_ensured = True
+                    modified = True
+
+        # 2. Inspect and ensure User Start Menu shortcuts (APPDATA)
+        if user_programs and os.path.isdir(os.path.dirname(user_programs)):
+            user_dir = os.path.join(user_programs, 'iMA Menu')
+            primary_user_lnk = os.path.join(user_dir, 'iMA Menu.lnk')
+            root_user_lnk = os.path.join(user_programs, 'iMA Menu.lnk')
+
+            if os.path.isfile(root_user_lnk) and _is_shell_or_stale_ima_lnk(root_user_lnk):
+                try:
+                    os.remove(root_user_lnk)
+                    modified = True
+                except Exception:
+                    pass
+
+            if common_ensured:
+                # Avoid duplicate Start Menu entries if Common Start Menu shortcut is already active
+                if os.path.isfile(primary_user_lnk):
+                    try:
+                        os.remove(primary_user_lnk)
+                        modified = True
+                    except Exception:
+                        pass
+            else:
+                if not _is_valid_launcher_lnk(primary_user_lnk):
+                    if _save_shortcut(primary_user_lnk, launcher_exe, work_dir, launcher_exe, 'iMA Menu'):
+                        modified = True
+
+        if modified:
+            try:
+                ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+    finally:
+        if co_init_hr in (0, 1):
+            try:
+                ole32.CoUninitialize()
+            except Exception:
+                pass
+
+
 def terminate_plugin_processes(directory):
     if not directory or not os.path.exists(directory):
         return
@@ -1395,8 +1910,10 @@ def send_ipc_command(cmd_string):
             hwnd = user32.FindWindowW("Shell_TrayWnd", None)
             if hwnd:
                 user32.SendMessageTimeoutW(hwnd, msg_id, 1, 0, SMTO_ABORTIFHUNG, 1000, None)
-                return True
-            return False
+            blink_hwnd = user32.FindWindowW(None, "BlinkTrayHost")
+            if blink_hwnd:
+                user32.SendMessageTimeoutW(blink_hwnd, msg_id, 1, 0, SMTO_ABORTIFHUNG, 1000, None)
+            return True
 
         hwnd = user32.FindWindowExW(HWND_MESSAGE, 0, "iMA_IPC_Class", "iMA_IPC_Window")
         if not hwnd:
@@ -1771,16 +2288,44 @@ class FlowLayout(QLayout):
             self.setContentsMargins(margin, margin, margin, margin)
         self.setSpacing(spacing)
         self.itemList = []
+        self._gen = 0
+        self._hfw_cache = {}
+        self._batch = False
 
-    def addItem(self, item): self.itemList.append(item)
+    def addItem(self, item):
+        self.itemList.append(item)
+        self._gen += 1
+        if not self._batch:
+            self._hfw_cache.clear()
+
     def count(self): return len(self.itemList)
     def itemAt(self, index): return self.itemList[index] if 0 <= index < len(self.itemList) else None
-    def takeAt(self, index): return self.itemList.pop(index) if 0 <= index < len(self.itemList) else None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            self._gen += 1
+            if not self._batch:
+                self._hfw_cache.clear()
+            return self.itemList.pop(index)
+        return None
+
     def expandingDirections(self): return Qt.Orientations(Qt.Orientation(0))
     def hasHeightForWidth(self): return True
-    def heightForWidth(self, width): return self.doLayout(QRect(0, 0, width, 0), True)
-    def setGeometry(self, rect): super().setGeometry(rect); self.doLayout(rect, False)
+
+    def heightForWidth(self, width):
+        cached = self._hfw_cache.get(width)
+        if cached is not None:
+            return cached
+        h = self.doLayout(QRect(0, 0, width, 0), True)
+        self._hfw_cache[width] = h
+        return h
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self.doLayout(rect, False)
+
     def sizeHint(self): return self.minimumSize()
+
     def minimumSize(self):
         size = QSize()
         for item in self.itemList:
@@ -1789,6 +2334,15 @@ class FlowLayout(QLayout):
                 size = size.expandedTo(item.minimumSize())
         m = self.contentsMargins()
         return size + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def begin_batch(self):
+        self._batch = True
+
+    def end_batch(self):
+        self._batch = False
+        self._gen += 1
+        self._hfw_cache.clear()
+        self.invalidate()
 
     def doLayout(self, rect, testOnly):
         x = rect.x(); y = rect.y(); lineHeight = 0
@@ -3104,6 +3658,30 @@ class PillTabButton(QPushButton):
             p.setPen(text_color)
             p.drawText(self.rect(), Qt.AlignCenter, txt)
 
+        if getattr(self, '_dot_t', 0.0) > 0.001:
+            from new_badge import paint_dot
+            paint_dot(p, QPointF(self.width() - 9, 8), self._dot_t)
+
+    def set_dot(self, on: bool):
+        if getattr(self, '_has_dot', False) == on:
+            return
+        self._has_dot = on
+        if not hasattr(self, '_dot_t'):
+            self._dot_t = 0.0
+        if getattr(self, '_dot_anim', None):
+            self._dot_anim.stop()
+        self._dot_anim = QVariantAnimation(self)
+        self._dot_anim.setDuration(200)
+        self._dot_anim.setStartValue(self._dot_t)
+        self._dot_anim.setEndValue(1.0 if on else 0.0)
+        self._dot_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._dot_anim.valueChanged.connect(self._on_dot_anim)
+        self._dot_anim.start()
+
+    def _on_dot_anim(self, val):
+        self._dot_t = float(val)
+        self.update()
+
 
 class PillNotification(QWidget):
     """
@@ -3447,6 +4025,7 @@ class SlideFadeCanvas(QWidget):
         self.offset = offset
         self.progress = 0.0
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setGeometry(0, 0, parent.width(), parent.height())
 
     def set_progress(self, val):
@@ -3456,7 +4035,6 @@ class SlideFadeCanvas(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
-        p.fillRect(self.rect(), QColor(18, 18, 18))
         prog = self.progress
 
         if self.direction_left:
@@ -3474,13 +4052,13 @@ class SlideFadeCanvas(QWidget):
         new_alpha = min(1.0, prog * 1.4)
         if new_alpha > 0.005 and not self.new_pixmap.isNull():
             p.setOpacity(new_alpha)
-            new_rect = QRect(new_x, 0, self.new_pixmap.width(), self.new_pixmap.height())
-            p.fillRect(new_rect, QColor(18, 18, 18))
             p.drawPixmap(new_x, 0, self.new_pixmap)
 
 
 class AnimatedStackedWidget(QStackedWidget):
-    def __init__(self, parent=None, duration=240, offset=70):
+    active_count = 0
+
+    def __init__(self, parent=None, duration=200, offset=70):
         super().__init__(parent)
         self.duration = duration
         self.offset = offset
@@ -3521,6 +4099,8 @@ class AnimatedStackedWidget(QStackedWidget):
             except (RuntimeError, Exception):
                 pass
             self._canvas = None
+            if self._animating:
+                AnimatedStackedWidget.active_count = max(0, AnimatedStackedWidget.active_count - 1)
             self._animating = False
 
         self._target_idx = next_idx
@@ -3559,6 +4139,7 @@ class AnimatedStackedWidget(QStackedWidget):
         anim.valueChanged.connect(self._canvas.set_progress)
 
         self._animating = True
+        AnimatedStackedWidget.active_count += 1
 
         def _cleanup():
             if self._canvas is not None:
@@ -3570,6 +4151,8 @@ class AnimatedStackedWidget(QStackedWidget):
                     pass
                 self._canvas = None
             self._anim = None
+            if self._animating:
+                AnimatedStackedWidget.active_count = max(0, AnimatedStackedWidget.active_count - 1)
             self._animating = False
             self._target_idx = None
 
@@ -3763,6 +4346,302 @@ def is_recently_updated(timestamp_or_str, hours=24):
         return -3600 <= diff <= (hours * 3600)
     except Exception:
         return False
+
+
+def _format_iso_datetime(iso_str):
+    if not iso_str:
+        return "Unknown"
+    try:
+        from datetime import datetime
+        val = iso_str.rstrip('Z') + '+00:00' if iso_str.endswith('Z') else iso_str
+        dt = datetime.fromisoformat(val).astimezone()
+        return dt.strftime("%b %d, %Y • %I:%M %p")
+    except Exception:
+        return str(iso_str)
+
+
+def _format_size_bytes(size_bytes):
+    if size_bytes is None:
+        return "Unknown"
+    try:
+        kb = int(size_bytes) / 1024.0
+        if kb >= 1024.0:
+            return f"{kb / 1024.0:.2f} MB"
+        return f"{kb:.1f} KB"
+    except Exception:
+        return str(size_bytes)
+
+
+class CloudBackupConfirmDialog(QDialog):
+    def __init__(self, cloud_info, parent=None):
+        super().__init__(parent)
+        self.cloud_info = cloud_info or {}
+        self.confirmed = False
+        self.setMinimumWidth(480)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.mf = QFrame(self)
+        self.mf.setObjectName("backupConfirmFrame")
+        self.mf.setStyleSheet("#backupConfirmFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mf)
+
+        cl = QVBoxLayout(self.mf)
+        cl.setContentsMargins(28, 26, 28, 26)
+        cl.setSpacing(16)
+
+        head = QLabel("Existing Cloud Backup Found")
+        head.setFont(QFont("Google Sans", 16, QFont.Bold))
+        head.setStyleSheet("font-size: 19px; font-weight: bold; color: white; border: none; background: transparent;")
+        cl.addWidget(head)
+
+        desc = QLabel("A backup is already saved in your Google Drive app data. Backing up now will overwrite it with your current local settings.")
+        desc.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
+        desc.setWordWrap(True)
+        cl.addWidget(desc)
+
+        card = QFrame()
+        card.setStyleSheet("QFrame { background: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); }")
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(16, 14, 16, 14)
+        card_lay.setSpacing(6)
+
+        time_display = _format_iso_datetime(self.cloud_info.get('modifiedTime'))
+        size_display = _format_size_bytes(self.cloud_info.get('size'))
+
+        t_lbl = QLabel(f"Cloud Backup Date: <b style='color: white;'>{time_display}</b>")
+        t_lbl.setStyleSheet("color: #8caaee; font-size: 12px; border: none; background: transparent;")
+        card_lay.addWidget(t_lbl)
+
+        s_lbl = QLabel(f"Archive Size: <b style='color: white;'>{size_display}</b>")
+        s_lbl.setStyleSheet("color: #8caaee; font-size: 12px; border: none; background: transparent;")
+        card_lay.addWidget(s_lbl)
+
+        cl.addWidget(card)
+
+        warn_lbl = QLabel("Are you sure you want to proceed and overwrite this cloud backup?")
+        warn_lbl.setStyleSheet("color: #ea999c; font-size: 12px; font-weight: bold; border: none; background: transparent;")
+        cl.addWidget(warn_lbl)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(12)
+        btns.addStretch()
+
+        cancel_btn = PillPushButton("Cancel", "secondary", height=34)
+        cancel_btn.setFixedWidth(100)
+        cancel_btn.clicked.connect(self.reject)
+        btns.addWidget(cancel_btn)
+
+        confirm_btn = PillPushButton("Overwrite Backup", "backup", height=34)
+        confirm_btn.setFixedWidth(150)
+        confirm_btn.clicked.connect(self._on_confirm)
+        btns.addWidget(confirm_btn)
+
+        cl.addLayout(btns)
+
+    def _on_confirm(self):
+        self.confirmed = True
+        self.accept()
+
+
+class CloudBackupHistoryDialog(QDialog):
+    revisions_loaded = pyqtSignal(dict)
+
+    def __init__(self, sync_manager, parent=None):
+        super().__init__(parent)
+        self.sync_manager = sync_manager
+        self.selected_revision_id = None
+        self.selected_is_latest = False
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(480)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.cards = []
+        self.revisions_loaded.connect(self._on_revisions_loaded)
+        self.setup_ui()
+        QTimer.singleShot(60, self.load_revisions)
+
+    def setup_ui(self):
+        self.mf = QFrame(self)
+        self.mf.setObjectName("historyMainFrame")
+        self.mf.setStyleSheet("#historyMainFrame { background-color: #121212; border: 1px solid #2a2a30; border-radius: 20px; }")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mf)
+
+        self.cl = QVBoxLayout(self.mf)
+        self.cl.setContentsMargins(26, 24, 26, 24)
+        self.cl.setSpacing(14)
+
+        top_lay = QHBoxLayout()
+        head = QLabel("Cloud Backup History")
+        head.setFont(QFont("Google Sans", 16, QFont.Bold))
+        head.setStyleSheet("font-size: 19px; font-weight: bold; color: white; border: none; background: transparent;")
+        top_lay.addWidget(head)
+        top_lay.addStretch()
+
+        close_btn = QPushButton("\uE711")
+        close_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+        close_btn.setFixedSize(28, 28)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setStyleSheet("QPushButton { background: rgba(255,255,255,0.06); border-radius: 14px; border: none; color: #a6adc8; } QPushButton:hover { background: rgba(234, 153, 156, 0.25); color: #ea999c; }")
+        close_btn.clicked.connect(self.reject)
+        top_lay.addWidget(close_btn)
+        self.cl.addLayout(top_lay)
+
+        desc = QLabel("Select any previous backup version from Google Drive to restore. Older versions are kept for up to 30 days.")
+        desc.setStyleSheet("color: #b0b0b0; font-size: 12px; border: none; background: transparent;")
+        desc.setWordWrap(True)
+        self.cl.addWidget(desc)
+
+        self.status_lbl = QLabel("Fetching backup revisions from Google Drive...")
+        self.status_lbl.setStyleSheet("color: #8caaee; font-size: 13px; font-weight: bold; border: none; background: transparent; padding: 30px;")
+        self.status_lbl.setAlignment(Qt.AlignCenter)
+        self.cl.addWidget(self.status_lbl)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.hide()
+
+        self.scroll_widget = QWidget()
+        self.scroll_widget.setStyleSheet("background: transparent;")
+        self.scroll_lay = QVBoxLayout(self.scroll_widget)
+        self.scroll_lay.setSpacing(8)
+        self.scroll_lay.setContentsMargins(0, 4, 0, 4)
+        self.scroll_lay.setAlignment(Qt.AlignTop)
+        self.scroll.setWidget(self.scroll_widget)
+        self.cl.addWidget(self.scroll, 1)
+
+        self.bottom_lay = QHBoxLayout()
+        self.bottom_lay.setSpacing(10)
+        self.bottom_lay.addStretch()
+
+        self.cancel_btn = PillPushButton("Cancel", "secondary", height=34)
+        self.cancel_btn.setFixedWidth(100)
+        self.cancel_btn.clicked.connect(self.reject)
+        self.bottom_lay.addWidget(self.cancel_btn)
+
+        self.restore_btn = PillPushButton("Restore Revision", "restore", height=34)
+        self.restore_btn.setFixedWidth(150)
+        self.restore_btn.setEnabled(False)
+        self.restore_btn.clicked.connect(self._on_restore_clicked)
+        self.bottom_lay.addWidget(self.restore_btn)
+
+        self.cl.addLayout(self.bottom_lay)
+
+    def load_revisions(self):
+        import threading
+        threading.Thread(target=self._worker_load, daemon=True).start()
+
+    def _worker_load(self):
+        try:
+            res = self.sync_manager.get_backup_revisions()
+        except Exception as e:
+            res = {"success": False, "error": str(e)}
+        self.revisions_loaded.emit(res)
+
+    def _on_revisions_loaded(self, res):
+        if not res.get("success"):
+            err = res.get("error", "No backups found.")
+            self.status_lbl.setText(f"Unable to load revisions: {err}")
+            self.status_lbl.setStyleSheet("color: #ea999c; font-size: 12px; padding: 20px;")
+            return
+
+        revisions = res.get("revisions", [])
+        if not revisions:
+            self.status_lbl.setText("No backup revisions found in Google Drive.")
+            return
+
+        self.status_lbl.hide()
+        self.scroll.show()
+
+        rev_list = list(reversed(revisions))
+        total = len(rev_list)
+
+        for i, rev in enumerate(rev_list):
+            rev_id = rev.get("id")
+            mtime_raw = rev.get("modifiedTime", "")
+            size_raw = rev.get("size")
+            is_latest = (i == 0)
+
+            time_display = _format_iso_datetime(mtime_raw)
+            size_display = _format_size_bytes(size_raw)
+
+            card = QFrame()
+            card.setCursor(Qt.PointingHandCursor)
+            card.setProperty("rev_id", rev_id)
+            card.setProperty("is_latest", is_latest)
+
+            c_lay = QHBoxLayout(card)
+            c_lay.setContentsMargins(14, 10, 14, 10)
+            c_lay.setSpacing(12)
+
+            badge = QLabel("LATEST" if is_latest else f"REV #{total - i}")
+            badge.setFont(QFont("Google Sans", 9, QFont.Bold))
+            if is_latest:
+                badge.setStyleSheet("color: #60F2A5; background: rgba(96, 242, 165, 0.15); border-radius: 6px; padding: 4px 8px; font-weight: bold;")
+            elif i == 1:
+                badge.setStyleSheet("color: #8caaee; background: rgba(140, 170, 238, 0.18); border-radius: 6px; padding: 4px 8px; font-weight: bold;")
+            else:
+                badge.setStyleSheet("color: #b0b0b0; background: rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 4px 8px; font-weight: bold;")
+            c_lay.addWidget(badge)
+
+            info_lay = QVBoxLayout()
+            info_lay.setSpacing(2)
+            time_lbl = QLabel(time_display)
+            time_lbl.setFont(QFont("Google Sans", 11, QFont.Bold))
+            time_lbl.setStyleSheet("color: white; font-weight: bold; border: none; background: transparent;")
+            info_lay.addWidget(time_lbl)
+
+            detail_text = f"Archive Size: {size_display}"
+            if is_latest:
+                detail_text += " • Current active backup"
+            elif i == 1:
+                detail_text += " • Previous backup"
+            detail_lbl = QLabel(detail_text)
+            detail_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; border: none; background: transparent;")
+            info_lay.addWidget(detail_lbl)
+            c_lay.addLayout(info_lay, 1)
+
+            check_mark = QLabel("")
+            check_mark.setFont(QFont("Segoe MDL2 Assets", 12))
+            check_mark.setStyleSheet("color: #60F2A5; border: none; background: transparent;")
+            c_lay.addWidget(check_mark)
+            card.check_mark = check_mark
+
+            def make_click_handler(c=card, rid=rev_id, lat=is_latest):
+                return lambda ev: self._select_card(c, rid, lat)
+            card.mousePressEvent = make_click_handler()
+
+            self.cards.append(card)
+            self.scroll_lay.addWidget(card)
+
+        if self.cards:
+            first = self.cards[0]
+            self._select_card(first, first.property("rev_id"), first.property("is_latest"))
+
+    def _select_card(self, selected_card, rev_id, is_latest):
+        self.selected_revision_id = rev_id
+        self.selected_is_latest = is_latest
+        self.restore_btn.setEnabled(True)
+
+        for card in self.cards:
+            if card is selected_card:
+                card.setStyleSheet("QFrame { background: rgba(93, 156, 235, 0.16); border-radius: 12px; border: 1.5px solid #5D9CEB; }")
+                card.check_mark.setText("\uE73E")
+            else:
+                card.setStyleSheet("QFrame { background: rgba(255, 255, 255, 0.04); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.06); } QFrame:hover { background: rgba(255, 255, 255, 0.08); }")
+                card.check_mark.setText("")
+
+    def _on_restore_clicked(self):
+        if self.selected_revision_id:
+            self.accept()
 
 
 
