@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QL
                              QUndoStack, QUndoCommand, QScrollArea, QAbstractScrollArea,
                              QWidget, QFrame, QLayout, QComboBox, QListView, QStyledItemDelegate, QStyle, QLineEdit,
                              QGraphicsOpacityEffect, QStackedWidget, QCheckBox)
-from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QLinearGradient, QImage
+from PyQt5.QtGui import QPainter, QColor, QFont, QIcon, QPixmap, QFontDatabase, QPainterPath, QPen, QFontMetrics, QLinearGradient, QImage, QImageReader
 from PyQt5.QtCore import (Qt, QRunnable, pyqtSignal, QObject, QThreadPool, 
                           QSize, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, QTimer, QVariantAnimation,
                           QSequentialAnimationGroup, QParallelAnimationGroup, QEvent)
@@ -516,6 +516,56 @@ def init_app_fonts():
     except Exception:
         pass
 
+    install_native_tooltip_filter()
+
+
+_native_tooltip_filter_instance = None
+
+
+def style_native_tooltip_window(obj):
+    """Apply native Windows 11 DWM rounded corners and clear legacy QRegion masks on tooltips."""
+    if obj is None:
+        return
+    try:
+        is_tip = (obj.metaObject().className() == 'QTipLabel') or (
+            type(obj).__name__ == 'QLabel' and bool(obj.windowFlags() & Qt.ToolTip)
+        )
+        if not is_tip:
+            return
+        if obj.testAttribute(Qt.WA_TranslucentBackground):
+            obj.setAttribute(Qt.WA_TranslucentBackground, False)
+        obj.clearMask()
+        if os.name == 'nt':
+            hwnd = int(obj.winId())
+            if hwnd:
+                ctypes.windll.user32.SetWindowRgn(hwnd, 0, True)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 33, ctypes.byref(ctypes.c_int(3)), 4
+                )
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 34, ctypes.byref(ctypes.c_int(0x00483a36)), 4
+                )
+    except Exception:
+        pass
+
+
+class _NativeTooltipEventFilter(QObject):
+    def eventFilter(self, obj, event):
+        if event.type() in (QEvent.Show, QEvent.Resize, QEvent.Polish):
+            style_native_tooltip_window(obj)
+        return False
+
+
+def install_native_tooltip_filter(app=None):
+    """Install a single global QApplication filter for native Windows 11 tooltip rendering."""
+    global _native_tooltip_filter_instance
+    target_app = app or QApplication.instance()
+    if not target_app:
+        return
+    if _native_tooltip_filter_instance is None:
+        _native_tooltip_filter_instance = _NativeTooltipEventFilter(target_app)
+        target_app.installEventFilter(_native_tooltip_filter_instance)
+
 def get_supported_theme_fonts():
     """Returns a curated list of priority modern/Arabic/Windows fonts + clean installed system fonts."""
     init_app_fonts()
@@ -631,6 +681,8 @@ _font_icon_cache = {}
 _mdl2_icon_cache = {}
 
 def get_font_icon(glyph, size=32, color='#ffffff', font_family=None):
+    if isinstance(glyph, int):
+        glyph = chr(glyph)
     _init_nilesoft_font()
     family = font_family or NILESOFT_FONT_FAMILY
     cache_key = (glyph, size, color, family)
@@ -1986,30 +2038,30 @@ def trigger_shell_reload(close_only=False, **kwargs):
         if tray: user32.PostMessageW(tray, WM_COMMAND, 28931, 0)
     except: pass
 
-def get_shell_dll_version():
-    try:
+def resolve_shell_root(exe_dir=None):
+    if not exe_dir:
         if getattr(sys, 'frozen', False):
             exe_dir = os.path.dirname(os.path.abspath(sys.executable))
         else:
             exe_dir = os.path.dirname(os.path.abspath(__file__))
-            
-        root = exe_dir
-        for _ in range(4):
-            if os.path.exists(os.path.join(root, 'shell.nss')): break
-            p = os.path.dirname(root)
-            if p == root: break
-            root = p
-        
-        if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
-            root = os.path.abspath(os.path.join(exe_dir, '..'))
 
-        dll_path = os.path.join(root, 'shell.dll')
-        if not os.path.exists(dll_path):
-            parent_dll = os.path.abspath(os.path.join(exe_dir, '..', 'shell.dll'))
-            if os.path.exists(parent_dll):
-                dll_path = parent_dll
-            else:
-                return (0, 0, 0, 0)
+    root = exe_dir
+    for _ in range(4):
+        if os.path.exists(os.path.join(root, 'shell.nss')):
+            break
+        p = os.path.dirname(root)
+        if p == root:
+            break
+        root = p
+
+    if not os.path.exists(os.path.join(root, 'shell.nss')) and os.path.basename(exe_dir).lower() == 'launcher':
+        root = os.path.abspath(os.path.join(exe_dir, '..'))
+    return root
+
+def get_pe_file_version(file_path):
+    try:
+        if not file_path or not os.path.exists(file_path):
+            return (0, 0, 0, 0)
 
         class VS_FIXEDFILEINFO(ctypes.Structure):
             _fields_ = [
@@ -2029,11 +2081,11 @@ def get_shell_dll_version():
             ]
 
         version_dll = ctypes.windll.version
-        size = version_dll.GetFileVersionInfoSizeW(dll_path, None)
+        size = version_dll.GetFileVersionInfoSizeW(file_path, None)
         if not size:
             return (0, 0, 0, 0)
         res = ctypes.create_string_buffer(size)
-        if not version_dll.GetFileVersionInfoW(dll_path, 0, size, res):
+        if not version_dll.GetFileVersionInfoW(file_path, 0, size, res):
             return (0, 0, 0, 0)
         ptr = ctypes.c_void_p()
         uLen = wintypes.UINT()
@@ -2045,6 +2097,63 @@ def get_shell_dll_version():
         return (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
     except Exception:
         return (0, 0, 0, 0)
+
+def get_shell_dll_version():
+    try:
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+
+        root = resolve_shell_root(exe_dir)
+        dll_path = os.path.join(root, 'shell.dll')
+        if not os.path.exists(dll_path):
+            parent_dll = os.path.abspath(os.path.join(exe_dir, '..', 'shell.dll'))
+            if os.path.exists(parent_dll):
+                dll_path = parent_dll
+            else:
+                return (0, 0, 0, 0)
+        return get_pe_file_version(dll_path)
+    except Exception:
+        return (0, 0, 0, 0)
+
+def _resolve_bundled_shell_binary(filename, exe_dir):
+    for candidate in (
+        resource_path(filename),
+        os.path.join(exe_dir, filename),
+        os.path.join(exe_dir, 'src', 'bin', filename),
+    ):
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return None
+
+def shell_core_needs_update():
+    try:
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+        root = resolve_shell_root(exe_dir)
+        target_dll = os.path.join(root, 'shell.dll')
+        target_exe = os.path.join(root, 'shell.exe')
+        if not (os.path.exists(target_dll) or os.path.exists(os.path.join(root, 'shell.nss'))):
+            return False, (0, 0, 0, 0), (0, 0, 0, 0)
+
+        inst_dll = get_pe_file_version(target_dll)
+        inst_exe = get_pe_file_version(target_exe)
+
+        bundled_dll_path = _resolve_bundled_shell_binary('shell.dll', exe_dir)
+        bundled_exe_path = _resolve_bundled_shell_binary('shell.exe', exe_dir)
+        if not bundled_dll_path or os.path.abspath(bundled_dll_path) == os.path.abspath(target_dll):
+            return False, inst_dll, inst_dll
+
+        bund_dll = get_pe_file_version(bundled_dll_path)
+        bund_exe = get_pe_file_version(bundled_exe_path) if bundled_exe_path else (0, 0, 0, 0)
+
+        needs_dll = bund_dll > (0, 0, 0, 0) and inst_dll < bund_dll
+        needs_exe = bund_exe > (0, 0, 0, 0) and inst_exe < bund_exe and (
+            not bundled_exe_path or os.path.abspath(bundled_exe_path) != os.path.abspath(target_exe)
+        )
+        return (needs_dll or needs_exe), inst_dll, bund_dll
+    except Exception:
+        return False, (0, 0, 0, 0), (0, 0, 0, 0)
 
 def restart_explorer():
     try:
@@ -2370,13 +2479,19 @@ class ModernSwitch(QWidget):
     stateChanged = pyqtSignal(bool)
     def __init__(self, parent=None, checked=False):
         super().__init__(parent); self.setFixedSize(50, 26); self._checked = checked; self._pos_val = 1.0 if checked else 0.0
-        self._anim = QPropertyAnimation(self, b"pos_val"); self._anim.setDuration(400); self._anim.setEasingCurve(QEasingCurve.OutBack)
+        self._anim = QPropertyAnimation(self, b"pos_val"); self._anim.setDuration(180); self._anim.setEasingCurve(QEasingCurve.OutCubic)
         self.setCursor(Qt.PointingHandCursor)
     @pyqtProperty(float)
     def pos_val(self): return self._pos_val
     @pos_val.setter
     def pos_val(self, v): self._pos_val = v; self.update()
-    def mousePressEvent(self, e): self._checked = not self._checked; self._anim.setStartValue(self._pos_val); self._anim.setEndValue(1.0 if self._checked else 0.0); self._anim.start(); self.stateChanged.emit(self._checked)
+    def mousePressEvent(self, e):
+        self._checked = not self._checked
+        self._anim.stop()
+        self._anim.setStartValue(self._pos_val)
+        self._anim.setEndValue(1.0 if self._checked else 0.0)
+        self._anim.start()
+        self.stateChanged.emit(self._checked)
     def isChecked(self): return self._checked
     def setChecked(self, v): self._checked = v; self._pos_val = 1.0 if v else 0.0; self.update()
     def paintEvent(self, e):
@@ -3524,45 +3639,53 @@ class ModernComboBox(QComboBox):
 
 
 def launch_shell_core_update(parent=None):
-    if getattr(sys, 'frozen', False):
-        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    else:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+    root = resolve_shell_root(exe_dir)
+    target_shell_dll = os.path.join(root, 'shell.dll')
+    target_shell_exe = os.path.join(root, 'shell.exe')
 
-    parent_dir = os.path.abspath(os.path.join(exe_dir, '..'))
-    target_shell_dll = os.path.join(parent_dir, 'shell.dll')
-    target_shell_exe = os.path.join(parent_dir, 'shell.exe')
-
-    bundled_shell = resource_path('shell.dll')
-    if not os.path.exists(bundled_shell):
-        bundled_shell = os.path.join(exe_dir, 'shell.dll')
-    if not os.path.exists(bundled_shell):
-        bundled_shell = os.path.join(exe_dir, 'src', 'bin', 'shell.dll')
-
-    if not os.path.exists(bundled_shell):
+    bundled_shell_dll = _resolve_bundled_shell_binary('shell.dll', exe_dir)
+    if not bundled_shell_dll:
         return False
 
-    temp_new_shell = os.path.join(tempfile.gettempdir(), 'shell_new.dll')
+    temp_dir = tempfile.gettempdir()
+    temp_new_shell = os.path.join(temp_dir, 'shell_new.dll')
     try:
-        shutil.copy2(bundled_shell, temp_new_shell)
+        shutil.copy2(bundled_shell_dll, temp_new_shell)
     except Exception:
-        pass
+        return False
+
+    bundled_shell_exe = _resolve_bundled_shell_binary('shell.exe', exe_dir)
+    temp_new_shell_exe = os.path.join(temp_dir, 'shell_new.exe')
+    has_new_exe = False
+    if bundled_shell_exe:
+        try:
+            shutil.copy2(bundled_shell_exe, temp_new_shell_exe)
+            has_new_exe = os.path.exists(temp_new_shell_exe)
+        except Exception:
+            pass
 
     updater_src = resource_path('ima_updater.exe')
-    temp_updater = os.path.join(tempfile.gettempdir(), 'ima_updater.exe')
+    temp_updater = os.path.join(temp_dir, 'ima_updater.exe')
     if os.path.exists(updater_src):
         try: shutil.copy2(updater_src, temp_updater)
         except Exception: pass
     elif os.path.exists(os.path.join(exe_dir, 'ima_updater.exe')):
         try: shutil.copy2(os.path.join(exe_dir, 'ima_updater.exe'), temp_updater)
         except Exception: pass
+    if not os.path.exists(temp_updater):
+        return False
 
     updater_args = f'--shell-only --new-shell "{temp_new_shell}" --target-shell "{target_shell_dll}" --shell-exe "{target_shell_exe}" --dir "{exe_dir}"'
+    if has_new_exe:
+        updater_args += f' --new-shell-exe "{temp_new_shell_exe}"'
 
     try:
+        is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
+        verb = None if is_admin else 'runas'
         ret = ctypes.windll.shell32.ShellExecuteW(
             None,
-            'runas',
+            verb,
             temp_updater,
             updater_args,
             exe_dir,
@@ -4642,6 +4765,353 @@ class CloudBackupHistoryDialog(QDialog):
     def _on_restore_clicked(self):
         if self.selected_revision_id:
             self.accept()
+
+
+class ChameleonEngine:
+    """Extracts dominant wallpaper colors and rewrites imports/theme.nss dynamically."""
+
+    @staticmethod
+    def get_wallpaper_path() -> str:
+        try:
+            buf = ctypes.create_unicode_buffer(512)
+            if ctypes.windll.user32.SystemParametersInfoW(0x0073, 512, buf, 0):
+                wp = (buf.value or "").strip()
+                if wp and os.path.isfile(wp):
+                    return wp
+        except Exception:
+            pass
+
+        appdata = os.getenv("APPDATA", "")
+        if appdata:
+            themes_dir = os.path.join(appdata, "Microsoft", "Windows", "Themes")
+            transcoded = os.path.join(themes_dir, "TranscodedWallpaper")
+            try:
+                if os.path.isfile(transcoded) and os.path.getsize(transcoded) > 0:
+                    return transcoded
+            except Exception:
+                pass
+
+            cached_dir = os.path.join(themes_dir, "CachedFiles")
+            try:
+                if os.path.isdir(cached_dir):
+                    exts = (".jpg", ".jpeg", ".png", ".bmp")
+                    candidates = [
+                        os.path.join(cached_dir, f)
+                        for f in os.listdir(cached_dir)
+                        if f.lower().endswith(exts) and os.path.isfile(os.path.join(cached_dir, f))
+                    ]
+                    if candidates:
+                        return max(candidates, key=os.path.getmtime)
+            except Exception:
+                pass
+
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as key:
+                wp, _ = winreg.QueryValueEx(key, "WallPaper")
+                if wp and os.path.isfile(wp):
+                    return wp
+        except Exception:
+            pass
+
+        return ""
+
+    @staticmethod
+    def _get_desktop_bg_color() -> QColor:
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Colors") as key:
+                raw, _ = winreg.QueryValueEx(key, "Background")
+                parts = [int(p) for p in str(raw).strip().split()]
+                if len(parts) >= 3:
+                    return QColor(max(0, min(255, parts[0])), max(0, min(255, parts[1])), max(0, min(255, parts[2])))
+        except Exception:
+            pass
+        return QColor("#8caaee")
+
+    @classmethod
+    def get_wallpaper_signature(cls, wallpaper_path: str = None):
+        wp = wallpaper_path if wallpaper_path is not None else cls.get_wallpaper_path()
+        wp_stat = (0.0, 0)
+        if wp and os.path.isfile(wp):
+            try:
+                st = os.stat(wp)
+                wp_stat = (round(st.st_mtime, 3), st.st_size)
+            except Exception:
+                pass
+        trans_stat = (0.0, 0)
+        appdata = os.getenv("APPDATA", "")
+        if appdata:
+            transcoded = os.path.join(appdata, "Microsoft", "Windows", "Themes", "TranscodedWallpaper")
+            if os.path.isfile(transcoded):
+                try:
+                    st = os.stat(transcoded)
+                    trans_stat = (round(st.st_mtime, 3), st.st_size)
+                except Exception:
+                    pass
+        bg_col = cls._get_desktop_bg_color().name()
+        return (wp, wp_stat, trans_stat, bg_col)
+
+    @classmethod
+    def _read_scaled_qimage(cls, path: str) -> QImage:
+        if not path or not os.path.isfile(path):
+            return QImage()
+        try:
+            reader = QImageReader(path)
+            reader.setDecideFormatFromContent(True)
+            if reader.canRead():
+                sz = reader.size()
+                if sz.isValid() and (sz.width() > 96 or sz.height() > 96):
+                    reader.setScaledSize(sz.scaled(64, 64, Qt.KeepAspectRatioByExpanding))
+                img = reader.read()
+                if not img.isNull():
+                    return img
+        except Exception:
+            pass
+        img = QImage(path)
+        if not img.isNull():
+            return img
+        try:
+            with open(path, "rb") as f:
+                return QImage.fromData(f.read())
+        except Exception:
+            return QImage()
+
+    @classmethod
+    def _load_wallpaper_image(cls, image_path: str) -> QImage:
+        img = cls._read_scaled_qimage(image_path)
+
+        if img.isNull():
+            appdata = os.getenv("APPDATA", "")
+            transcoded = os.path.join(appdata, "Microsoft", "Windows", "Themes", "TranscodedWallpaper") if appdata else ""
+            if transcoded and os.path.isfile(transcoded) and os.path.abspath(transcoded) != os.path.abspath(image_path or ""):
+                img = cls._read_scaled_qimage(transcoded)
+
+        if img.isNull():
+            bg = cls._get_desktop_bg_color()
+            img = QImage(16, 16, QImage.Format_RGB32)
+            img.fill(bg)
+
+        return img
+
+    @classmethod
+    def extract_palette(cls, image_path: str = None, qimage: QImage = None) -> dict:
+        import math
+
+        if qimage is not None and not qimage.isNull():
+            img = qimage
+            resolved_path = image_path or ""
+        else:
+            resolved_path = image_path if image_path else cls.get_wallpaper_path()
+            img = cls._load_wallpaper_image(resolved_path)
+
+        scaled = img.scaled(48, 48, Qt.IgnoreAspectRatio, Qt.SmoothTransformation).convertToFormat(QImage.Format_RGB32)
+        w, h = scaled.width(), scaled.height()
+        total_px = max(1, w * h)
+
+        bins = [{"w": 0.0, "cos": 0.0, "sin": 0.0, "s": 0.0, "v": 0.0} for _ in range(18)]
+        sum_r = 0
+        sum_g = 0
+        sum_b = 0
+
+        for y in range(h):
+            for x in range(w):
+                rgb = scaled.pixel(x, y)
+                r = (rgb >> 16) & 0xFF
+                g = (rgb >> 8) & 0xFF
+                b = rgb & 0xFF
+                sum_r += r
+                sum_g += g
+                sum_b += b
+
+                col = QColor(r, g, b)
+                hue = col.hue()
+                sat = col.saturation()
+                val = col.value()
+                if hue >= 0 and sat >= 32 and 30 <= val <= 245:
+                    idx = (hue // 20) % 18
+                    weight = ((sat / 255.0) ** 1.3) * (val / 255.0)
+                    rad = math.radians(hue)
+                    entry = bins[idx]
+                    entry["w"] += weight
+                    entry["cos"] += math.cos(rad) * weight
+                    entry["sin"] += math.sin(rad) * weight
+                    entry["s"] += sat * weight
+                    entry["v"] += val * weight
+
+        ranked = sorted(range(18), key=lambda i: bins[i]["w"], reverse=True)
+        best_idx = ranked[0]
+        best_w = bins[best_idx]["w"]
+
+        def _bin_hsv(entry):
+            bw = entry["w"]
+            ang = math.degrees(math.atan2(entry["sin"], entry["cos"])) % 360.0
+            return int(round(ang)) % 360, int(round(entry["s"] / bw)), int(round(entry["v"] / bw))
+
+        is_grayscale = False
+        if best_w > 0.0:
+            h1, s1, v1 = _bin_hsv(bins[best_idx])
+        else:
+            is_grayscale = True
+            avg_col = QColor(sum_r // total_px, sum_g // total_px, sum_b // total_px)
+            h1 = max(0, avg_col.hue())
+            s1 = avg_col.saturation()
+            v1 = avg_col.value()
+
+        if is_grayscale:
+            s1_norm = min(60, s1)
+            v1_norm = max(200, min(245, v1))
+        else:
+            s1_norm = max(140, min(230, s1))
+            v1_norm = max(200, min(245, v1))
+
+        primary_col = QColor.fromHsv(h1, s1_norm, v1_norm)
+
+        secondary_col = None
+        if best_w > 0.0:
+            for idx in ranked[1:]:
+                entry = bins[idx]
+                if entry["w"] < best_w * 0.12:
+                    break
+                h2, s2, v2 = _bin_hsv(entry)
+                dist = min(abs(h2 - h1), 360 - abs(h2 - h1))
+                if dist >= 25:
+                    s2_norm = max(135, min(225, s2))
+                    v2_norm = max(190, min(240, v2))
+                    secondary_col = QColor.fromHsv(h2, s2_norm, v2_norm)
+                    break
+
+        if secondary_col is None:
+            h2 = (h1 + 32) % 360
+            s2_norm = min(55, s1_norm) if is_grayscale else max(110, min(210, int(s1_norm * 0.85)))
+            v2_norm = max(185, min(235, int(v1_norm * 0.92)))
+            secondary_col = QColor.fromHsv(h2, s2_norm, v2_norm)
+
+        s_bg = 0 if is_grayscale else min(130, max(55, int(s1 * 0.55)))
+        bg_col = QColor.fromHsv(h1, s_bg, 34)
+        shadow_col = QColor.fromHsv(h1, min(90, s_bg), 16)
+
+        pr, pg, pb = primary_col.red(), primary_col.green(), primary_col.blue()
+        text_normal_col = QColor(
+            int(242 * 0.94 + pr * 0.06),
+            int(245 * 0.94 + pg * 0.06),
+            int(248 * 0.94 + pb * 0.06),
+        )
+        text_disabled_col = QColor(
+            int(124 * 0.90 + pr * 0.10),
+            int(133 * 0.90 + pg * 0.10),
+            int(148 * 0.90 + pb * 0.10),
+        )
+
+        luminance = 0.299 * pr + 0.587 * pg + 0.114 * pb
+        text_select_hex = "#11111b" if luminance >= 150 else "#ffffff"
+
+        return {
+            "bg_tint": bg_col.name().lower(),
+            "primary_accent": primary_col.name().lower(),
+            "secondary_accent": secondary_col.name().lower(),
+            "text_normal": text_normal_col.name().lower(),
+            "text_select": text_select_hex,
+            "text_disabled": text_disabled_col.name().lower(),
+            "shadow_color": shadow_col.name().lower(),
+            "wallpaper_path": resolved_path or "",
+        }
+
+    @staticmethod
+    def _set_or_insert_prop(content: str, key: str, val_str: str) -> str:
+        pat = re.compile(rf"(?m)^([ \t]*{re.escape(key)}[ \t]*=[ \t]*)([^\r\n]*)")
+        if pat.search(content):
+            return pat.sub(lambda m: f"{m.group(1)}{val_str}", content, count=1)
+        close_idx = content.rfind("}")
+        if close_idx != -1:
+            prefix = content[:close_idx]
+            if prefix and not prefix.endswith("\n"):
+                prefix += "\n"
+            return f"{prefix}  {key} = {val_str}\n{content[close_idx:]}"
+        return f"theme\n{{\n  {key} = {val_str}\n}}\n"
+
+    @classmethod
+    def rewrite_theme_nss(cls, theme_nss_path: str, palette: dict) -> str:
+        content = ""
+        if theme_nss_path and os.path.exists(theme_nss_path):
+            try:
+                with open(theme_nss_path, "r", encoding="utf-8-sig", errors="replace") as f:
+                    content = f.read()
+            except Exception:
+                content = ""
+
+        if "theme" not in content or "{" not in content or "}" not in content:
+            content = (
+                "theme\n"
+                "{\n"
+                '  name = "modern"\n'
+                "  view = view.medium\n"
+                "  border.radius = 3\n"
+                "  item.radius = 3\n"
+                "  font.size = auto\n"
+                '  font.name = "Segoe UI Variable Text"\n'
+                "  font.weight = false\n"
+                "  font.italic = false\n"
+                "  border.padding.top = 5\n"
+                "  border.padding.bottom = 5\n"
+                "  border.padding.left = 0\n"
+                "  border.padding.right = 0\n"
+                "}\n"
+            )
+        elif re.search(r'(?im)^[ \t]*name[ \t]*=[ \t]*"Chameleon"[ \t\r]*$', content):
+            content = cls._set_or_insert_prop(content, "name", '"modern"')
+
+        primary = palette["primary_accent"]
+        secondary = palette["secondary_accent"]
+        bg_tint = palette["bg_tint"]
+        text_normal = palette["text_normal"]
+        text_select = palette["text_select"]
+        text_disabled = palette["text_disabled"]
+        shadow_color = palette["shadow_color"]
+
+        m_img_eff = re.search(r'(?im)^[ \t]*image\.effect[ \t]*=[ \t]*([^\r\n]+)', content)
+        img_eff_val = m_img_eff.group(1).strip().strip("'\"").lower() if m_img_eff else ""
+        m_img_col = re.search(r'(?im)^[ \t]*image\.color[ \t]*=[ \t]*([^\r\n]+)', content)
+        img_col_raw = m_img_col.group(1).strip() if m_img_col else ""
+        existing_img_colors = [c.lower() for c in re.findall(r'#[0-9a-fA-F]{3,8}', img_col_raw)]
+
+        is_img_normal = img_eff_val in ("", "0", "normal", "none")
+        if is_img_normal and len(existing_img_colors) >= 1 and len(set(existing_img_colors)) == 1:
+            img_color_val = f"[{primary}, {primary}]" if img_col_raw.startswith("[") else primary
+        else:
+            img_color_val = f"[{primary}, {secondary}]"
+
+        m_sym_eff = re.search(r'(?im)^[ \t]*symbol\.effect[ \t]*=[ \t]*([^\r\n]+)', content)
+        sym_eff_val = m_sym_eff.group(1).strip().strip("'\"").lower() if m_sym_eff else ""
+        sym_normal_val = f"[{primary}, {secondary}]" if sym_eff_val in ("1", "gradient") else primary
+
+        updates = [
+            ("background.color", bg_tint),
+            ("border.color", primary),
+            ("shadow.color", shadow_color),
+            ("separator.color", primary),
+            ("image.color", img_color_val),
+            ("symbol.normal", sym_normal_val),
+            ("symbol.normal.disabled", text_disabled),
+            ("symbol.select", text_select),
+            ("symbol.select.disabled", text_select),
+            ("item.text.normal", text_normal),
+            ("item.text.select", text_select),
+            ("item.text.normal.disabled", text_disabled),
+            ("item.text.select.disabled", text_disabled),
+            ("item.back.select", primary),
+            ("item.back.normal", "default"),
+            ("item.back.normal.disabled", "default"),
+            ("item.back.select.disabled", "default"),
+        ]
+
+        for k, v in updates:
+            content = cls._set_or_insert_prop(content, k, v)
+
+        if theme_nss_path:
+            safe_file_write(theme_nss_path, content)
+        return content
+
 
 
 

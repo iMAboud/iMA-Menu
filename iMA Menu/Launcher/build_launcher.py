@@ -90,8 +90,7 @@ a = Analysis(
         'PyQt5.QtXmlPatterns', 'PyQt5.QtOpenGL', 'PyQt5.QtOpenGLWidgets',
         'tkinter', 'unittest', 'pydoc',
         'multiprocessing', '_multiprocessing',
-        'ssl', '_ssl', 'webbrowser', 'tarfile',
-        'items_widget', 'items_manager'
+        'ssl', '_ssl', 'webbrowser', 'tarfile'
     ],
     noarchive=False,
     optimize=2,
@@ -140,6 +139,16 @@ def build():
         if not os.path.exists(cache_f):
             with open(cache_f, 'w', encoding='utf-8') as f:
                 f.write('[]\n')
+
+    # Sync latest compiled shell binaries from src/bin if present
+    src_bin_dir = os.path.abspath(os.path.join('..', 'src', 'bin'))
+    for shell_bin in ('shell.dll', 'shell.exe'):
+        src_bin = os.path.join(src_bin_dir, shell_bin)
+        if os.path.exists(src_bin):
+            try:
+                shutil.copy2(src_bin, os.path.abspath(shell_bin))
+            except Exception as sync_err:
+                print(f"Warning: Could not sync {shell_bin} from {src_bin_dir}: {sync_err}")
 
     try:
         from utils import generate_glyphs_data

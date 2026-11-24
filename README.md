@@ -5,7 +5,7 @@
 ![ima](https://github.com/user-attachments/assets/c91b3569-4365-452c-a97b-17bda181a216)
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/iMAboud/iMA-Menu/total.svg)
-[![Release](https://img.shields.io/badge/release-v2.1.10-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.10/iMA.Menu.exe)
+[![Release](https://img.shields.io/badge/release-v2.1.13-blue)](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.13/iMA.Menu.exe)
 [![License](https://img.shields.io/badge/license-Custom%20%2F%20Split-blue)](LICENSE)
 
 --- 
@@ -24,12 +24,12 @@ iMA Menu is a powerful, customizable desktop enhancement suite designed to strea
 
 ## ✨ What's New
 
-Direct Item Editing: Right-click any item to edit immediately, no need to launch iMA Menu first ⚡
-
+- **Optional Right-Click Quick Edit**: Toggle right-click Quick Edit on/off anytime in **Settings** (disable to restore default right-click action) ⚡
+- **Chameleon Theme Engine**: Real-time wallpaper color sync for your context menu 🎨
 
 ## Installation 💻
 
-**Install the latest Release v2.1.10** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.10/iMA.Menu.exe).
+**Install the latest Release v2.1.13** [Download](https://github.com/iMAboud/iMA-Menu/releases/download/2.1.13/iMA.Menu.exe).
 
 ---
 

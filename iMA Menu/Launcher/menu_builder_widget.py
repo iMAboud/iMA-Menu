@@ -613,7 +613,7 @@ class ItemConfigDialog(QDialog):
         self.resize(780, 800)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #18181c; color: #ffffff; border: 1.5px solid rgba(231, 130, 132, 0.7); border-radius: 14px; padding: 5px 15px; font-family: 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: bold; }")
+        self.setStyleSheet("QToolTip { background-color: #20222a; color: #f0f2f8; border: 1px solid #363a48; border-radius: 0px; padding: 1px 2px; font-family: 'Segoe UI Variable Text', 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: 500; }")
         self._drag_pos = None
         self._is_updating_code = False
         self.pipeline_steps = []

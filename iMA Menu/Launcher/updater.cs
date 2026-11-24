@@ -1,10 +1,126 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Diagnostics;
 using System.Threading;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Security.Principal;
+
+[ComImport]
+[Guid("00021401-0000-0000-C000-000000000046")]
+internal class ShellLink {}
+
+[ComImport]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+[Guid("000214F9-0000-0000-C000-000000000046")]
+internal interface IShellLinkW {
+    void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, IntPtr pfd, int fFlags);
+    void GetIDList(out IntPtr ppidl);
+    void SetIDList(IntPtr pidl);
+    void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
+    void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+    void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
+    void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+    void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
+    void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+    void GetHotkey(out short pwHotkey);
+    void SetHotkey(short wHotkey);
+    void GetShowCmd(out int piShowCmd);
+    void SetShowCmd(int iShowCmd);
+    void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
+    void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+    void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, int dwReserved);
+    void Resolve(IntPtr hwnd, int fFlags);
+    void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+}
 
 public class Program {
+    [DllImport("shell32.dll")]
+    private static extern void SHChangeNotify(int wEventId, int uFlags, IntPtr dwItem1, IntPtr dwItem2);
+
+    private static bool SaveShortcut(string lnkPath, string targetExe, string workDir) {
+        try {
+            string dir = Path.GetDirectoryName(lnkPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            IShellLinkW link = (IShellLinkW)new ShellLink();
+            link.SetPath(targetExe);
+            link.SetWorkingDirectory(workDir);
+            link.SetArguments("");
+            link.SetDescription("iMA Menu");
+            link.SetShowCmd(1);
+            link.SetIconLocation(targetExe, 0);
+            IPersistFile file = (IPersistFile)link;
+            file.Save(lnkPath, true);
+            return File.Exists(lnkPath);
+        } catch {
+            return false;
+        }
+    }
+
+    private static void EnsureStartMenuShortcut(string targetExe, string appDir) {
+        try {
+            if (string.IsNullOrEmpty(targetExe) && !string.IsNullOrEmpty(appDir)) {
+                targetExe = Path.Combine(appDir, "launcher.exe");
+            }
+            if (string.IsNullOrEmpty(targetExe) || !File.Exists(targetExe)) return;
+            targetExe = Path.GetFullPath(targetExe);
+            string workDir = Path.GetDirectoryName(targetExe);
+
+            string commonPrograms = Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms);
+            string userPrograms = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+            bool commonSaved = false;
+
+            if (!string.IsNullOrEmpty(commonPrograms) && Directory.Exists(commonPrograms)) {
+                string commonDir = Path.Combine(commonPrograms, "iMA Menu");
+                string commonLnk = Path.Combine(commonDir, "iMA Menu.lnk");
+                string commonRootLnk = Path.Combine(commonPrograms, "iMA Menu.lnk");
+                if (File.Exists(commonRootLnk)) {
+                    try { File.Delete(commonRootLnk); } catch {}
+                }
+                if (File.Exists(commonLnk) || Directory.Exists(commonDir)) {
+                    commonSaved = SaveShortcut(commonLnk, targetExe, workDir);
+                    if (!commonSaved && File.Exists(commonLnk)) {
+                        try { File.Delete(commonLnk); } catch {}
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(userPrograms)) {
+                string userDir = Path.Combine(userPrograms, "iMA Menu");
+                string userLnk = Path.Combine(userDir, "iMA Menu.lnk");
+                string userRootLnk = Path.Combine(userPrograms, "iMA Menu.lnk");
+                if (File.Exists(userRootLnk)) {
+                    try { File.Delete(userRootLnk); } catch {}
+                }
+                if (commonSaved) {
+                    if (File.Exists(userLnk)) {
+                        try { File.Delete(userLnk); } catch {}
+                    }
+                } else {
+                    SaveShortcut(userLnk, targetExe, workDir);
+                }
+            }
+            SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero);
+        } catch {}
+    }
+
+    private static void EnsureFolderPermissions(string appDir) {
+        try {
+            if (string.IsNullOrEmpty(appDir) || !Directory.Exists(appDir)) return;
+            string parentDir = Path.GetFullPath(Path.Combine(appDir, ".."));
+            string targetDir = Directory.Exists(parentDir) ? parentDir : appDir;
+
+            ProcessStartInfo psi = new ProcessStartInfo {
+                FileName = "icacls.exe",
+                Arguments = "\"" + targetDir + "\" /grant *S-1-5-32-545:(OI)(CI)M /t /c /q",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            Process p = Process.Start(psi);
+            if (p != null) p.WaitForExit(8000);
+        } catch {}
+    }
     [DllImport("userenv.dll", SetLastError = true)]
     private static extern bool CreateEnvironmentBlock(out IntPtr lpEnvironment, IntPtr hToken, bool bInherit);
 
@@ -61,6 +177,63 @@ public class Program {
         public int dwThreadId;
     }
 
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, int dwFlags);
+
+    private const int MOVEFILE_DELAY_UNTIL_REBOOT = 0x4;
+
+    private static bool IsAdministrator() {
+        try {
+            var id = WindowsIdentity.GetCurrent();
+            return id != null && new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
+        } catch {
+            return false;
+        }
+    }
+
+    private static void ScheduleOrDelete(string path) {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+        try {
+            File.Delete(path);
+        } catch {
+            try { MoveFileEx(path, null, MOVEFILE_DELAY_UNTIL_REBOOT); } catch {}
+        }
+    }
+
+    private static void CleanupOldPrefix(string targetPath) {
+        try {
+            string dir = Path.GetDirectoryName(targetPath);
+            string name = Path.GetFileName(targetPath);
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+            foreach (string candidate in Directory.GetFiles(dir, name + ".old*")) {
+                try { File.Delete(candidate); } catch {}
+            }
+        } catch {}
+    }
+
+    private static bool SwapBinaryWithBackup(string srcPath, string destPath, int maxAttempts = 20) {
+        if (string.IsNullOrEmpty(srcPath) || !File.Exists(srcPath) || string.IsNullOrEmpty(destPath))
+            return false;
+        CleanupOldPrefix(destPath);
+        string uniqueOld = destPath + ".old." + DateTime.UtcNow.Ticks;
+        for (int i = 0; i < maxAttempts; i++) {
+            try {
+                if (File.Exists(uniqueOld)) {
+                    uniqueOld = destPath + ".old." + DateTime.UtcNow.Ticks + "." + i;
+                }
+                if (File.Exists(destPath)) {
+                    File.Move(destPath, uniqueOld);
+                }
+                File.Copy(srcPath, destPath, true);
+                ScheduleOrDelete(uniqueOld);
+                return true;
+            } catch {
+                Thread.Sleep(500);
+            }
+        }
+        return false;
+    }
+
     private static Version GetDllVersion(string path) {
         try {
             if (File.Exists(path)) {
@@ -106,21 +279,30 @@ public class Program {
 
             Thread.Sleep(1000);
 
-            if (string.IsNullOrEmpty(targetShellDll)) {
+            if (string.IsNullOrEmpty(targetShellDll) && !string.IsNullOrEmpty(appDir)) {
                 string parentDir = Path.GetFullPath(Path.Combine(appDir, ".."));
                 targetShellDll = Path.Combine(parentDir, "shell.dll");
             }
-            if (string.IsNullOrEmpty(shellExe)) {
+            if (string.IsNullOrEmpty(shellExe) && !string.IsNullOrEmpty(targetShellDll)) {
                 string parentDir = Path.GetDirectoryName(targetShellDll);
                 shellExe = Path.Combine(parentDir, "shell.exe");
             }
 
-            Version minVersion = new Version(2, 0, 0, 2);
-            Version currentVersion = GetDllVersion(targetShellDll);
+            Version currentDllVer = GetDllVersion(targetShellDll);
+            Version bundledDllVer = GetDllVersion(newShellDll);
+            Version currentExeVer = GetDllVersion(shellExe);
+            Version bundledExeVer = GetDllVersion(newShellExe);
 
-            if (File.Exists(newShellDll) && (shellOnly || currentVersion < minVersion)) {
-                // 1. Unregister and restart explorer
-                if (File.Exists(shellExe)) {
+            bool needDllSwap = !string.IsNullOrEmpty(newShellDll) && File.Exists(newShellDll) &&
+                (!File.Exists(targetShellDll) || currentDllVer < bundledDllVer || (shellOnly && currentDllVer != bundledDllVer));
+            bool needExeSwap = !string.IsNullOrEmpty(newShellExe) && File.Exists(newShellExe) &&
+                (!File.Exists(shellExe) || currentExeVer < bundledExeVer || (shellOnly && currentExeVer != bundledExeVer));
+
+            bool canRegisterShell = shellOnly || IsAdministrator();
+
+            if (canRegisterShell && (needDllSwap || needExeSwap)) {
+                // 1. Unregister and restart explorer to release COM/shell handles
+                if (!string.IsNullOrEmpty(shellExe) && File.Exists(shellExe)) {
                     try {
                         ProcessStartInfo unregPsi = new ProcessStartInfo {
                             FileName = shellExe,
@@ -133,47 +315,15 @@ public class Program {
                     } catch {}
                 }
 
-                // 2. Extra safety wait for explorer restart to release file handles
+                // 2. Wait for explorer restart to unload shell.dll cleanly
                 Thread.Sleep(2000);
 
-                // 3. Move/replace shell.dll with new v2.0.0.2
-                string oldShellDll = targetShellDll + ".old";
-                bool shellCopied = false;
-                for (int i = 0; i < 20; i++) {
-                    try {
-                        if (File.Exists(oldShellDll)) File.Delete(oldShellDll);
-                        if (File.Exists(targetShellDll)) File.Move(targetShellDll, oldShellDll);
-                        File.Copy(newShellDll, targetShellDll, true);
-                        shellCopied = true;
-                        break;
-                    } catch {
-                        Thread.Sleep(500);
-                    }
-                }
-                if (File.Exists(oldShellDll)) {
-                    try { File.Delete(oldShellDll); } catch {}
-                }
+                // 3. Atomically swap shell.dll and shell.exe using unique backup names
+                bool shellCopied = !needDllSwap || SwapBinaryWithBackup(newShellDll, targetShellDll, 20);
+                bool exeCopied = !needExeSwap || SwapBinaryWithBackup(newShellExe, shellExe, 20);
 
-                // Copy new shell.exe if provided
-                if (File.Exists(newShellExe)) {
-                    string oldShellExe = shellExe + ".old";
-                    for (int i = 0; i < 20; i++) {
-                        try {
-                            if (File.Exists(oldShellExe)) File.Delete(oldShellExe);
-                            if (File.Exists(shellExe)) File.Move(shellExe, oldShellExe);
-                            File.Copy(newShellExe, shellExe, true);
-                            break;
-                        } catch {
-                            Thread.Sleep(500);
-                        }
-                    }
-                    if (File.Exists(oldShellExe)) {
-                        try { File.Delete(oldShellExe); } catch {}
-                    }
-                }
-
-                // 4. Register new shell.dll and restart explorer
-                if (File.Exists(shellExe)) {
+                // 4. Register updated shell.dll and restart explorer
+                if (!string.IsNullOrEmpty(shellExe) && File.Exists(shellExe)) {
                     try {
                         ProcessStartInfo regPsi = new ProcessStartInfo {
                             FileName = shellExe,
@@ -186,6 +336,16 @@ public class Program {
                     } catch {}
                 }
 
+                Thread.Sleep(1500);
+                try {
+                    if (Process.GetProcessesByName("explorer").Length == 0) {
+                        Process.Start(new ProcessStartInfo {
+                            FileName = "explorer.exe",
+                            UseShellExecute = true
+                        });
+                    }
+                } catch {}
+
                 if (File.Exists(newShellDll)) {
                     try { File.Delete(newShellDll); } catch {}
                 }
@@ -194,13 +354,13 @@ public class Program {
                 }
 
                 if (shellOnly) {
-                    return shellCopied ? 0 : 4;
+                    return (shellCopied && exeCopied) ? 0 : 4;
                 }
             } else {
-                if (File.Exists(newShellDll)) {
+                if (!string.IsNullOrEmpty(newShellDll) && File.Exists(newShellDll)) {
                     try { File.Delete(newShellDll); } catch {}
                 }
-                if (File.Exists(newShellExe)) {
+                if (!string.IsNullOrEmpty(newShellExe) && File.Exists(newShellExe)) {
                     try { File.Delete(newShellExe); } catch {}
                 }
                 if (shellOnly) {
@@ -231,6 +391,9 @@ public class Program {
             }
 
             if (!swapped) return 1;
+
+            EnsureStartMenuShortcut(targetExe, appDir);
+            EnsureFolderPermissions(appDir);
 
             IntPtr token = IntPtr.Zero;
             IntPtr envBlock = IntPtr.Zero;

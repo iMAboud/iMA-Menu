@@ -5,276 +5,428 @@ import re
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QStackedWidget, QDialog, QSizePolicy,
-    QTextEdit, QGraphicsOpacityEffect
+    QTextEdit, QGraphicsOpacityEffect, QButtonGroup
 )
-from PyQt5.QtGui import QColor, QFont, QPixmap, QCursor, QPainter, QPen, QIcon
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
+from PyQt5.QtGui import QColor, QFont, QPixmap, QCursor, QPainter, QPen, QIcon, QPainterPath, QFontMetrics
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QRectF
 
 from utils import (
     PillPushButton, PillLineEdit, render_nss_asset_pixmap, get_mdl2_icon,
-    FlowLayout, ModernDialog
+    FlowLayout, ModernDialog, _init_nilesoft_font, NILESOFT_FONT_FAMILY, get_font_icon
 )
 from items_manager import ItemsManager
 from modify_widget import ImportEditorDialog
 from nss_parser import find_items_and_menus, format_nss_value
 
 
+def extract_snippet_flags(snippet_data):
+    """Extracts human-friendly badges from snippet metadata and code using Edit tab colors."""
+    flags = []
+    cat = snippet_data.get("category", "")
+    if cat:
+        flags.append(("category", cat, "#8caaee"))
+
+    raw = snippet_data.get("full_code", "") or snippet_data.get("code", "")
+
+    # Context / Type flag (Human-friendly)
+    m_type = re.search(r'\btype\s*=\s*[\'"]?([^\'",)\s]+)', raw, re.IGNORECASE)
+    if m_type:
+        raw_types = set(m_type.group(1).lower().replace('.', '|').split('|'))
+        if {'file', 'dir', 'back'}.issubset(raw_types) or {'desktop', 'dir', 'file'}.issubset(raw_types):
+            type_label = "Everywhere"
+        elif 'back' in raw_types and 'desktop' in raw_types:
+            type_label = "Desktop Background"
+        elif 'back' in raw_types and 'dir' in raw_types:
+            type_label = "Folder Background"
+        elif 'file' in raw_types and 'dir' in raw_types:
+            type_label = "Files & Folders"
+        elif 'file' in raw_types:
+            type_label = "Files Only"
+        elif 'dir' in raw_types:
+            type_label = "Folders Only"
+        elif 'taskbar' in raw_types:
+            type_label = "Taskbar"
+        elif 'drive' in raw_types:
+            type_label = "Drives"
+        else:
+            type_label = m_type.group(1).replace('|', ' & ').title()
+        flags.append(("type", type_label, "#a6d189"))
+
+    # Admin flag (Text only, NO blue shield emoji)
+    if re.search(r'(?:^|[\s,(])admin(?:\s*=\s*(?:1|true|\'1\'|\'true\'))?(?:[\s,)]|$)', raw, re.IGNORECASE):
+        flags.append(("admin", "Admin", "#e78284"))
+
+    # Key / Modifier Trigger (CTRL, SHIFT, etc.)
+    has_ctrl = "key.control" in raw.lower() or "keys.control" in raw.lower() or "key='ctrl'" in raw.lower() or "key='control'" in raw.lower()
+    has_shift = "key.shift" in raw.lower() or "keys.shift" in raw.lower() or "key='shift'" in raw.lower()
+    if has_ctrl and has_shift:
+        flags.append(("key", "Ctrl + Shift + Right Click", "#e5c890"))
+    elif has_ctrl:
+        flags.append(("key", "Ctrl + Right Click", "#e5c890"))
+    elif has_shift:
+        flags.append(("key", "Shift + Right Click", "#e5c890"))
+
+    # Position
+    m_pos = re.search(r'\bpos\s*=\s*([^\s,)]+)', raw, re.IGNORECASE)
+    if m_pos:
+        pos_val = m_pos.group(1).strip("'\"")
+        flags.append(("pos", f"Position: {pos_val.title()}", "#ef9f76"))
+
+    # Menu
+    if raw.strip().lower().startswith("menu(") or snippet_data.get("menu_name"):
+        flags.append(("menu", "Submenu", "#ca9ee6"))
+
+    return flags
+
+
+class AntialiasedTag(QWidget):
+    """Vector antialiased tag badge matching Edit tab flag styling."""
+    def __init__(self, text, base_color="#8caaee", bg_color=None, border_color=None, parent=None):
+        super().__init__(parent)
+        self.text = text
+        c = QColor(base_color)
+        if not c.isValid():
+            c = QColor("#8caaee")
+        self.fg = QColor("#c6d0f5")
+        self.bg = QColor(c.red(), c.green(), c.blue(), 38)
+        self.border = QColor(c.red(), c.green(), c.blue(), 100)
+        self.setFixedHeight(20)
+        self.setFont(QFont("Google Sans", 8, QFont.Bold))
+        fm = QFontMetrics(self.font())
+        w = fm.horizontalAdvance(text) + 16
+        self.setFixedWidth(max(w, 44))
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.75, 0.75, -0.75, -0.75)
+        path = QPainterPath()
+        radius = r.height() / 2.0
+        path.addRoundedRect(r, radius, radius)
+        p.fillPath(path, self.bg)
+        p.setPen(QPen(self.border, 1.2))
+        p.drawPath(path)
+        p.setPen(self.fg)
+        p.setFont(self.font())
+        p.drawText(r, Qt.AlignCenter, self.text)
+        p.end()
+
+
+class AntialiasedIconCircle(QWidget):
+    """Vector antialiased circular container for item icons."""
+    def __init__(self, size=40, bg_color=None, border_color=None, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        bg = QColor(bg_color) if bg_color is not None else QColor()
+        self.bg = bg if bg.isValid() else QColor(255, 255, 255, 15)
+        bd = QColor(border_color) if border_color is not None else QColor()
+        self.border = bd if bd.isValid() else QColor(255, 255, 255, 28)
+        self.pixmap = None
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+    def set_pixmap(self, pm):
+        self.pixmap = pm
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        r = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        p.setBrush(self.bg)
+        p.setPen(QPen(self.border, 1.2))
+        p.drawEllipse(r)
+        if self.pixmap and not self.pixmap.isNull():
+            px = int((self.width() - self.pixmap.width()) / 2)
+            py = int((self.height() - self.pixmap.height()) / 2)
+            p.drawPixmap(px, py, self.pixmap)
+        p.end()
+
+
+class AntialiasedCircleButton(QPushButton):
+    """Vector antialiased circular action button with smooth hover glow."""
+    def __init__(self, icon_char, tooltip="", parent=None, size=30, accent=False):
+        super().__init__(parent)
+        self.icon_char = icon_char
+        self.setToolTip(tooltip)
+        self.setFixedSize(size, size)
+        self.setCursor(Qt.PointingHandCursor)
+        self.accent = accent
+        _init_nilesoft_font()
+        self.setFont(QFont("Segoe MDL2 Assets", 10))
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        r = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        is_hov = self.underMouse()
+        is_down = self.isDown()
+
+        if self.accent:
+            bg = QColor("#ca9ee6") if is_hov else QColor(202, 158, 230, 30)
+            border = QColor("#ca9ee6") if is_hov else QColor(202, 158, 230, 80)
+            fg = QColor("#18181c") if is_hov else QColor("#ca9ee6")
+        else:
+            bg = QColor(231, 130, 132, 50) if is_hov else QColor(255, 255, 255, 12)
+            border = QColor("#e78284") if is_hov else QColor(255, 255, 255, 26)
+            fg = QColor("#ffffff") if is_hov else QColor("#c6d0f5")
+
+        if is_down:
+            bg = bg.darker(115)
+
+        p.setBrush(bg)
+        p.setPen(QPen(border, 1.2))
+        p.drawEllipse(r)
+
+        p.setPen(fg)
+        p.setFont(self.font())
+        p.drawText(r, Qt.AlignCenter, self.icon_char)
+        p.end()
+
+
 class CategoryFilterButton(QPushButton):
-    """Pill-shaped filter button for item categories."""
-    def __init__(self, text, icon_glyph=None, parent=None):
+    """Pill-shaped filter button for item categories matching Edit tab FilterTag."""
+    def __init__(self, text, color="#51576d", icon_glyph=None, parent=None):
         super().__init__(text, parent)
         self.icon_glyph = icon_glyph
+        self._color = QColor(color)
+        if not self._color.isValid():
+            self._color = QColor("#51576d")
         self.setCheckable(True)
-        self.setFixedHeight(30)
+        self.setFixedHeight(28)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.NoFocus)
         self.setFont(QFont("Google Sans", 9, QFont.Bold))
-        self.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 15px;
-                color: #a5adce;
-                padding: 0 12px;
-                outline: none;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.08);
-                color: #c6d0f5;
-                border-color: rgba(255, 255, 255, 0.16);
-            }
-            QPushButton:checked {
-                background: #e78284;
-                color: #18181c;
-                border: 1px solid #e78284;
-            }
-        """)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+
+    def sizeHint(self):
+        fm = QFontMetrics(self.font())
+        w = fm.horizontalAdvance(self.text().strip()) + 26
+        return QSize(max(w, 58), 28)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        r = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        radius = r.height() / 2.0
+        path.addRoundedRect(r, radius, radius)
+
+        is_chk = self.isChecked()
+        is_hov = self.underMouse()
+        c = self._color
+
+        if is_chk:
+            bg = c
+            border = c.lighter(115)
+            fg = QColor("#ffffff")
+        elif is_hov:
+            bg = QColor(c.red(), c.green(), c.blue(), 75)
+            border = QColor(c.red(), c.green(), c.blue(), 180)
+            fg = QColor("#ffffff")
+        else:
+            bg = QColor(c.red(), c.green(), c.blue(), 38)
+            border = QColor(c.red(), c.green(), c.blue(), 90)
+            fg = QColor("#c6d0f5")
+
+        p.fillPath(path, bg)
+        p.setPen(QPen(border, 1.5))
+        p.drawPath(path)
+
+        p.setPen(fg)
+        p.setFont(self.font())
+        p.drawText(r, Qt.AlignCenter, self.text())
+        p.end()
 
 
 class SnippetCard(QFrame):
-    """Acrylic card presenting a single snippet in the gallery."""
+    """Vector antialiased card presenting a single snippet in the gallery."""
     clicked = pyqtSignal(str)
-    action_requested = pyqtSignal(str)
+    edit_requested = pyqtSignal(str)
+    restore_requested = pyqtSignal(str)
+    toggle_requested = pyqtSignal(str, bool)
 
-    def __init__(self, snippet_data, status, has_update, parent=None):
+    def __init__(self, snippet_data, status, has_update, is_customized=False, view_mode="grid", parent=None):
         super().__init__(parent)
         self.snippet_data = snippet_data
         self.snippet_id = snippet_data["id"]
         self.status = status  # 'full', 'partial', 'none'
         self.has_update = has_update
+        self.is_customized = is_customized
+        self.view_mode = view_mode
 
         self.setObjectName("snippetCard")
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.NoFocus)
-        self.setFixedHeight(105)
-        self.setMinimumWidth(0)
+        self.setAttribute(Qt.WA_Hover, True)
+        if self.view_mode == "list":
+            self.setFixedHeight(62)
+        else:
+            self.setFixedHeight(114)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setStyleSheet("""
-            QFrame#snippetCard {
-                background-color: rgba(255, 255, 255, 0.035);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 16px;
-                outline: none;
-            }
-            QFrame#snippetCard:hover {
-                background-color: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(231, 130, 132, 0.6);
-            }
-            QFrame#snippetCard QLabel, QLabel {
-                outline: none;
-                border: none;
-            }
-        """)
-
+        self.setStyleSheet("QFrame#snippetCard { background: transparent; border: none; }")
         self._setup_ui()
 
     def minimumSizeHint(self):
-        return QSize(220, 105)
+        return QSize(220, 62 if self.view_mode == "list" else 114)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.75, 0.75, -0.75, -0.75)
+        path = QPainterPath()
+        radius = 12.0 if self.view_mode == "list" else 14.0
+        path.addRoundedRect(r, radius, radius)
+
+        is_hov = self.underMouse()
+        if self.status == "full":
+            bg = QColor(166, 209, 137, 38) if is_hov else QColor(166, 209, 137, 22)
+            border = QColor("#a6d189") if is_hov else QColor(166, 209, 137, 95)
+        else:
+            bg = QColor(14, 14, 14, 220) if is_hov else QColor(18, 18, 18, 140)
+            border = QColor(231, 130, 132, 120) if is_hov else QColor(255, 255, 255, 22)
+
+        p.fillPath(path, bg)
+        p.setPen(QPen(border, 1.5 if is_hov else 1.0))
+        p.drawPath(path)
+        p.end()
 
     def _setup_ui(self):
         main_lay = QHBoxLayout(self)
-        main_lay.setContentsMargins(14, 10, 14, 10)
-        main_lay.setSpacing(12)
-
-        # Left Icon Preview Box
-        self.icon_box = QFrame()
-        self.icon_box.setFocusPolicy(Qt.NoFocus)
-        self.icon_box.setFixedSize(42, 42)
-        self.icon_box.setStyleSheet("""
-            QFrame {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 21px;
-                outline: none;
-            }
-        """)
-        ib_lay = QVBoxLayout(self.icon_box)
-        ib_lay.setContentsMargins(0, 0, 0, 0)
-        ib_lay.setAlignment(Qt.AlignCenter)
-
-        self.icon_lbl = QLabel()
-        self.icon_lbl.setFocusPolicy(Qt.NoFocus)
-        self.icon_lbl.setAlignment(Qt.AlignCenter)
-        self.icon_lbl.setStyleSheet("background: transparent; border: none; outline: none;")
-
-        raw_icon = self.snippet_data.get("icon", "")
-        pixmap = render_nss_asset_pixmap(raw_icon, 22)
-        if pixmap and not pixmap.isNull():
-            self.icon_lbl.setPixmap(pixmap)
+        if self.view_mode == "list":
+            main_lay.setContentsMargins(12, 6, 12, 6)
+            main_lay.setSpacing(10)
         else:
-            self.icon_lbl.setPixmap(get_mdl2_icon(0xE71D, 20, "#e78284").pixmap(20, 20))
+            main_lay.setContentsMargins(14, 10, 14, 10)
+            main_lay.setSpacing(12)
 
-        ib_lay.addWidget(self.icon_lbl)
-        main_lay.addWidget(self.icon_box, 0, Qt.AlignVCenter)
+        # Left Icon Preview
+        ic_box_sz = 36 if self.view_mode == "list" else 44
+        self.icon_circle = AntialiasedIconCircle(size=ic_box_sz, parent=self)
+
+        raw_icon = self.snippet_data.get("glyph", "") or self.snippet_data.get("icon", "")
+        if not raw_icon:
+            m_img = re.search(r'\b(?:image|icon)\s*=\s*([^\s,)]+)', self.snippet_data.get("full_code", "") or self.snippet_data.get("code", ""))
+            if m_img:
+                raw_icon = m_img.group(1).strip("'\"")
+
+        ic_sz = 18 if self.view_mode == "list" else 22
+        pixmap = render_nss_asset_pixmap(raw_icon, ic_sz)
+        if pixmap and not pixmap.isNull():
+            self.icon_circle.set_pixmap(pixmap)
+        else:
+            _init_nilesoft_font()
+            self.icon_circle.set_pixmap(get_font_icon(0xE0EB, ic_sz * 2, '#ffffff').pixmap(ic_sz, ic_sz))
+
+        main_lay.addWidget(self.icon_circle, 0, Qt.AlignVCenter)
 
         # Center Details
         center_lay = QVBoxLayout()
         center_lay.setContentsMargins(0, 0, 0, 0)
-        center_lay.setSpacing(2)
+        center_lay.setSpacing(4)
         center_lay.setAlignment(Qt.AlignVCenter)
 
-        # Top Title & Badges Row
-        title_row = QHBoxLayout()
-        title_row.setSpacing(6)
-        title_row.setAlignment(Qt.AlignLeft)
+        flags = extract_snippet_flags(self.snippet_data)
+        item_title = self.snippet_data.get("title") or self.snippet_data.get("name", "Snippet")
 
-        title_lbl = QLabel(self.snippet_data.get("name", "Snippet"))
-        title_lbl.setFocusPolicy(Qt.NoFocus)
-        title_lbl.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        title_lbl.setTextInteractionFlags(Qt.NoTextInteraction)
-        title_lbl.setFont(QFont("Google Sans", 11, QFont.Bold))
-        title_lbl.setStyleSheet("color: #ffffff; background: transparent; border: none; outline: none;")
-        title_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        title_row.addWidget(title_lbl)
+        if self.view_mode == "list":
+            top_line = QHBoxLayout()
+            top_line.setSpacing(6)
+            top_line.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        # Category Badge
-        cat_badge = QLabel(self.snippet_data.get("category", "General"))
-        cat_badge.setFocusPolicy(Qt.NoFocus)
-        cat_badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        cat_badge.setTextInteractionFlags(Qt.NoTextInteraction)
-        cat_badge.setFont(QFont("Google Sans", 8, QFont.Bold))
-        cat_badge.setFixedHeight(18)
-        cat_badge.setStyleSheet("""
-            background: rgba(140, 170, 238, 0.15);
-            color: #8caaee;
-            border-radius: 9px;
-            padding: 0 7px;
-            border: 1px solid rgba(140, 170, 238, 0.3);
-            outline: none;
-        """)
-        title_row.addWidget(cat_badge)
-        title_row.addStretch(1)
-        center_lay.addLayout(title_row)
+            title_lbl = QLabel(item_title)
+            title_lbl.setFont(QFont("Google Sans", 10, QFont.Bold))
+            title_lbl.setStyleSheet("color: #ffffff; background: transparent;")
+            top_line.addWidget(title_lbl)
 
-        # Description
-        desc_text = self.snippet_data.get("description", "")
-        if len(desc_text) > 85:
-            desc_text = desc_text[:82] + "..."
-        desc_lbl = QLabel(desc_text)
-        desc_lbl.setFocusPolicy(Qt.NoFocus)
-        desc_lbl.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        desc_lbl.setTextInteractionFlags(Qt.NoTextInteraction)
-        desc_lbl.setFont(QFont("Google Sans", 9))
-        desc_lbl.setStyleSheet("color: #8c92a4; background: transparent; border: none; outline: none;")
-        desc_lbl.setWordWrap(True)
-        desc_lbl.setMaximumHeight(34)
-        desc_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        desc_lbl.setMinimumWidth(0)
-        center_lay.addWidget(desc_lbl)
+            for f_kind, f_text, f_color in flags[:3]:
+                top_line.addWidget(AntialiasedTag(f_text, f_color, parent=self))
 
-        # Bottom info row: count + menu target + status badge
-        info_row = QHBoxLayout()
-        info_row.setSpacing(6)
-        
-        elem_count = len(self.snippet_data.get("elements", []))
-        count_lbl = QLabel(f"{elem_count} item{'s' if elem_count != 1 else ''}")
-        count_lbl.setFocusPolicy(Qt.NoFocus)
-        count_lbl.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        count_lbl.setTextInteractionFlags(Qt.NoTextInteraction)
-        count_lbl.setFont(QFont("Google Sans", 8))
-        count_lbl.setStyleSheet("color: #737994; background: transparent; border: none; outline: none;")
-        info_row.addWidget(count_lbl)
+            top_line.addStretch(1)
+            center_lay.addLayout(top_line)
 
-        # Menu target badge if exists
-        menu_name = self.snippet_data.get("menu_name")
-        if menu_name and menu_name.strip():
-            m_disp = menu_name.strip()
-            if len(m_disp) > 16:
-                m_disp = m_disp[:14] + "…"
-            menu_badge = QLabel(f"↳ {m_disp}")
-            menu_badge.setFocusPolicy(Qt.NoFocus)
-            menu_badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-            menu_badge.setTextInteractionFlags(Qt.NoTextInteraction)
-            menu_badge.setFont(QFont("Google Sans", 8))
-            menu_badge.setFixedHeight(18)
-            menu_badge.setStyleSheet("""
-                background: rgba(202, 158, 230, 0.15);
-                color: #ca9ee6;
-                border-radius: 9px;
-                padding: 0 6px;
-                border: 1px solid rgba(202, 158, 230, 0.3);
-                outline: none;
-            """)
-            menu_badge.setToolTip(f"Menu: {menu_name}")
-            info_row.addWidget(menu_badge)
+            desc_text = self.snippet_data.get("description", "")
+            if len(desc_text) > 95:
+                desc_text = desc_text[:92] + "..."
+            desc_lbl = QLabel(desc_text)
+            desc_lbl.setFont(QFont("Google Sans", 8))
+            desc_lbl.setStyleSheet("color: #8c92a4; background: transparent;")
+            center_lay.addWidget(desc_lbl)
+        else:
+            top_row = QHBoxLayout()
+            top_row.setSpacing(6)
+            top_row.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        if self.has_update:
-            upd_lbl = QLabel("⚡ Update")
-            upd_lbl.setFocusPolicy(Qt.NoFocus)
-            upd_lbl.setFont(QFont("Google Sans", 8, QFont.Bold))
-            upd_lbl.setFixedHeight(18)
-            upd_lbl.setStyleSheet("color: #e5c890; background: rgba(229, 200, 144, 0.15); padding: 0 6px; border-radius: 8px; outline: none; border: none;")
-            info_row.addWidget(upd_lbl)
-        elif self.status == "full":
-            added_lbl = QLabel("✓ Added")
-            added_lbl.setFocusPolicy(Qt.NoFocus)
-            added_lbl.setFont(QFont("Google Sans", 8, QFont.Bold))
-            added_lbl.setFixedHeight(18)
-            added_lbl.setStyleSheet("color: #a6d189; background: rgba(166, 209, 137, 0.15); padding: 0 6px; border-radius: 8px; outline: none; border: none;")
-            info_row.addWidget(added_lbl)
-        elif self.status == "partial":
-            part_lbl = QLabel("◑ Partial")
-            part_lbl.setFocusPolicy(Qt.NoFocus)
-            part_lbl.setFont(QFont("Google Sans", 8, QFont.Bold))
-            part_lbl.setFixedHeight(18)
-            part_lbl.setStyleSheet("color: #ef9f76; background: rgba(239, 159, 118, 0.15); padding: 0 6px; border-radius: 8px; outline: none; border: none;")
-            info_row.addWidget(part_lbl)
+            title_lbl = QLabel(item_title)
+            title_lbl.setFont(QFont("Google Sans", 11, QFont.Bold))
+            title_lbl.setStyleSheet("color: #ffffff; background: transparent;")
+            top_row.addWidget(title_lbl)
 
-        info_row.addStretch(1)
-        center_lay.addLayout(info_row)
+            cat = self.snippet_data.get("category", "")
+            if cat:
+                top_row.addWidget(AntialiasedTag(cat, "#8caaee", parent=self))
+
+            top_row.addStretch(1)
+            center_lay.addLayout(top_row)
+
+            flags_row = QHBoxLayout()
+            flags_row.setSpacing(5)
+            flags_row.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            for f_kind, f_text, f_color in flags:
+                if f_kind == "category":
+                    continue
+                flags_row.addWidget(AntialiasedTag(f_text, f_color, parent=self))
+            flags_row.addStretch(1)
+            center_lay.addLayout(flags_row)
+
+            desc_text = self.snippet_data.get("description", "")
+            if len(desc_text) > 85:
+                desc_text = desc_text[:82] + "..."
+            desc_lbl = QLabel(desc_text)
+            desc_lbl.setFont(QFont("Google Sans", 8))
+            desc_lbl.setStyleSheet("color: #8c92a4; background: transparent;")
+            center_lay.addWidget(desc_lbl)
 
         main_lay.addLayout(center_lay, 1)
 
-        # Right Action Button
-        right_box = QVBoxLayout()
-        right_box.setAlignment(Qt.AlignCenter)
-        right_box.setContentsMargins(0, 0, 0, 0)
+        # Right Action Buttons
+        actions_lay = QHBoxLayout()
+        actions_lay.setSpacing(6)
+        actions_lay.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        if self.has_update:
-            self.action_btn = PillPushButton("Update", "primary", height=28)
+        if self.is_customized:
+            self.restore_btn = AntialiasedCircleButton("\uE094", tooltip="Restore to Curated Default", size=30, accent=True, parent=self)
+            self.restore_btn.clicked.connect(lambda: self.restore_requested.emit(self.snippet_id))
+            actions_lay.addWidget(self.restore_btn)
+
+        self.edit_btn = AntialiasedCircleButton("\uE104", tooltip="Edit item in-place (name, icon, pos, properties)", size=30, parent=self)
+        self.edit_btn.clicked.connect(lambda: self.edit_requested.emit(self.snippet_id))
+        actions_lay.addWidget(self.edit_btn)
+
+        if self.status == "full":
+            self.action_btn = PillPushButton("✓ Added", "yes", height=28, parent=self)
             self.action_btn.setFixedWidth(80)
-            self.action_btn.setStyleSheet("background: #e5c890; color: #18181c; font-weight: bold; border-radius: 14px; outline: none;")
-        elif self.status == "full":
-            self.action_btn = PillPushButton("Manage", "secondary", height=28)
-            self.action_btn.setFixedWidth(80)
-            self.action_btn.setStyleSheet("background: rgba(166, 209, 137, 0.15); color: #a6d189; border: 1px solid #a6d189; border-radius: 14px; outline: none;")
-        elif self.status == "partial":
-            self.action_btn = PillPushButton("Manage", "secondary", height=28)
-            self.action_btn.setFixedWidth(80)
-            self.action_btn.setStyleSheet("background: rgba(239, 159, 118, 0.15); color: #ef9f76; border: 1px solid #ef9f76; border-radius: 14px; outline: none;")
+            self.action_btn.setToolTip("Click to remove from items.nss")
+            self.action_btn.clicked.connect(lambda: self.toggle_requested.emit(self.snippet_id, False))
         else:
-            self.action_btn = PillPushButton("View & Add", "primary", height=28)
-            self.action_btn.setFixedWidth(88)
+            self.action_btn = PillPushButton("＋ Add", "primary", height=28, parent=self)
+            self.action_btn.setFixedWidth(74)
+            self.action_btn.setToolTip("Add item to imports/items.nss")
+            self.action_btn.clicked.connect(lambda: self.toggle_requested.emit(self.snippet_id, True))
+        actions_lay.addWidget(self.action_btn)
 
-        self.action_btn.setFocusPolicy(Qt.NoFocus)
-        self.action_btn.clicked.connect(lambda: self.clicked.emit(self.snippet_id))
-        right_box.addWidget(self.action_btn)
-        main_lay.addLayout(right_box)
-
+        main_lay.addLayout(actions_lay)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.snippet_id)
+            elems = self.snippet_data.get("elements", [])
+            if len(elems) > 1:
+                self.clicked.emit(self.snippet_id)
         super().mousePressEvent(event)
 
 
@@ -1226,6 +1378,7 @@ class ItemsWidget(QWidget):
         self.current_category = "all"
         self.search_query = ""
         self.filter_installed_only = False
+        self.view_mode = "grid"
 
         self._setup_ui()
         self.refresh_catalog()
@@ -1241,23 +1394,23 @@ class ItemsWidget(QWidget):
         # Page 0: Gallery View
         self.gallery_page = QWidget()
         self.gallery_page.setObjectName("itemsGalleryPage")
-        self.gallery_page.setStyleSheet("#itemsGalleryPage { background-color: #141416; }")
+        self.gallery_page.setStyleSheet("#itemsGalleryPage { background-color: transparent; }")
         gal_lay = QVBoxLayout(self.gallery_page)
         gal_lay.setContentsMargins(14, 4, 14, 10)
         gal_lay.setSpacing(10)
 
-        # Top Bar: Search + Installed Filter Toggle + Count
+        # Top Bar: Search + Installed Filter Toggle + View Switcher + Count
         top_bar = QHBoxLayout()
         top_bar.setSpacing(10)
 
-        self.search_input = PillLineEdit("Search snippets, items, commands...")
+        self.search_input = PillLineEdit("Search curated items, commands, flags...")
         self.search_input.setFixedHeight(32)
         self.search_input.setMinimumWidth(260)
         self.search_input.textChanged.connect(self._on_search_changed)
         top_bar.addWidget(self.search_input, 1)
 
         # Installed only filter button
-        self.installed_filter_btn = QPushButton("✓ Installed")
+        self.installed_filter_btn = QPushButton("✓ Added")
         self.installed_filter_btn.setCheckable(True)
         self.installed_filter_btn.setFixedHeight(32)
         self.installed_filter_btn.setCursor(Qt.PointingHandCursor)
@@ -1283,6 +1436,59 @@ class ItemsWidget(QWidget):
         self.installed_filter_btn.toggled.connect(self._on_installed_filter_toggled)
         top_bar.addWidget(self.installed_filter_btn)
 
+        # View mode toggle container (Grid / List)
+        self.view_container = QFrame()
+        self.view_container.setStyleSheet("background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;")
+        v_lay = QHBoxLayout(self.view_container)
+        v_lay.setContentsMargins(2, 2, 2, 2)
+        v_lay.setSpacing(2)
+
+        view_btn_css = """
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 12px;
+                color: #8c92a4;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.08);
+                color: #ffffff;
+            }
+            QPushButton:checked {
+                background: rgba(231, 130, 132, 0.25);
+                color: #ea999c;
+                border: 1px solid rgba(231, 130, 132, 0.4);
+            }
+        """
+
+        self.grid_view_btn = QPushButton("\uE80A")
+        self.grid_view_btn.setFixedSize(28, 28)
+        self.grid_view_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+        self.grid_view_btn.setToolTip("Grid View")
+        self.grid_view_btn.setCheckable(True)
+        self.grid_view_btn.setChecked(True)
+        self.grid_view_btn.setCursor(Qt.PointingHandCursor)
+        self.grid_view_btn.setStyleSheet(view_btn_css)
+
+        self.list_view_btn = QPushButton("\uE8FD")
+        self.list_view_btn.setFixedSize(28, 28)
+        self.list_view_btn.setFont(QFont("Segoe MDL2 Assets", 10))
+        self.list_view_btn.setToolTip("List View")
+        self.list_view_btn.setCheckable(True)
+        self.list_view_btn.setCursor(Qt.PointingHandCursor)
+        self.list_view_btn.setStyleSheet(view_btn_css)
+
+        self.view_group = QButtonGroup(self)
+        self.view_group.setExclusive(True)
+        self.view_group.addButton(self.grid_view_btn)
+        self.view_group.addButton(self.list_view_btn)
+
+        self.grid_view_btn.clicked.connect(lambda: self._set_view_mode("grid"))
+        self.list_view_btn.clicked.connect(lambda: self._set_view_mode("list"))
+
+        v_lay.addWidget(self.grid_view_btn)
+        v_lay.addWidget(self.list_view_btn)
+        top_bar.addWidget(self.view_container)
 
         self.count_lbl = QLabel("0 Items")
         self.count_lbl.setFont(QFont("Google Sans", 9))
@@ -1297,7 +1503,13 @@ class ItemsWidget(QWidget):
         self.cats_layout = FlowLayout(self.cats_frame, margin=0, spacing=6)
 
         # Add 'All' tag
-        all_btn = CategoryFilterButton("All")
+        cat_colors = {
+            "all": "#51576d",
+            "developer": "#8caaee",
+            "file tools": "#a6d189",
+            "system": "#ca9ee6",
+        }
+        all_btn = CategoryFilterButton("All", color=cat_colors["all"])
         all_btn.setChecked(True)
         all_btn.clicked.connect(lambda: self._select_category("all", all_btn))
         self.cats_layout.addWidget(all_btn)
@@ -1305,8 +1517,10 @@ class ItemsWidget(QWidget):
 
         # Dynamic categories from catalog
         for group in self.manager.catalog.get("groups", []):
-            c_btn = CategoryFilterButton(group.get("name", ""))
-            c_btn.clicked.connect(lambda checked, gid=group["id"], b=c_btn: self._select_category(gid, b))
+            g_name = group.get("name", "")
+            g_id = group.get("id") or g_name
+            c_btn = CategoryFilterButton(g_name, color=cat_colors.get(g_name.lower(), "#ef9f76"))
+            c_btn.clicked.connect(lambda checked, gid=g_id, b=c_btn: self._select_category(gid, b))
             self.cats_layout.addWidget(c_btn)
             self.cat_buttons.append(c_btn)
 
@@ -1322,7 +1536,7 @@ class ItemsWidget(QWidget):
         self.grid_layout = QGridLayout(self.scroll_content)
         self.grid_layout.setContentsMargins(0, 4, 8, 12)
         self.grid_layout.setHorizontalSpacing(14)
-        self.grid_layout.setVerticalSpacing(12)
+        self.grid_layout.setVerticalSpacing(10)
         self.grid_layout.setAlignment(Qt.AlignTop)
         self.grid_layout.setColumnStretch(0, 1)
         self.grid_layout.setColumnStretch(1, 1)
@@ -1335,12 +1549,20 @@ class ItemsWidget(QWidget):
         # Page 1: Snippet Detail View
         self.detail_view = SnippetDetailView(self.manager, self)
         self.detail_view.setObjectName("itemsDetailPage")
-        self.detail_view.setStyleSheet("#itemsDetailPage { background-color: #141416; }")
+        self.detail_view.setStyleSheet("#itemsDetailPage { background-color: transparent; }")
         self.detail_view.back_requested.connect(self._on_back_to_gallery)
         self.detail_view.item_modified.connect(self._on_item_modified)
         self.stacked_view.addWidget(self.detail_view)
 
         main_lay.addWidget(self.stacked_view)
+
+    def _set_view_mode(self, mode):
+        if self.view_mode == mode:
+            return
+        self.view_mode = mode
+        self.grid_view_btn.setChecked(mode == "grid")
+        self.list_view_btn.setChecked(mode == "list")
+        self._populate_cards()
 
     def refresh_catalog(self):
         """Reloads catalog and updates snippet cards."""
@@ -1367,32 +1589,46 @@ class ItemsWidget(QWidget):
         self.filter_installed_only = checked
         self._populate_cards()
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        if hasattr(self, 'grid_layout') and hasattr(self, 'scroll_content'):
+            self.grid_layout.activate()
+            self.scroll_content.adjustSize()
+
     def _populate_cards(self):
         # Stop any active batch timer
         if hasattr(self, '_batch_timer') and self._batch_timer:
             self._batch_timer.stop()
             self._batch_timer = None
 
-        # Clear existing cards
+        self.scroll_content.setUpdatesEnabled(False)
+
+        # Clear existing cards cleanly
         while self.grid_layout.count():
             it = self.grid_layout.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+            w = it.widget()
+            if w:
+                w.hide()
+                w.setParent(None)
+                w.deleteLater()
 
         # Filter snippets
         visible_snippets = []
         for group in self.manager.catalog.get("groups", []):
-            if self.current_category != "all" and group["id"] != self.current_category:
+            gid = group.get("id") or group.get("name", "")
+            if self.current_category != "all" and gid != self.current_category:
                 continue
 
             for snip in group.get("snippets", []):
                 # Search filter
                 if self.search_query:
+                    title_text = snip.get("title") or snip.get("name", "")
+                    code_text = snip.get("full_code") or snip.get("code", "")
                     match = (
-                        self.search_query in snip.get("name", "").lower() or
+                        self.search_query in title_text.lower() or
                         self.search_query in snip.get("description", "").lower() or
                         self.search_query in snip.get("category", "").lower() or
-                        self.search_query in snip.get("full_code", "").lower()
+                        self.search_query in code_text.lower()
                     )
                     if not match:
                         continue
@@ -1405,43 +1641,111 @@ class ItemsWidget(QWidget):
                 has_upd = self.manager.has_snippet_update(snip["id"])
                 visible_snippets.append((snip, status, has_upd))
 
-        self.count_lbl.setText(f"{len(visible_snippets)} Snippet{'s' if len(visible_snippets) != 1 else ''}")
+        self.count_lbl.setText(f"{len(visible_snippets)} Item{'s' if len(visible_snippets) != 1 else ''}")
 
-        self._pending_snippets = visible_snippets
-        self._current_snippet_idx = 0
-        self.grid_layout.setColumnStretch(0, 1)
-        self.grid_layout.setColumnStretch(1, 1)
+        if self.view_mode == "list":
+            self.grid_layout.setColumnStretch(0, 1)
+            self.grid_layout.setColumnStretch(1, 0)
+        else:
+            self.grid_layout.setColumnStretch(0, 1)
+            self.grid_layout.setColumnStretch(1, 1)
 
-        # Immediately render initial screenful of cards (~10ms)
-        self._render_next_batch(batch_size=14)
-
-        # Schedule remaining cards smoothly in idle frames
-        if self._current_snippet_idx < len(self._pending_snippets):
-            self._schedule_batch()
-
-    def _schedule_batch(self):
-        if not hasattr(self, '_batch_timer') or self._batch_timer is None:
-            self._batch_timer = QTimer(self)
-            self._batch_timer.setSingleShot(True)
-            self._batch_timer.timeout.connect(self._on_batch_timeout)
-        self._batch_timer.start(15)
-
-    def _on_batch_timeout(self):
-        if self._current_snippet_idx < len(self._pending_snippets):
-            self._render_next_batch(batch_size=16)
-            if self._current_snippet_idx < len(self._pending_snippets):
-                self._schedule_batch()
-
-    def _render_next_batch(self, batch_size=16):
-        cols = 2
-        end_idx = min(self._current_snippet_idx + batch_size, len(self._pending_snippets))
-        for idx in range(self._current_snippet_idx, end_idx):
-            snip, status, has_upd = self._pending_snippets[idx]
-            card = SnippetCard(snip, status, has_upd)
+        cols = 1 if self.view_mode == "list" else 2
+        for idx, (snip, status, has_upd) in enumerate(visible_snippets):
+            is_cust = self.manager.is_snippet_customized(snip["id"])
+            card = SnippetCard(snip, status, has_upd, is_customized=is_cust, view_mode=self.view_mode, parent=self.scroll_content)
             card.clicked.connect(self._open_snippet_detail)
-            r, c = idx // cols, idx % cols
-            self.grid_layout.addWidget(card, r, c)
-        self._current_snippet_idx = end_idx
+            card.edit_requested.connect(self._on_edit_snippet)
+            card.restore_requested.connect(self._on_restore_snippet)
+            card.toggle_requested.connect(self._on_toggle_snippet)
+            if self.view_mode == "list":
+                self.grid_layout.addWidget(card, idx, 0)
+            else:
+                r, c = idx // cols, idx % cols
+                self.grid_layout.addWidget(card, r, c)
+
+        self.grid_layout.activate()
+        self.scroll_content.adjustSize()
+        self.scroll_content.setUpdatesEnabled(True)
+
+    def _on_edit_snippet(self, snippet_id):
+        snip = self.manager.get_snippet(snippet_id)
+        if not snip:
+            return
+
+        current_code = self.manager.get_installed_snippet_code(snippet_id) or snip.get("full_code", "") or snip.get("code", "")
+        parsed_items = find_items_and_menus(current_code)
+        target = parsed_items[0] if parsed_items else {}
+        props = target.get('props', {}).copy()
+
+        snip_title = snip.get('title') or snip.get('name')
+        if 'title' not in props and snip_title:
+            props['title'] = f"'{snip_title}'"
+        snip_icon = snip.get('icon') or snip.get('glyph')
+        if 'image' not in props and 'icon' not in props and snip_icon:
+            props['image'] = snip_icon
+
+        item_dict = {
+            'type': target.get('type', 'item'),
+            'props': props,
+            'file': self.manager.items_nss_path,
+            'start': target.get('start', 0),
+            'end': target.get('end', len(current_code)),
+            'has_children': target.get('has_children', False),
+            'raw_inner': target.get('raw_inner', '')
+        }
+
+        dlg = ImportEditorDialog(item_dict, parent=self)
+        if dlg.exec_() == QDialog.Accepted:
+            new_props = dlg.get_props()
+            merged = props.copy()
+            for k in list(merged.keys()):
+                if k not in new_props and k not in ('_order', 'file', 'start', 'end', 'cmd', 'arg', 'args', 'where', 'mode', 'window', 'admin', 'keys', 'key', 'tip'):
+                    del merged[k]
+            for k, v in new_props.items():
+                if v is None or v == 'None' or (k in ('vis', 'pos', 'type', 'menu') and not str(v).strip()):
+                    if k in merged:
+                        del merged[k]
+                else:
+                    merged[k] = v
+
+            pts = []
+            handled = set()
+            orig_order = props.get('_order', [])
+            for k in orig_order:
+                if k in merged:
+                    v = str(merged[k]).strip()
+                    formatted = format_nss_value(k, v)
+                    if formatted:
+                        pts.append(formatted)
+                    handled.add(k)
+            for k, v in merged.items():
+                if k not in handled and not k.startswith('_') and k not in ('file', 'start', 'end', 'cmd_end', 'has_children', 'raw_inner', 'indent'):
+                    formatted = format_nss_value(k, str(v).strip())
+                    if formatted:
+                        pts.append(formatted)
+
+            elem_type = target.get('type', 'item')
+            new_code = f"{elem_type}({', '.join(pts)})"
+            if item_dict.get('raw_inner'):
+                new_code += f" {item_dict['raw_inner']}"
+
+            self.manager.add_snippet(snippet_id, custom_code=new_code)
+            self.refresh_installed_only()
+            self.reload_requested.emit()
+
+    def _on_restore_snippet(self, snippet_id):
+        self.manager.restore_snippet_default(snippet_id)
+        self.refresh_installed_only()
+        self.reload_requested.emit()
+
+    def _on_toggle_snippet(self, snippet_id, is_adding):
+        if is_adding:
+            self.manager.add_snippet(snippet_id)
+        else:
+            self.manager.remove_snippet(snippet_id)
+        self.refresh_installed_only()
+        self.reload_requested.emit()
 
     def _open_snippet_detail(self, snippet_id):
         self.detail_view.load_snippet(snippet_id)

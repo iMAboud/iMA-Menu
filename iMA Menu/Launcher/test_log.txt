@@ -1,0 +1,101 @@
+================================================================================
+iMA Menu Launcher — Automated Feature & Latency Report
+Date & Time: 2026-11-24 16:34:09
+Environment: Windows 11 (Strict Isolated Sandbox: C:\Users\iMA\AppData\Local\Temp\ima_tester_sandbox_17yve76b)
+Total Tests: 55 | Passed: 50 | Warnings (Slow >120ms): 5 | Failed: 0
+Cold Launch Delay: 42.84 ms
+Total Suite Execution Time: 2932.8 ms
+Slowest Operation: Draft syntax serialization & recovery (415.4 ms) in [1. NSS Parsing & Syntax]
+================================================================================
+
+
+[1. NSS PARSING & SYNTAX]
+  [PASS]     0.03 ms  Syntax validation with balanced code
+  [PASS]     0.02 ms  Syntax rejection of unbalanced brackets
+  [PASS]     0.02 ms  Comment stripping protection (// and /* */)
+  [PASS]     0.04 ms  NSSLexer operator tokenizing (==, &&, @if)
+  [PASS]     0.30 ms  Argument parsing of nested functions
+  [PASS]     0.30 ms  Anti-corruption formatting (path vs expression)
+  [PASS]    12.37 ms  AST mutation roundtrip & marker preservation
+  [WARN]   415.40 ms  Draft syntax serialization & recovery
+          ↳ Details: Slow responsiveness (415.4 ms > 120 ms)
+  [PASS]     1.03 ms  NSSAutoFixer healing unbalanced blocks
+
+[2. STARTUP & WINDOW]
+  [PASS]    42.85 ms  Cold PluginManager initialization
+  [PASS]     0.02 ms  Frameless & translucent acrylic flags
+  [PASS]     0.01 ms  Single-instance IPC configuration
+  [PASS]     0.02 ms  Title bar Refresh button dispatch
+  [PASS]     0.02 ms  Title bar Store / Local pill toggle
+
+[3. SIDEBAR NAVIGATION]
+  [PASS]    88.56 ms  Switch to Modify tab (lazy load)
+  [WARN]   155.69 ms  Switch to Theme tab (lazy load)
+          ↳ Details: Slow responsiveness (155.7 ms > 120 ms)
+  [WARN]   173.04 ms  Switch to Settings tab (lazy load)
+          ↳ Details: Slow responsiveness (173.0 ms > 120 ms)
+  [PASS]     7.23 ms  Switch back to Plugins tab
+  [PASS]    18.92 ms  Sidebar button group exclusive checkable state
+
+[4. PLUGINS TAB]
+  [PASS]     7.33 ms  Plugin cards grid layout packing
+  [PASS]     0.03 ms  Plugins search filtering dispatch
+  [PASS]     7.33 ms  DetailsPopup markdown rendering & dismissal
+  [PASS]     1.06 ms  CapsuleActionButton dynamic state transitions
+
+[5. MODIFY: RULES]
+  [PASS]     8.95 ms  Rules tab model population
+  [PASS]     0.05 ms  Filter tags dispatch (All / Modified)
+  [PASS]     0.03 ms  Rules search filter dispatch
+  [PASS]    55.92 ms  ModifyRuleEditorDialog initialization
+  [PASS]     0.48 ms  MatchModeButton circular mode cycling
+
+[6. MODIFY: IMPORTS]
+  [PASS]     8.91 ms  Imports tab activation & sidebar scan
+  [PASS]     0.01 ms  Sidebar NSS files A-Z sorting
+  [PASS]    22.48 ms  ImportEditorDialog modal construction
+
+[7. MODIFY: IDS]
+  [PASS]     0.01 ms  Verification of 234 official Nilesoft IDs
+  [PASS]     7.16 ms  IDs tab delegate & model initialization
+  [PASS]     0.03 ms  System IDs search filter responsiveness
+
+[8. MODIFY: MENU BUILDER]
+  [PASS]   118.94 ms  Menu Builder tab activation
+  [PASS]    56.85 ms  ItemConfigDialog modal initialization
+  [PASS]     9.99 ms  PipelineStepWidget action configuration
+  [PASS]     1.43 ms  StyledConfirmDialog acrylic modal
+
+[9. THEME SWITCHER]
+  [PASS]    10.75 ms  Theme gallery cards grid initialization
+  [PASS]     0.95 ms  AddThemeDialog modal validation & dismiss
+  [PASS]    84.41 ms  Chameleon palette extraction, theme.nss rewrite & toggle
+
+[10. THEME EDITOR]
+  [WARN]   257.11 ms  Theme Editor tab activation
+          ↳ Details: Slow responsiveness (257.1 ms > 120 ms)
+  [PASS]    88.57 ms  Category pill navigation (General/Colors/Borders)
+  [PASS]    21.17 ms  MinimalColorPickerDialog palette modal
+  [PASS]     0.18 ms  RadiusButton vector geometry selection
+
+[11. MOUSE CURSORS]
+  [WARN]   348.68 ms  Mouse Cursors gallery initialization
+          ↳ Details: Slow responsiveness (348.7 ms > 120 ms)
+  [PASS]    67.26 ms  Explore / Installed / Favorites pill switching
+  [PASS]     0.01 ms  Verification of 17 standard Windows cursor roles
+  [PASS]     0.01 ms  Download All button state verification
+
+[12. SETTINGS TAB]
+  [PASS]    30.00 ms  Settings page layout construction
+  [PASS]     0.08 ms  ModernSwitch animated toggle dispatch
+
+[13. SHARED DIALOGS & MODALS]
+  [PASS]     1.45 ms  UnsavedChangesDialog modal lifecycle
+  [PASS]     3.35 ms  AccountProfileDialog layout & avatar display
+  [PASS]     0.95 ms  ModernDialog styled button callbacks
+  [PASS]     0.56 ms  PillProgressBar smooth value tracking
+
+================================================================================
+DETAILED FAILURE LOGS:
+(None - All tests passed cleanly with 0 regressions)
+================================================================================

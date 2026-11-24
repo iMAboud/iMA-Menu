@@ -53,7 +53,12 @@ def _sync_local_runtime():
                             if not os.path.exists(d):
                                 shutil.copytree(s, d, dirs_exist_ok=True)
                         else:
-                            if not os.path.exists(d) or os.path.getsize(s) != os.path.getsize(d):
+                            item_low = item.lower()
+                            if (
+                                not os.path.exists(d)
+                                or os.path.getsize(s) != os.path.getsize(d)
+                                or item_low in ('shell.dll', 'shell.exe', 'ima_updater.exe', 'style.css')
+                            ):
                                 shutil.copy2(s, d)
                     with open(stamp_file, 'w', encoding='utf-8') as sf:
                         sf.write(VERSION)
@@ -91,7 +96,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLa
                              QScrollArea, QGraphicsOpacityEffect, QStackedWidget, 
                              QDialog, QLineEdit, QScrollBar, QAbstractScrollArea, 
                              QSizePolicy, QFrame, QFileDialog, QInputDialog, QShortcut, QButtonGroup)
-from PyQt5.QtGui import QColor, QPixmap, QImage, QFont, QPainter, QPainterPath, QPen, QIcon, QCursor, QKeySequence, QLinearGradient, QRegion
+from PyQt5.QtGui import QColor, QPixmap, QImage, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QIcon, QCursor, QKeySequence, QLinearGradient, QRegion
 from PyQt5.QtCore import (Qt, pyqtSignal, QObject, QThread, QTimer, QPropertyAnimation, QEasingCurve, 
                              QSize, QEvent, QPoint, QPointF, QRect, QRectF, QFileSystemWatcher, QParallelAnimationGroup,
                              QAbstractNativeEventFilter, QVariantAnimation)
@@ -128,7 +133,8 @@ from utils import (resource_path, safe_file_write, UnsavedChangesDialog,
                    make_circular_pixmap, make_initial_avatar_pixmap, AccountProfileDialog,
                    CapsuleActionButton, PillTabButton, PillPushButton, fix_nss_mode_syntax_once, restore_open_with_once,
                    ensure_start_menu_shortcut, PillNotification, AnimatedStackedWidget, CloudSyncConflictDialog, is_recently_updated,
-                   CloudBackupConfirmDialog, CloudBackupHistoryDialog, IdleScheduler, ImagePipeline)
+                   CloudBackupConfirmDialog, CloudBackupHistoryDialog, IdleScheduler, ImagePipeline, ChameleonEngine,
+                   get_mdl2_icon, style_native_tooltip_window, install_native_tooltip_filter)
 from plugin_registry import PluginRegistry, atomic_json_write, safe_json_read, delete_to_recycle_bin, version_cmp
 from plugin_workers import (
     FetchPluginsThread, IconDownloadWorker, InstallationWorker,
@@ -372,7 +378,7 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.1.10'
+APP_VERSION = '2.1.13'
 
 def _resolve_app_version():
     ver = APP_VERSION
@@ -656,10 +662,22 @@ class SettingsManager:
             "auto_cloud_backup": True,
             "last_cloud_backup": 0,
             "dismissed_update_version": "",
-            "has_user_changes": False
+            "has_user_changes": False,
+            "chameleon_mode": False,
+            "right_click_quick_edit": True
         }
         self.settings = self.defaults.copy()
+        self._save_lock = threading.Lock()
+        self._save_timer = None
         self.load()
+        self._sync_registry_flag()
+
+    def _sync_registry_flag(self):
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\iMA Menu") as k:
+                winreg.SetValueEx(k, "RightClickQuickEdit", 0, winreg.REG_DWORD, 1 if self.settings.get("right_click_quick_edit", True) else 0)
+        except Exception:
+            pass
 
     def load(self):
         if os.path.exists(SETTINGS_FILE):
@@ -682,15 +700,31 @@ class SettingsManager:
             # Create default settings if missing
             self.save()
 
-    def save(self):
+    def _write_disk(self, snapshot):
         try:
             os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-            for k in self.DEPRECATED_KEYS:
-                self.settings.pop(k, None)
-            with open(SETTINGS_FILE, 'w') as f:
-                json.dump(self.settings, f, indent=4)
+            atomic_json_write(SETTINGS_FILE, snapshot)
         except Exception:
             pass
+
+    def save(self, async_debounce=False):
+        for k in self.DEPRECATED_KEYS:
+            self.settings.pop(k, None)
+        snapshot = dict(self.settings)
+        if async_debounce:
+            with self._save_lock:
+                if self._save_timer is not None:
+                    self._save_timer.cancel()
+                t = threading.Timer(0.15, self._write_disk, args=(snapshot,))
+                t.daemon = True
+                self._save_timer = t
+                t.start()
+        else:
+            with self._save_lock:
+                if self._save_timer is not None:
+                    self._save_timer.cancel()
+                    self._save_timer = None
+            self._write_disk(snapshot)
 
     def get(self, key, default=None):
         if key in self.DEPRECATED_KEYS:
@@ -701,9 +735,11 @@ class SettingsManager:
         if key in self.DEPRECATED_KEYS:
             return
         self.settings[key] = value
+        if key == "right_click_quick_edit":
+            self._sync_registry_flag()
         if key not in ("has_user_changes", "last_cloud_backup", "last_update_check", "dismissed_update_version"):
             self.settings["has_user_changes"] = True
-        self.save()
+        self.save(async_debounce=(key == "right_click_quick_edit"))
 
 
 def get_auth_headers():
@@ -1619,15 +1655,18 @@ class AutoHideScrollManager(QObject):
                 self.attach(sb)
 
     def eventFilter(self, obj, event):
-        if event.type() != QEvent.Show:
+        etype = event.type()
+        if etype in (QEvent.Show, QEvent.Resize, QEvent.Polish):
+            if obj.metaObject().className() == 'QTipLabel' or (type(obj).__name__ == 'QLabel' and (obj.windowFlags() & Qt.ToolTip)):
+                style_native_tooltip_window(obj)
+                return False
+        if etype != QEvent.Show:
             return False
         if isinstance(obj, QScrollBar):
             self.attach(obj)
         elif isinstance(obj, QAbstractScrollArea):
             self.attach(obj.verticalScrollBar())
             self.attach(obj.horizontalScrollBar())
-        elif type(obj).__name__ == 'QLabel' and (obj.windowFlags() & Qt.ToolTip):
-            obj.setAttribute(Qt.WA_TranslucentBackground, True)
         return False
 
 
@@ -1837,6 +1876,115 @@ class AppDeleteButton(QPushButton):
         painter.end()
 
 
+class ChameleonPillButton(QPushButton):
+    """Vector-antialiased Chameleon toggle pill with dual-tone color swatch."""
+    def __init__(self, text="Chameleon", parent=None):
+        super().__init__(text, parent)
+        self.setObjectName("chameleonContainer")
+        self.setCheckable(True)
+        self.setFixedHeight(30)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setAttribute(Qt.WA_Hover, True)
+        self._font = QFont("Google Sans", 11, QFont.Bold)
+        self._font.setBold(True)
+        self.setFont(self._font)
+        self.setStyleSheet("background: transparent; border: none; outline: none;")
+        self._primary = "#8caaee"
+        self._secondary = "#8caaee"
+
+    def set_palette_colors(self, primary, secondary=None):
+        self._primary = primary or "#8caaee"
+        self._secondary = secondary or self._primary
+        self.update()
+
+    def sizeHint(self):
+        fm = QFontMetrics(self._font)
+        w = 12 + 10 + 8 + fm.horizontalAdvance(self.text().strip()) + 14
+        return QSize(max(w, 108), 30)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        r = rect.height() / 2.0
+        path = QPainterPath()
+        path.addRoundedRect(rect, r, r)
+
+        is_chk = self.isChecked()
+        is_hov = self.underMouse()
+        is_down = self.isDown()
+
+        if is_chk:
+            pcol = QColor(self._primary)
+            bg = QColor(pcol.red(), pcol.green(), pcol.blue(), 62 if is_hov else 42)
+            border = pcol.lighter(115) if is_hov else pcol
+            fg = QColor("#ffffff")
+        else:
+            bg = QColor(255, 255, 255, 24 if is_hov else 13)
+            border = QColor(255, 255, 255, 55 if is_hov else 28)
+            fg = QColor("#ffffff") if is_hov else QColor("#cfd3dc")
+
+        if is_down:
+            bg = bg.darker(110)
+
+        p.fillPath(path, bg)
+        p.setPen(QPen(border, 1.5))
+        p.drawPath(path)
+
+        dot_rect = QRectF(12.0, (self.height() - 10.0) / 2.0, 10.0, 10.0)
+        if is_chk:
+            grad = QLinearGradient(dot_rect.topLeft(), dot_rect.bottomRight())
+            grad.setColorAt(0.0, QColor(self._primary))
+            grad.setColorAt(1.0, QColor(self._secondary))
+            p.setBrush(grad)
+            p.setPen(QPen(QColor(255, 255, 255, 115), 1.0))
+        else:
+            p.setBrush(QColor(255, 255, 255, 75))
+            p.setPen(Qt.NoPen)
+        p.drawEllipse(dot_rect)
+
+        p.setFont(self._font)
+        p.setPen(fg)
+        text_rect = QRectF(29.0, 0.0, self.width() - 41.0, self.height())
+        p.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self.text().strip())
+        p.end()
+
+
+class SyncPillFrame(QFrame):
+    """Vector-antialiased Sync pill container with crisp rounded border."""
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("syncContainer")
+        self.setFixedHeight(30)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setStyleSheet("QFrame#syncContainer { background: transparent; border: none; }")
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        r = rect.height() / 2.0
+        path = QPainterPath()
+        path.addRoundedRect(rect, r, r)
+        is_hov = self.underMouse()
+        bg = QColor(255, 255, 255, 22 if is_hov else 13)
+        border = QColor(255, 255, 255, 50 if is_hov else 28)
+        p.fillPath(path, bg)
+        p.setPen(QPen(border, 1.5))
+        p.drawPath(path)
+        p.end()
+
+
 class PluginManager(QWidget):
     _corner_radius = 28
 
@@ -1954,36 +2102,6 @@ class PluginManager(QWidget):
         self.plugins_layout.setContentsMargins(10, 10, 10, 10)
         self.plugins_layout.setSpacing(6)
 
-        # Pill-shaped Segmented Tabs Container (Plugins / Items)
-        self.plugins_sub_tab_container = QFrame()
-        self.plugins_sub_tab_container.setObjectName("pillTabContainer")
-        self.plugins_sub_tab_container.setStyleSheet("background-color: transparent; border: none; padding: 0px;")
-        pst_layout = QHBoxLayout(self.plugins_sub_tab_container)
-        pst_layout.setContentsMargins(0, 0, 0, 0)
-        pst_layout.setSpacing(4)
-
-        self.plugins_tab_sub_btn = PillTabButton(" Plugins", 0xEA86, height=30)
-        self.plugins_tab_sub_btn.setChecked(True)
-        self.plugins_tab_sub_btn.clicked.connect(lambda: self.switch_plugins_sub_tab(0))
-
-        self.items_tab_sub_btn = PillTabButton(" Items", 0xE710, height=30)
-        self.items_tab_sub_btn.clicked.connect(lambda: self.switch_plugins_sub_tab(1))
-
-        self.plugins_sub_tab_group = QButtonGroup(self)
-        self.plugins_sub_tab_group.setExclusive(True)
-        self.plugins_sub_tab_group.addButton(self.plugins_tab_sub_btn)
-        self.plugins_sub_tab_group.addButton(self.items_tab_sub_btn)
-
-        pst_layout.addWidget(self.plugins_tab_sub_btn)
-        pst_layout.addWidget(self.items_tab_sub_btn)
-
-        plugins_top_bar = QHBoxLayout()
-        plugins_top_bar.setContentsMargins(0, 0, 0, 0)
-        plugins_top_bar.addWidget(self.plugins_sub_tab_container)
-        plugins_top_bar.addStretch()
-        self.plugins_layout.addLayout(plugins_top_bar)
-        self.plugins_sub_tab_container.hide()
-
         self.plugins_inner_stack = QStackedWidget()
 
         self.scroll_area = QScrollArea(self)
@@ -2009,11 +2127,7 @@ class PluginManager(QWidget):
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.debounce_check_visible_cards)
         self.plugins_inner_stack.addWidget(self.scroll_area)
 
-        self.items_page = None
-        self.items_placeholder = QWidget()
-        self.plugins_inner_stack.addWidget(self.items_placeholder)
-
-        # Apps Page (Index 2 in plugins_inner_stack)
+        # Apps Page (Index 1 in plugins_inner_stack)
         self.apps_scroll_area = QScrollArea(self)
         self.apps_scroll_area.setWidgetResizable(True)
         self.apps_scroll_area.setObjectName("appsScrollArea")
@@ -2089,6 +2203,7 @@ class PluginManager(QWidget):
         QTimer.singleShot(5000, lambda: threading.Thread(target=_cleanup_old_executables, daemon=True).start())
         QTimer.singleShot(8000, _ensure_folder_ownership_async)
         self._init_seen_tracker()
+        self._setup_chameleon_engine()
         self._setup_native_window()
 
     def _init_seen_tracker(self):
@@ -2367,9 +2482,6 @@ class PluginManager(QWidget):
         else:
             self.sync_manager.cancel_restore(zip_path)
 
-    def _preload_items_manager(self):
-        pass
-
     def _init_sync_manager(self):
         if self.sync_manager is None:
             from cloud_sync import CloudSyncManager
@@ -2395,7 +2507,7 @@ class PluginManager(QWidget):
     def load_cached_plugins_immediately(self):
         is_plugins_page = (self.stacked_widget.currentWidget() == self.plugins_page) if hasattr(self, 'stacked_widget') else True
         sub_idx = getattr(self, 'plugins_inner_stack', None).currentIndex() if hasattr(self, 'plugins_inner_stack') else 0
-        if is_plugins_page and sub_idx in (0, 2):
+        if is_plugins_page and sub_idx in (0, 1):
             self.plugins_tab_container.show()
 
         self.render_current_plugins_tab()
@@ -3070,12 +3182,7 @@ class PluginManager(QWidget):
             if getattr(self, 'current_plugins_tab', '') == "apps":
                 self.refresh_apps()
             else:
-                sub_idx = getattr(self, 'plugins_inner_stack', None).currentIndex() if hasattr(self, 'plugins_inner_stack') else 0
-                if sub_idx == 1 and hasattr(self, 'items_page') and self.items_page:
-                    self.items_page.refresh_catalog()
-                    self.show_sync_status("Items Refreshed")
-                else:
-                    self.refresh_plugins()
+                self.refresh_plugins()
         elif hasattr(self, '_modify_page_widget') and cur_w == self._modify_page_widget and self._modify_page_widget is not None:
             self._modify_page_widget.load_and_init_ui()
             self.show_sync_status("Rules Refreshed")
@@ -3263,16 +3370,18 @@ class PluginManager(QWidget):
             self.theme_save_button.setFixedWidth(74)
             self.theme_reset_button = PillPushButton("Reset", "reset", height=30)
             self.theme_reset_button.setFixedWidth(74)
-            self.sync_container = QFrame(); self.sync_container.setObjectName("syncContainer")
-            self.sync_container.setFixedHeight(30)
-            self.sync_container.setStyleSheet("QFrame#syncContainer { background: rgba(255, 255, 255, 0.05); border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.1); }")
-            sync_cl = QHBoxLayout(self.sync_container); sync_cl.setContentsMargins(14, 0, 4, 0); sync_cl.setSpacing(8)
+            self.sync_container = SyncPillFrame()
+            sync_cl = QHBoxLayout(self.sync_container); sync_cl.setContentsMargins(14, 0, 6, 0); sync_cl.setSpacing(6)
 
             self.sync_label = QLabel("Sync")
             self.sync_label.setFont(QFont("Google Sans", 11, QFont.Bold))
             self.sync_label.setStyleSheet("color: white; font-weight: bold; font-size: 11pt; background: transparent; border: none;")
-            self.theme_sync_button = QPushButton("\uE117"); self.theme_sync_button.setFont(QFont('Segoe MDL2 Assets', 11))
-            self.theme_sync_button.setFixedSize(24, 24); self.theme_sync_button.setCursor(QCursor(Qt.PointingHandCursor))
+            self.sync_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            self.theme_sync_button = QPushButton("")
+            self.theme_sync_button.setFixedSize(22, 22); self.theme_sync_button.setCursor(QCursor(Qt.PointingHandCursor))
+            self.theme_sync_button.setStyleSheet("QPushButton { background: transparent; border: none; outline: none; padding: 0px; } QPushButton:hover { background: rgba(255, 255, 255, 0.10); border-radius: 11px; }")
+            self.theme_sync_button.setIcon(get_mdl2_icon(0xE117, 15, '#ffffff'))
+            self.theme_sync_button.setIconSize(QSize(15, 15))
             def _on_theme_sync_clicked():
                 if hasattr(self, 'theme_switcher_page') and self.theme_switcher_page:
                     self.theme_switcher_page.start_background_theme_sync(force=True)
@@ -3280,8 +3389,18 @@ class PluginManager(QWidget):
                 self.show_sync_status("Syncing Themes...")
 
             self.theme_sync_button.clicked.connect(_on_theme_sync_clicked)
+            self.sync_container.clicked.connect(_on_theme_sync_clicked)
 
             sync_cl.addWidget(self.sync_label); sync_cl.addWidget(self.theme_sync_button)
+
+            self.chameleon_container = ChameleonPillButton("Chameleon")
+            self.chameleon_btn = self.chameleon_container
+            self.chameleon_container.clicked.connect(lambda _chk=False: self.toggle_chameleon_mode())
+
+            self._update_chameleon_pill_ui(
+                bool(self.settings_manager.get("chameleon_mode", False)),
+                getattr(self, "_last_chameleon_palette", None),
+            )
 
             self.theme_top_header_bar = QWidget()
             self.theme_top_header_bar.setFixedHeight(58)
@@ -3295,6 +3414,7 @@ class PluginManager(QWidget):
             right_controls.setSpacing(10)
             right_controls.setAlignment(Qt.AlignVCenter)
             right_controls.addWidget(self.theme_switcher_page.tab_container, 0, Qt.AlignVCenter)
+            right_controls.addWidget(self.chameleon_container, 0, Qt.AlignVCenter)
             right_controls.addWidget(self.sync_container, 0, Qt.AlignVCenter)
             right_controls.addWidget(self.theme_save_button, 0, Qt.AlignVCenter)
             right_controls.addWidget(self.theme_reset_button, 0, Qt.AlignVCenter)
@@ -3359,6 +3479,7 @@ class PluginManager(QWidget):
 
                 self.theme_stacked_widget.slide_to_index(idx)
                 self.theme_switcher_page.tab_container.setVisible(idx == 0)
+                self.chameleon_container.setVisible(idx in (0, 1))
                 self.sync_container.setVisible(idx in (0, 1))
                 self.theme_save_button.setVisible(True)
                 self.theme_reset_button.setVisible(True)
@@ -3406,6 +3527,8 @@ class PluginManager(QWidget):
         return self._mouse_page_widget
 
     def _on_theme_picked(self, theme_name):
+        if self.settings_manager.get("chameleon_mode", False):
+            self.set_chameleon_mode(False, restore_backup=False, notify=False)
         self._last_action_time = time.time()
         display_name = theme_name.replace("theme_", "").replace("_", " ")
         if display_name.islower():
@@ -3475,7 +3598,7 @@ class PluginManager(QWidget):
             return btn
 
         self.side_plugins_btn = create_nav_item('plugins.png', 'Plugins', lambda: self.plugins_page, 'plugins')
-        self.side_modify_btn = create_nav_item('modify.png', 'Modify', lambda: self.get_modify_page(), 'modify')
+        self.side_modify_btn = create_nav_item('modify.png', 'Items', lambda: self.get_modify_page(), 'modify')
         self.side_theme_btn = create_nav_item('theme.png', 'Theme', lambda: self.get_theme_page(), 'theme')
         self.side_mouse_btn = create_nav_item('mouse.png', 'Mouse', lambda: self.get_mouse_page(), 'mouse')
         self.mouse_tab_btn = self.side_mouse_btn
@@ -3500,34 +3623,6 @@ class PluginManager(QWidget):
         except Exception as e:
             print(f"Error opening root folder: {e}")
 
-    def switch_plugins_sub_tab(self, idx):
-        if not hasattr(self, 'plugins_inner_stack'):
-            return
-        if idx == 1:
-            return
-            self.scroll_area.hide()
-            if self.items_page is None:
-                from items_widget import ItemsWidget
-                self.items_page = ItemsWidget(project_root=PROJECT_ROOT, parent=self)
-                self.items_page.reload_requested.connect(self.reload_shell)
-                self.plugins_inner_stack.removeWidget(self.items_placeholder)
-                self.plugins_inner_stack.addWidget(self.items_page)
-            else:
-                self.items_page.refresh_installed_only()
-            self.items_page.show()
-            self.items_tab_sub_btn.setChecked(True)
-            self.plugins_inner_stack.setCurrentIndex(1)
-            self.plugins_tab_container.hide()
-        else:
-            if self.items_page:
-                self.items_page.hide()
-            self.scroll_area.show()
-            self.plugins_tab_sub_btn.setChecked(True)
-            self.plugins_inner_stack.setCurrentIndex(0)
-            if self.stacked_widget.currentWidget() == self.plugins_page:
-                self.plugins_tab_container.show()
-            self.check_visible_cards()
-
     def switch_plugins_tab(self, tab_name):
         self.current_plugins_tab = tab_name
         if tab_name == "store":
@@ -3540,7 +3635,7 @@ class PluginManager(QWidget):
             self.render_current_plugins_tab()
         elif tab_name == "apps":
             self.apps_tab_btn.setChecked(True)
-            self.plugins_inner_stack.setCurrentIndex(2)
+            self.plugins_inner_stack.setCurrentIndex(1)
             self.load_apps()
         self._sync_active_tabs()
 
@@ -3558,7 +3653,7 @@ class PluginManager(QWidget):
         self.plugins_tab_container.show()
         if self.current_plugins_tab == "apps":
             self.apps_tab_btn.setChecked(True)
-            self.plugins_inner_stack.setCurrentIndex(2)
+            self.plugins_inner_stack.setCurrentIndex(1)
             self.load_apps()
         elif self.current_plugins_tab == "local":
             self.local_tab_btn.setChecked(True)
@@ -4356,7 +4451,7 @@ class PluginManager(QWidget):
                     self.app_icon_labels.pop(a_name, None)
                     self.app_icons_loaded.discard(a_name)
 
-        is_apps_tab = hasattr(self, 'plugins_inner_stack') and self.plugins_inner_stack.currentIndex() == 2
+        is_apps_tab = hasattr(self, 'plugins_inner_stack') and self.plugins_inner_stack.currentIndex() == 1
         if cards_changed or not self.apps_grid_layout.count():
             self.recalculate_apps_grid()
 
@@ -4380,7 +4475,7 @@ class PluginManager(QWidget):
             self.apps_grid_layout.setColumnStretch(0, 1)
             self.apps_grid_layout.setColumnStretch(1, 1)
             
-            is_apps_tab = hasattr(self, 'plugins_inner_stack') and self.plugins_inner_stack.currentIndex() == 2
+            is_apps_tab = hasattr(self, 'plugins_inner_stack') and self.plugins_inner_stack.currentIndex() == 1
             for i, (app_name, card) in enumerate(self.app_cards.items()):
                 row, col = i // cols, i % cols
                 self.apps_grid_layout.addWidget(card, row, col)
@@ -5044,6 +5139,19 @@ class PluginManager(QWidget):
                 self._apply_rounded_mask()
                 self.update()
 
+            elif msg.message == 0x001A:  # WM_SETTINGCHANGE
+                if self.settings_manager.get("chameleon_mode", False):
+                    should_refresh = (msg.wParam in (0x0014, 0))
+                    if not should_refresh and msg.lParam and msg.lParam > 0xFFFF:
+                        try:
+                            area = ctypes.c_wchar_p(msg.lParam).value or ""
+                            if area in ("ImmersiveColorSet", "Desktop", "WindowMetrics"):
+                                should_refresh = True
+                        except Exception:
+                            pass
+                    if should_refresh:
+                        self._schedule_chameleon_update(450)
+
         return super().nativeEvent(event_type, message)
 
     def showEvent(self, event):
@@ -5157,6 +5265,8 @@ class PluginManager(QWidget):
             except Exception:
                 pass
         # Stop threads and trigger final reload via IPC (instant)
+        if hasattr(self, 'chameleon_timer') and self.chameleon_timer:
+            self.chameleon_timer.stop()
         self.plugin_logic.stop_all_threads()
         SeenTracker.instance().flush()
         from utils import send_ipc_command
@@ -5208,31 +5318,37 @@ class PluginManager(QWidget):
 
         # Determine current theme image config (mode, colors)
         theme_nss = os.path.join(PROJECT_ROOT, 'imports', 'theme.nss')
-        mode = "gradient"
+        mode = "solid"
         colors = ["#ffffff", "#ffffff"]
         try:
             theme_data = getattr(self.theme_editor_page, 'theme_data', {}) if getattr(self, 'theme_editor_page', None) else {}
             raw_c = theme_data.get('image.color')
-            raw_eff = str(theme_data.get('image.effect', '0')).strip().lower()
+            raw_eff = str(theme_data.get('image.effect', '')).strip().lower()
             
-            if not raw_c and os.path.exists(theme_nss):
+            if (not raw_c or not raw_eff) and os.path.exists(theme_nss):
                 with open(theme_nss, 'r', encoding='utf-8-sig', errors='replace') as f:
                     content = f.read()
-                m_c = re.search(r'image\.color\s*=\s*\[?\s*(#[0-9A-Fa-f]{3,8})\s*(?:,\s*(#[0-9A-Fa-f]{3,8}))?\s*\]?', content)
-                if m_c:
-                    colors = [m_c.group(1)]
-                    if m_c.group(2): colors.append(m_c.group(2))
-                m_eff = re.search(r'image\.effect\s*=\s*([0-9a-zA-Z]+)', content)
-                if m_eff:
-                    raw_eff = m_eff.group(1).lower()
-            elif raw_c:
+                if not raw_c:
+                    m_c = re.search(r'image\.color\s*=\s*\[?\s*(#[0-9A-Fa-f]{3,8})\s*(?:,\s*(#[0-9A-Fa-f]{3,8}))?\s*\]?', content)
+                    if m_c:
+                        colors = [m_c.group(1)]
+                        if m_c.group(2): colors.append(m_c.group(2))
+                if not raw_eff:
+                    m_eff = re.search(r'image\.effect\s*=\s*([0-9a-zA-Z]+)', content)
+                    if m_eff:
+                        raw_eff = m_eff.group(1).lower()
+            if raw_c:
                 c_matches = re.findall(r'#[0-9A-Fa-f]{3,8}', raw_c)
                 if c_matches:
                     colors = c_matches
                     
             if raw_eff in ('2', 'rainbow') or any('rainbow' in str(c).lower() for c in colors):
                 mode = 'rainbow'
-            elif raw_eff in ('1', 'gradient') or (len(colors) >= 2 and colors[0].lower() != colors[1].lower()):
+            elif raw_eff in ('1', 'gradient'):
+                mode = 'gradient'
+            elif raw_eff in ('0', 'none', 'normal'):
+                mode = 'solid'
+            elif len(colors) >= 2 and colors[0].lower() != colors[1].lower():
                 mode = 'gradient'
             else:
                 mode = 'solid'
@@ -5258,7 +5374,7 @@ class PluginManager(QWidget):
 
         def on_tint_finished():
             if hasattr(self, 'sync_label'):
-                self.sync_label.setText("Sync Colors")
+                self.sync_label.setText("Sync")
             if hasattr(self, 'theme_sync_button'):
                 self.theme_sync_button.setEnabled(True)
             self.show_sync_status("Colors Synced")
@@ -5274,6 +5390,209 @@ class PluginManager(QWidget):
         thread.finished.connect(thread.deleteLater)
         self._active_tint_threads.append((thread, worker))
         thread.start()
+
+    def _sync_wallpaper_watcher_paths(self, wp_path: str = None):
+        if not hasattr(self, "wallpaper_watcher") or not self.wallpaper_watcher:
+            return
+        candidates = []
+        appdata = os.getenv("APPDATA", "")
+        if appdata:
+            themes_dir = os.path.join(appdata, "Microsoft", "Windows", "Themes")
+            candidates.append(os.path.join(themes_dir, "TranscodedWallpaper"))
+            candidates.append(themes_dir)
+        active_wp = wp_path or ChameleonEngine.get_wallpaper_path()
+        if active_wp:
+            candidates.append(active_wp)
+            candidates.append(os.path.dirname(active_wp))
+
+        watched_files = set(self.wallpaper_watcher.files())
+        watched_dirs = set(self.wallpaper_watcher.directories())
+        for path in candidates:
+            if not path:
+                continue
+            if os.path.isfile(path) and path not in watched_files:
+                self.wallpaper_watcher.addPath(path)
+                watched_files.add(path)
+            elif os.path.isdir(path) and path not in watched_dirs:
+                self.wallpaper_watcher.addPath(path)
+                watched_dirs.add(path)
+
+    def _setup_chameleon_engine(self):
+        self._last_chameleon_signature = None
+        self._last_chameleon_palette = None
+        self.chameleon_timer = QTimer(self)
+        self.chameleon_timer.setSingleShot(True)
+        self.chameleon_timer.timeout.connect(self._on_chameleon_wallpaper_changed)
+
+        self.wallpaper_watcher = QFileSystemWatcher(self)
+        self._sync_wallpaper_watcher_paths()
+        self.wallpaper_watcher.fileChanged.connect(lambda _p: self._schedule_chameleon_update(450))
+        self.wallpaper_watcher.directoryChanged.connect(lambda _p: self._schedule_chameleon_update(450))
+
+        if self.settings_manager.get("chameleon_mode", False):
+            QTimer.singleShot(900, lambda: self.apply_chameleon_wallpaper_theme(force=True, notify=False))
+
+    def _schedule_chameleon_update(self, delay_ms=450):
+        if self._is_shutting_down:
+            return
+        if not self.settings_manager.get("chameleon_mode", False):
+            return
+        if hasattr(self, "chameleon_timer") and self.chameleon_timer:
+            self.chameleon_timer.start(delay_ms)
+
+    def _on_chameleon_wallpaper_changed(self):
+        if not self.settings_manager.get("chameleon_mode", False):
+            return
+        self._sync_wallpaper_watcher_paths()
+        self.apply_chameleon_wallpaper_theme(force=False, notify=True)
+
+    def _update_chameleon_pill_ui(self, active: bool, palette: dict = None):
+        if not hasattr(self, "chameleon_container") or not self.chameleon_container:
+            return
+
+        self.chameleon_container.setChecked(bool(active))
+        if active:
+            primary = (palette or {}).get("primary_accent") or "#8caaee"
+            secondary = (palette or {}).get("secondary_accent") or primary
+            self.chameleon_container.set_palette_colors(primary, secondary)
+            self.chameleon_container.setToolTip("Chameleon Engine: Active (Auto-theming from desktop wallpaper)")
+        else:
+            self.chameleon_container.setToolTip("Chameleon Engine: Auto-grab wallpaper dominant colors")
+        self.chameleon_container.update()
+
+    def toggle_chameleon_mode(self):
+        current = bool(self.settings_manager.get("chameleon_mode", False))
+        self.set_chameleon_mode(not current)
+
+    def set_chameleon_mode(self, enabled: bool, restore_backup: bool = True, notify: bool = True):
+        enabled = bool(enabled)
+        was_enabled = bool(self.settings_manager.get("chameleon_mode", False))
+        self.settings_manager.set("chameleon_mode", enabled)
+        theme_nss_path = os.path.join(PROJECT_ROOT, "imports", "theme.nss")
+        backup_path = os.path.join(CACHE_DIR, "pre_chameleon_theme.nss")
+
+        if enabled:
+            if os.path.exists(theme_nss_path) and (not was_enabled or not os.path.exists(backup_path)):
+                try:
+                    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                    shutil.copy2(theme_nss_path, backup_path)
+                except Exception:
+                    pass
+            self.apply_chameleon_wallpaper_theme(force=True, notify=notify)
+            return
+
+        if hasattr(self, "chameleon_timer") and self.chameleon_timer:
+            self.chameleon_timer.stop()
+        self._update_chameleon_pill_ui(False)
+
+        if restore_backup and os.path.exists(backup_path):
+            try:
+                with open(backup_path, "r", encoding="utf-8", errors="replace") as f:
+                    orig_content = f.read()
+                self._is_internal_change = True
+                try:
+                    safe_file_write(theme_nss_path, orig_content)
+                    self.update_snapshot(theme_nss_path)
+                finally:
+                    self._is_internal_change = False
+
+                if getattr(self, "theme_editor_page", None):
+                    self.theme_editor_page.reload_theme()
+                    self.theme_editor_page.is_dirty = False
+                if getattr(self, "theme_switcher_page", None):
+                    ts = self.theme_switcher_page
+                    restored_name = ts._get_current_theme_from_file()
+                    ts.selected_theme = restored_name
+                    ts.original_theme = restored_name
+                    ts.original_content = orig_content
+                    ts.is_dirty = False
+                    if restored_name and restored_name in ts.frames:
+                        ts._highlight_current_theme()
+                    else:
+                        checked_btn = ts.button_group.checkedButton()
+                        if checked_btn:
+                            ts.button_group.setExclusive(False)
+                            checked_btn.setChecked(False)
+                            ts.button_group.setExclusive(True)
+                        if ts.selected_button:
+                            ts.selected_button.setProperty("selected", False)
+                            ts.update_frame_style(ts.selected_button)
+                            ts.selected_button = None
+
+                self.trigger_global_tint()
+                self.reload_shell()
+            except Exception as e:
+                print(f"Error restoring pre-chameleon theme: {e}")
+
+        if notify:
+            self.show_sync_status("Chameleon Disabled")
+
+    def apply_chameleon_wallpaper_theme(self, force: bool = False, notify: bool = True, qimage: QImage = None) -> dict:
+        if qimage is None:
+            wp_path = ChameleonEngine.get_wallpaper_path()
+            self._sync_wallpaper_watcher_paths(wp_path)
+            sig = ChameleonEngine.get_wallpaper_signature(wp_path)
+            if not force and sig == self._last_chameleon_signature and self._last_chameleon_palette:
+                return self._last_chameleon_palette
+            palette = ChameleonEngine.extract_palette(image_path=wp_path)
+            self._last_chameleon_signature = sig
+        else:
+            palette = ChameleonEngine.extract_palette(qimage=qimage)
+
+        self._last_chameleon_palette = palette
+        theme_nss_path = os.path.join(PROJECT_ROOT, "imports", "theme.nss")
+
+        self._is_internal_change = True
+        try:
+            ChameleonEngine.rewrite_theme_nss(theme_nss_path, palette)
+            self.update_snapshot(theme_nss_path)
+        finally:
+            self._is_internal_change = False
+
+        self._update_chameleon_pill_ui(True, palette)
+
+        if getattr(self, "theme_editor_page", None):
+            self.theme_editor_page.reload_theme()
+            self.theme_editor_page.is_dirty = False
+
+        if getattr(self, "theme_switcher_page", None):
+            ts = self.theme_switcher_page
+            ts.selected_theme = "Chameleon"
+            ts.original_theme = "Chameleon"
+            ts.is_dirty = False
+            checked_btn = ts.button_group.checkedButton()
+            if checked_btn:
+                ts.button_group.setExclusive(False)
+                checked_btn.setChecked(False)
+                ts.button_group.setExclusive(True)
+            if ts.selected_button:
+                ts.selected_button.setProperty("selected", False)
+                ts.update_frame_style(ts.selected_button)
+                ts.selected_button = None
+
+        self.trigger_global_tint()
+        self.reload_shell()
+
+        if notify and hasattr(self, "notification") and self.notification:
+            swatch = QPixmap(28, 28)
+            swatch.fill(Qt.transparent)
+            p = QPainter(swatch)
+            p.setRenderHint(QPainter.Antialiasing)
+            grad = QLinearGradient(0, 0, 28, 28)
+            grad.setColorAt(0.0, QColor(palette["primary_accent"]))
+            grad.setColorAt(1.0, QColor(palette["secondary_accent"]))
+            p.setPen(QPen(QColor(255, 255, 255, 110), 1.5))
+            p.setBrush(grad)
+            p.drawEllipse(2, 2, 24, 24)
+            p.end()
+            self._last_action_time = time.time()
+            self.notification.show_notification(
+                "Chameleon Engine",
+                f"Synced {palette['primary_accent']} & {palette['secondary_accent']}",
+                swatch,
+            )
+
+        return palette
 
     def setup_settings_page(self):
         layout = QVBoxLayout(self.settings_page)
@@ -5305,6 +5624,7 @@ class PluginManager(QWidget):
         self.auto_update_sw = self._create_setting_row(layout, "Auto Update Plugins", "Automatically install updates on startup", "auto_update")
         self.auto_check_sw = self._create_setting_row(layout, "Auto Check Updates", "Show notification when updates are available", "auto_check_updates")
         self.auto_backup_sw = self._create_setting_row(layout, "Daily Cloud Backup", "Automatically back up settings daily when logged into Google Drive", "auto_cloud_backup")
+        self.rc_quick_edit_sw = self._create_setting_row(layout, "Right-Click Quick Edit", "Right-click any context menu item to open Quick Edit instead of executing it", "right_click_quick_edit")
         
         self._create_import_row(layout)
         self._create_sync_section(layout)
@@ -5503,9 +5823,10 @@ class PluginManager(QWidget):
             try: shutil.copy2(bundled_shell_exe, temp_new_shell_exe)
             except Exception: pass
 
-        parent_dir = os.path.abspath(os.path.join(app_dir, '..'))
-        target_shell_dll = os.path.join(parent_dir, 'shell.dll')
-        target_shell_exe = os.path.join(parent_dir, 'shell.exe')
+        from utils import resolve_shell_root
+        shell_root = resolve_shell_root(app_dir)
+        target_shell_dll = os.path.join(shell_root, 'shell.dll')
+        target_shell_exe = os.path.join(shell_root, 'shell.exe')
 
         updater_args = f'--pid {current_pid} --target "{current_exe}" --new "{new_exe_path}" --old "{old_exe_path}" --dir "{app_dir}" --new-shell "{temp_new_shell_dll}" --new-shell-exe "{temp_new_shell_exe}" --target-shell "{target_shell_dll}" --shell-exe "{target_shell_exe}"'
 
@@ -5866,6 +6187,7 @@ if __name__ == '__main__':
             QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
             QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
             app = QApplication(sys.argv)
+            install_native_tooltip_filter(app)
             app_font = QFont('Google Sans', 10)
             app_font.setFamilies(['Google Sans', 'Marhey', 'Segoe UI'])
             app_font.setWeight(QFont.Medium)
@@ -5969,10 +6291,36 @@ if __name__ == '__main__':
 
     def _auto_upgrade_shell_core_if_needed():
         try:
-            from utils import get_shell_dll_version, launch_shell_core_update
-            ver = get_shell_dll_version()
-            if ver < (2, 0, 0, 2):
-                launch_shell_core_update(parent=manager)
+            if getattr(manager, '_shell_upgrade_started', False):
+                return
+            from utils import shell_core_needs_update, launch_shell_core_update, get_shell_dll_version
+            needs_update, _inst_ver, bund_ver = shell_core_needs_update()
+            if not needs_update:
+                return
+            manager._shell_upgrade_started = True
+            ver_str = '.'.join(map(str, bund_ver)) if bund_ver > (0, 0, 0, 0) else ''
+            if launch_shell_core_update(parent=manager):
+                if getattr(manager, 'notification', None):
+                    manager.notification.show_notification(
+                        "Shell Core Update",
+                        f"Swapping shell engine to v{ver_str}..." if ver_str else "Swapping shell engine...",
+                    )
+                poll_state = {'tries': 0}
+                poll_timer = QTimer(manager)
+                def _poll_shell_upgrade():
+                    poll_state['tries'] += 1
+                    cur_ver = get_shell_dll_version()
+                    if bund_ver > (0, 0, 0, 0) and cur_ver >= bund_ver:
+                        poll_timer.stop()
+                        if getattr(manager, 'notification', None):
+                            manager.notification.show_notification(
+                                "Shell Core Updated",
+                                f"Updated seamlessly to v{'.'.join(map(str, cur_ver))}.",
+                            )
+                    elif poll_state['tries'] >= 20:
+                        poll_timer.stop()
+                poll_timer.timeout.connect(_poll_shell_upgrade)
+                poll_timer.start(1000)
         except Exception as e:
             print(f"Auto-upgrade shell core error: {e}")
 

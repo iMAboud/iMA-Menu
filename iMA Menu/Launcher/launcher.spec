@@ -85,8 +85,7 @@ a = Analysis(
         'PyQt5.QtXmlPatterns', 'PyQt5.QtOpenGL', 'PyQt5.QtOpenGLWidgets',
         'tkinter', 'unittest', 'pydoc',
         'multiprocessing', '_multiprocessing',
-        'ssl', '_ssl', 'webbrowser', 'tarfile',
-        'items_widget', 'items_manager'
+        'ssl', '_ssl', 'webbrowser', 'tarfile'
     ],
     noarchive=False,
     optimize=2,

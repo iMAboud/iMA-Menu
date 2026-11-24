@@ -31,14 +31,14 @@ QMessageBox {
 }
 
 QToolTip {
-    background-color: #1a1b20;
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 12px;
-    padding: 5px 14px;
-    font-family: 'Google Sans', 'Marhey', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+    background-color: #20222a;
+    color: #f0f2f8;
+    border: 1px solid #363a48;
+    border-radius: 0px;
+    padding: 1px 2px;
+    font-family: 'Segoe UI Variable Text', 'Google Sans', 'Marhey', 'Segoe UI', sans-serif;
     font-size: 11.5px;
-    font-weight: bold;
+    font-weight: 500;
 }
 
 QPushButton {

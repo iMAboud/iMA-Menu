@@ -20,7 +20,7 @@ from nss_parser import (
     save_imported_item, _get_custom_menus_from_nss,
     _get_vis_options, _build_vis_expression, _parse_vis_expression,
     is_rule_complete, extract_ids_from_section, extract_custom_rules,
-    update_section, scan_nss_items, read_file
+    update_section, scan_nss_items, read_file, cleanup_orphan_icons
 )
 
 # Global path storage to be set by launcher.pyw
@@ -2803,7 +2803,7 @@ class ImportEditorDialog(QDialog):
         self.setMinimumWidth(570)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #18181c; color: #ffffff; border: 1.5px solid rgba(231, 130, 132, 0.7); border-radius: 14px; padding: 5px 15px; font-family: 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: bold; }")
+        self.setStyleSheet("QToolTip { background-color: #20222a; color: #f0f2f8; border: 1px solid #363a48; border-radius: 0px; padding: 1px 2px; font-family: 'Segoe UI Variable Text', 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: 500; }")
         self._drag_pos = None
         self.setup_ui()
 
@@ -4651,7 +4651,7 @@ class ModifyRuleEditorDialog(QDialog):
     live_update = pyqtSignal(dict)
     def __init__(self, data=None, existing_rules=None, bulk_sections=None, parent=None, original_title=None):
         super().__init__(parent); self.data = data or {}; self._all_existing_rules = existing_rules or []; self._bulk_sections = bulk_sections or {}; self._target_existing_rule = None; self._is_loading = False; self.original_title = original_title; self.setMinimumWidth(720); self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint); self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet("QToolTip { background-color: #18181c; color: #ffffff; border: 1.5px solid rgba(231, 130, 132, 0.7); border-radius: 14px; padding: 5px 15px; font-family: 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: bold; }")
+        self.setStyleSheet("QToolTip { background-color: #20222a; color: #f0f2f8; border: 1px solid #363a48; border-radius: 0px; padding: 1px 2px; font-family: 'Segoe UI Variable Text', 'Google Sans', 'Marhey', 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: 500; }")
         self.created_temp_icons = []
         self._custom_menus = _get_custom_menus_from_nss()
         self._drag_pos = None

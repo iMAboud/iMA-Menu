@@ -81,26 +81,32 @@ class ItemsManager:
 
         self.catalog = {"groups": []}
         self.snippets_by_id = {}
-        self.installed_data = {"snippets": {}, "elements": {}}
+        self.installed_data = {"snippets": {}, "elements": {}, "items": {}}
 
         self.load_catalog()
         self.load_installed()
 
-    def load_catalog(self, force=False):
-        """Loads snippet catalog from cache/items.json (disabled for now)."""
+    def load_catalog(self):
+        """Loads snippet catalog from cache/items.json."""
         self.catalog = {"groups": []}
         self.snippets_by_id = {}
-        if not force:
-            return
-        if os.path.exists(self.catalog_path):
+        target_path = self.catalog_path
+        if not os.path.exists(target_path):
+            alt = os.path.join(self.project_root, 'Launcher', 'cache', 'items.json')
+            if os.path.exists(alt):
+                target_path = alt
+            else:
+                alt2 = os.path.join(self.project_root, 'cache', 'items.json')
+                if os.path.exists(alt2):
+                    target_path = alt2
+
+        if os.path.exists(target_path):
             try:
-                with open(self.catalog_path, 'r', encoding='utf-8') as f:
+                with open(target_path, 'r', encoding='utf-8') as f:
                     self.catalog = json.load(f)
             except Exception as e:
                 print(f"[ItemsManager] Error reading catalog: {e}")
                 self.catalog = {"groups": []}
-        else:
-            self.catalog = {"groups": []}
 
         for group in self.catalog.get("groups", []):
             for snippet in group.get("snippets", []):
@@ -113,14 +119,16 @@ class ItemsManager:
                 with open(self.installed_path, 'r', encoding='utf-8') as f:
                     self.installed_data = json.load(f)
             except Exception:
-                self.installed_data = {"snippets": {}, "elements": {}}
+                self.installed_data = {"snippets": {}, "elements": {}, "items": {}}
         else:
-            self.installed_data = {"snippets": {}, "elements": {}}
+            self.installed_data = {"snippets": {}, "elements": {}, "items": {}}
 
         if "snippets" not in self.installed_data:
             self.installed_data["snippets"] = {}
         if "elements" not in self.installed_data:
             self.installed_data["elements"] = {}
+        if "items" not in self.installed_data:
+            self.installed_data["items"] = {}
 
     def _save_installed(self):
         """Atomically saves installed items tracking data."""
@@ -134,8 +142,28 @@ class ItemsManager:
             print(f"[ItemsManager] Error saving installed index: {e}")
 
     def _ensure_items_nss(self):
-        """Ensures imports/items.nss exists and is registered in shell.nss (disabled for now)."""
-        return
+        """Ensures imports/items.nss exists and is registered in shell.nss."""
+        try:
+            os.makedirs(os.path.dirname(self.items_nss_path), exist_ok=True)
+            if not os.path.exists(self.items_nss_path):
+                safe_file_write(self.items_nss_path, "")
+
+            if os.path.exists(self.shell_nss_path):
+                content = read_file(self.shell_nss_path)
+                import_stmt = "import 'imports/items.nss'"
+                if import_stmt not in content:
+                    lines = content.splitlines()
+                    last_import_idx = -1
+                    for idx, line in enumerate(lines):
+                        if line.strip().startswith("import ") and "imports/" in line:
+                            last_import_idx = idx
+                    if last_import_idx != -1:
+                        lines.insert(last_import_idx + 1, import_stmt)
+                    else:
+                        lines.append(import_stmt)
+                    safe_file_write(self.shell_nss_path, "\n".join(lines) + "\n")
+        except Exception as e:
+            print(f"[ItemsManager] Error ensuring items.nss: {e}")
 
     def _write_items_nss(self):
         """Reconstructs imports/items.nss cleanly with ZERO comments."""
@@ -153,6 +181,13 @@ class ItemsManager:
             s_id = e_data.get("snippet_id")
             if s_id not in self.installed_data.get("snippets", {}):
                 code = e_data.get("code", "").strip()
+                if code:
+                    parts.append(code)
+
+        # 3. Direct items
+        for it_id, it_data in self.installed_data.get("items", {}).items():
+            if it_id not in self.installed_data.get("snippets", {}) and it_id not in self.installed_data.get("elements", {}):
+                code = it_data.get("code", "").strip()
                 if code:
                     parts.append(code)
 
@@ -220,13 +255,13 @@ class ItemsManager:
                 res.extend(self._flatten_elements(el["children"]))
         return res
 
-    def add_snippet(self, snippet_id):
+    def add_snippet(self, snippet_id, custom_code=None):
         """Adds clean snippet code with zero comments to imports/items.nss."""
         snippet = self.get_snippet(snippet_id)
         if not snippet:
             return False
 
-        clean_code = strip_nss_comments(snippet.get("full_code", ""))
+        clean_code = strip_nss_comments(custom_code if custom_code else snippet.get("full_code", ""))
         s_hash = self._hash_code(clean_code)
 
         all_elems = self._flatten_elements(snippet.get("elements", []))
@@ -240,7 +275,7 @@ class ItemsManager:
             "code": clean_code,
             "installed_elements": elem_ids,
             "hash": s_hash,
-            "customized": False
+            "customized": bool(custom_code)
         }
 
         for el in all_elems:
@@ -248,12 +283,29 @@ class ItemsManager:
                 self.installed_data["elements"][el["id"]] = {
                     "snippet_id": snippet_id,
                     "code": strip_nss_comments(el.get("raw_code", "")),
-                    "customized": False
+                    "customized": bool(custom_code)
                 }
 
         self._save_installed()
         self._write_items_nss()
         return True
+
+    def is_snippet_customized(self, snippet_id):
+        """Returns True if the snippet or any of its elements has been customized."""
+        snip_data = self.installed_data.get("snippets", {}).get(snippet_id)
+        if snip_data and snip_data.get("customized"):
+            return True
+        for ed in self.installed_data.get("elements", {}).values():
+            if ed.get("snippet_id") == snippet_id and ed.get("customized"):
+                return True
+        return False
+
+    def restore_snippet_default(self, snippet_id):
+        """Reverts customized snippet and elements back to original curated catalog code."""
+        snippet = self.get_snippet(snippet_id)
+        if not snippet:
+            return False
+        return self.add_snippet(snippet_id, custom_code=None)
 
     def remove_snippet(self, snippet_id):
         """Removes snippet and its elements from items.nss."""
