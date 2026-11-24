@@ -378,7 +378,7 @@ def _parse_version(version_tag):
             parsed_parts.append(0)
     return tuple(parsed_parts) if parsed_parts else (0,)
 
-APP_VERSION = '2.1.13'
+APP_VERSION = '2.1.14'
 
 def _resolve_app_version():
     ver = APP_VERSION
